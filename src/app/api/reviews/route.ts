@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createDraft, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash, type Draft, type Source } from "../../../lib/onbrand";
-import { modelConfigured, modelDescriptor, runAgentPanel, verifySemanticEvidence } from "../../../lib/server/model";
 import { z } from "zod";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });
@@ -52,34 +51,16 @@ export async function POST(request: Request) {
         source_evidence: [], created_at: new Date().toISOString(),
       });
     }
-    const configuredModel = body.useAdvisoryModel === false ? null : modelConfigured() ? modelDescriptor() : null;
-    const semantic = configuredModel
-      ? await verifySemanticEvidence(review, safeDraft, approvedSources)
-      : { review, state: "not-applicable" as const, candidateCount: 0, unresolvedCount: 0 };
-    const finalReview = semantic.review;
-    const panel = configuredModel ? await runAgentPanel(safeDraft, finalReview, approvedSources) : null;
-    if (panel) {
-      finalReview.agentNotes = [
-        { agent: "Advocate", summary: panel.advocate },
-        { agent: "Challenger", summary: panel.challenger },
-        { agent: "Judge", summary: panel.judge },
-        { agent: "Policy & Risk", summary: panel.policyRisk },
-      ];
-      finalReview.engineMode = "model-assisted";
-    } else {
-      finalReview.engineMode = semantic.state === "verified" ? "model-assisted" : "deterministic-preview";
-    }
+    // Public Round 2 reviews are deterministic by policy. Model-assisted review
+    // remains available only to local/dev workflows and cannot be enabled by a
+    // browser-supplied flag that could send customer drafts to a provider.
+    const finalReview = review;
+    finalReview.engineMode = "deterministic-preview";
     finalReview.sourceSnapshotHash = sourceSnapshotHash(approvedSources);
     return NextResponse.json({
       review: finalReview,
       engine: finalReview.engineMode,
-      modelDisclosure: panel
-        ? `The ${configuredModel} two-pass semantic verifier checked ${semantic.candidateCount} free-text claims; ${semantic.unresolvedCount} need human review. The four-role panel supplied advisory notes. Code checks remain authoritative.`
-        : configuredModel
-          ? `The ${configuredModel} advisory panel did not complete. ${semantic.unresolvedCount} free-text claims need human review after the semantic checks; the code findings remain available. The advisory panel is optional.`
-          : body.useAdvisoryModel === false
-            ? "Deterministic mode is active. No model call was made."
-            : "No model is configured. This demo uses deterministic retrieval and policy checks; no model call was made.",
+      modelDisclosure: "Deterministic mode is active. No model call was made.",
     });
   } catch (error) {
     const message = error instanceof z.ZodError ? "Invalid review request." : "Review failed safely. Check the draft and try again.";
