@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has eighteen focused checks, including SHA-256 fingerprinting, suggestion grounding, source-import quarantine and route-level model-boundary fault injections:
+Run `npm run test`. The current set has nineteen focused checks, including atomic-clause spans, SHA-256 fingerprinting, suggestion grounding, source-import quarantine and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -13,6 +13,7 @@ Run `npm run test`. The current set has eighteen focused checks, including SHA-2
 | Source version precedence | A newer version wins when authority and effective date match |
 | Finite validity periods | Equal-precedence sources still conflict when both are within their effective dates |
 | Finding offsets | Each reported span maps back to the exact claim text in the reviewed draft |
+| Compound sentence coverage | Independent factual clauses are reviewed separately; only subject context is inherited, exact clause offsets are retained, and neighboring clause evidence cannot support the claim |
 | Suggested revision | Candidate is accepted only after a fresh complete review and cannot pass if it remains blocking |
 | Suggestion grounding gate | A freshly reviewed but unsupported replacement is rejected even when its finding is nonblocking |
 | Unsupported benefit | Mentioning the product name alone does not retrieve an unrelated product fact as evidence |
@@ -25,7 +26,7 @@ Run `npm run test`. The current set has eighteen focused checks, including SHA-2
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 | Imported prompt injection | A source containing instruction-like text is flagged for quarantine before maintainer approval |
 
-**Latest run:** 19/19 automated checks passed on 8 Nov 2026. Eighteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 20/20 automated checks passed on 8 Nov 2026. Nineteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -56,8 +57,8 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | Milestone | Current evidence | Status and remaining gap |
 | --- | --- | --- |
 | M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields; imported instruction-like text is quarantined | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
-| M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
-| M3 — Claim extraction, spans and coverage | Sentence-level extraction, special splitting for multiple nutrition measures, original character offsets and span assertions | **Partial.** General multi-claim sentence decomposition and a separately validated uncovered-trigger detector are not implemented. |
+| M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, SHA-256 content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
+| M3 — Claim extraction, spans and coverage | Sentence segmentation, separate numeric-claim extraction, predicate-clause splitting, subject-only retrieval context and original character offsets | **Partial.** A separately validated uncovered-trigger detector and broader linguistic clause coverage are not implemented. |
 | M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence and explicit conflict outcome | **Partial.** This is in-memory retrieval, not PostgreSQL FTS; the evidence-support decision uses deterministic heuristics, not the planned independent semantic verifier. |
 | M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No full independent C1–C5 citation verification harness or browser-level WCAG validation. |
 | M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline; it must return `SUPPORTED` with an approved citation; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |

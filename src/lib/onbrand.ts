@@ -278,6 +278,7 @@ const multiValueAttributes = new Set([
   "ingredient", "allergen", "approved claim", "claim restriction", "voice", "audience",
   "preferred wording", "avoid wording", "tone", "visual palette", "format", "accessibility", "disclosure",
 ]);
+const relationshipTerms = new Set(["contain", "include", "made", "have", "has", "be", "is", "are", "use", "uses", "provide", "provides", "offer", "offers", "come", "comes"]);
 
 function trigramScore(a: string, b: string): number {
   const trigrams = (s: string) => {
@@ -375,7 +376,7 @@ function retrieve(claim: string, sources: Source[], channel: string, date: strin
     // topical overlap with the fact's attribute/value before ranking its citation.
     const evidenceTopic = words(`${candidate.fact.attribute} ${candidate.fact.value} ${candidate.fact.unit ?? ""}`);
     const subjectWords = words(candidate.fact.subject);
-    const anchors = [...evidenceTopic].filter((word) => !subjectWords.has(word));
+    const anchors = [...evidenceTopic].filter((word) => !subjectWords.has(word) && !relationshipTerms.has(word));
     const claimWords = words(claim);
     // A shared subject term (for example, "oat" in the product name) is not an
     // attribute/value match and cannot substantiate an unrelated benefit.
@@ -439,17 +440,37 @@ export function reviewDraft(input: {
     const metricPattern = /\b\d+(?:\.\d+)?\s*(?:g|grams?|mg|ml|months?|jars?|bites?)\s+(?:serving|protein|added\s+sugar|sugar|calories|jars?|bites?)\b/gi;
     const metrics = [...raw.matchAll(metricPattern)];
     if (metrics.length < 2) {
-      const text = raw.trim();
-      const offset = raw.indexOf(text);
-      return [{ text, start: base + offset, end: base + offset + text.length, context: raw }];
+      const segments: Array<{ text: string; start: number; end: number }> = [];
+      const addSegment = (from: number, to: number) => {
+        const segment = raw.slice(from, to);
+        const text = segment.trim();
+        if (!text) return;
+        const leading = segment.length - segment.trimStart().length;
+        segments.push({ text, start: base + from + leading, end: base + from + leading + text.length });
+      };
+      const predicateBoundary = /\b(?:and|but|while)\s+(?=(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b)/gi;
+      let segmentStart = 0;
+      for (const boundary of raw.matchAll(predicateBoundary)) {
+        const boundaryStart = boundary.index ?? segmentStart;
+        addSegment(segmentStart, boundaryStart);
+        segmentStart = boundaryStart + boundary[0].length;
+      }
+      addSegment(segmentStart, raw.length);
+      const firstPredicate = raw.match(/\b(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b/i);
+      const subjectContext = firstPredicate?.index === undefined ? "" : raw.slice(0, firstPredicate.index).trim();
+      return segments.map((segment, index) => ({
+        ...segment,
+        context: raw,
+        retrievalText: index > 0 && subjectContext ? `${subjectContext} ${segment.text}` : segment.text,
+      }));
     }
-    return metrics.map((metric) => ({ text: metric[0].trim(), start: base + (metric.index ?? 0), end: base + (metric.index ?? 0) + metric[0].length, context: raw }));
+    return metrics.map((metric) => ({ text: metric[0].trim(), start: base + (metric.index ?? 0), end: base + (metric.index ?? 0) + metric[0].length, context: raw, retrievalText: metric[0].trim() }));
   });
   const findings: Finding[] = claims.map((claim, index) => {
     const claimText = claim.text;
     const start = claim.start;
     const end = claim.end;
-    const retrieved = retrieve(claimText, sources, draft.channel, draft.publicationDate);
+    const retrieved = retrieve(claim.retrievalText, sources, draft.channel, draft.publicationDate);
     const firstRelevant = retrieved[0];
     const comparable = firstRelevant ? retrieved.filter((x) => x.fact.attribute === firstRelevant.fact.attribute && x.score >= Math.max(0.16, firstRelevant.score * 0.68)) : [];
     const sortedByAuthority = comparable.slice().sort((a, b) => b.source.authority - a.source.authority || b.source.effectiveFrom.localeCompare(a.source.effectiveFrom) || b.source.version - a.source.version);

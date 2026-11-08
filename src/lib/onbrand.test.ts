@@ -142,6 +142,21 @@ describe("OnBrand evidence review evaluation", () => {
     }
   });
 
+  it("splits separate factual clauses in one sentence and retains exact original spans", () => {
+    const content = "Sample Foods Oat Bites are made with wholegrain oats and contain cocoa.";
+    const draft = createDraft(content);
+    const findings = reviewDraft({ draft }).findings;
+    expect(findings.map((finding) => finding.claim_text)).toEqual([
+      "Sample Foods Oat Bites are made with wholegrain oats",
+      "contain cocoa.",
+    ]);
+    for (const finding of findings) expect(content.slice(finding.start, finding.end)).toBe(finding.claim_text);
+    expect(findings[1].evidence_status).toBe("SUPPORTED");
+    expect(findings[1].source_evidence.some((evidence) => evidence.quote.includes("cocoa"))).toBe(true);
+    expect(findings[1].source_evidence.some((evidence) => evidence.quote.includes("wholegrain oats"))).toBe(false);
+    expect(findings[1].source_evidence.some((evidence) => evidence.quote.includes("contains oats"))).toBe(false);
+  });
+
   it("accepts a suggested revision only after a full fresh review", () => {
     const draft = initialDraft;
     const report = reviewDraft({ draft });
