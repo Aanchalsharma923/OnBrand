@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -29,7 +29,7 @@ export const sources = pgTable("sources", {
   channels: jsonb("channels").$type<string[]>().notNull(),
   owner: text("owner").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [unique("sources_organization_source_key_version_key").on(table.organizationId, table.sourceKey, table.version)]);
 
 export const facts = pgTable("facts", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -66,7 +66,7 @@ export const draftVersions = pgTable("draft_versions", {
   contentHash: varchar("content_hash", { length: 64 }).notNull(),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [unique("draft_versions_organization_draft_version_key").on(table.organizationId, table.draftId, table.version)]);
 
 export const reviews = pgTable("reviews", {
   id: uuid("id").defaultRandom().primaryKey(),
