@@ -77,7 +77,9 @@ export async function POST(request: Request) {
         ? `The ${configuredModel} two-pass semantic verifier checked ${semantic.candidateCount} free-text claims; ${semantic.unresolvedCount} need human review. The four-role panel supplied advisory notes. Code checks remain authoritative.`
         : configuredModel
           ? `The ${configuredModel} advisory panel did not complete. ${semantic.unresolvedCount} free-text claims need human review after the semantic checks; the code findings remain available. The advisory panel is optional.`
-          : "No model is configured. This demo uses deterministic retrieval and policy checks; no model call was made.",
+          : body.useAdvisoryModel === false
+            ? "Deterministic mode is active. No model call was made."
+            : "No model is configured. This demo uses deterministic retrieval and policy checks; no model call was made.",
     });
   } catch (error) {
     const message = error instanceof z.ZodError ? "Invalid review request." : "Review failed safely. Check the draft and try again.";
