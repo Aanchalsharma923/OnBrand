@@ -93,10 +93,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .profile-editor-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .profile-editor-actions .table-approve { padding: 7px 10px; }
 .draft-upload-row { display: flex; align-items: flex-start; gap: 9px; margin-top: 8px; }
-.draft-upload-button { min-height: 28px; flex: 0 0 auto; padding: 0 9px; font-size: 8px; }
+.draft-upload-button { min-height: 36px; flex: 0 0 auto; padding: 0 11px; font-size: 11px; }
 .draft-upload-button .icon { width: 12px; height: 12px; }
-.draft-upload-row > div { min-width: 0; color: #657368; font-size: 9px; line-height: 1.5; }
-.draft-upload-row small { display: block; margin-top: 3px; color: #879287; font-size: 8px; }
+.draft-upload-row > div { min-width: 0; color: #526457; font-size: 11px; line-height: 1.5; }
+.draft-upload-row small { display: block; margin-top: 3px; color: #68776a; font-size: 10px; }
 .welcome-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: 24px; background: rgba(25, 36, 29, .48); backdrop-filter: blur(5px); }
 .welcome-card { width: min(850px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; padding: 30px; border: 1px solid #e6e9e1; border-radius: 14px; background: #fbfcf9; box-shadow: 0 24px 80px rgba(18, 30, 22, .25); }
 .welcome-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 25px; color: #203f34; font-size: 18px; font-weight: 750; }
@@ -107,18 +107,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .welcome-option:not(.own-option):hover { border-color: #91a895; box-shadow: 0 5px 20px rgba(53, 79, 59, .08); }
 .welcome-option-mark { width: 32px; height: 32px; display: grid; place-items: center; margin-bottom: 13px; border-radius: 9px; color: #54775e; background: #edf4ec; font-size: 17px; }
 .welcome-option > b { display: block; color: #3f5144; font-size: 14px; }
-.welcome-option > small { display: block; min-height: 55px; margin-top: 6px; color: #8a958b; font-size: 10px; line-height: 1.6; }
+.welcome-option > small { display: block; min-height: 55px; margin-top: 6px; color: #68766b; font-size: 12px; line-height: 1.6; }
 .welcome-action { display: block; margin-top: 19px; color: #56775c; font-size: 11px; font-weight: 700; }
 .own-option { border-color: #cfddd0; background: linear-gradient(145deg, #fff, #f8fbf7); }
 .own-option form { display: grid; gap: 9px; margin-top: 14px; }
-.own-option label { display: grid; gap: 4px; color: #68756b; font-size: 9px; font-weight: 650; }
-.own-option input { width: 100%; min-height: 32px; padding: 7px 9px; border: 1px solid #e1e7df; border-radius: 5px; color: #455249; background: #fff; font-size: 10px; }
-.own-option details { color: #77847a; font-size: 9px; }
+.own-option label { display: grid; gap: 4px; color: #56675a; font-size: 11px; font-weight: 650; }
+.own-option input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #d6dfd5; border-radius: 5px; color: #35443a; background: #fff; font-size: 12px; }
+.own-option details { color: #5c6c60; font-size: 11px; }
 .own-option summary { width: fit-content; margin: 2px 0 8px; cursor: pointer; }
 .own-option details label + label { margin-top: 8px; }
-.welcome-submit { min-height: 36px; margin-top: 4px; border: 1px solid #52775b; border-radius: 5px; color: #fff; background: #52775b; font-size: 10px; font-weight: 700; }
+.welcome-submit { min-height: 40px; margin-top: 4px; border: 1px solid #52775b; border-radius: 5px; color: #fff; background: #52775b; font-size: 12px; font-weight: 700; }
 .welcome-submit:hover { background: #40664b; }
-.welcome-capabilities { display: grid; grid-template-columns: 110px 1fr 1fr; gap: 14px; margin-top: 17px; padding: 12px; border: 1px solid #e9ece6; border-radius: 7px; color: #828d83; background: #f5f7f3; font-size: 9px; line-height: 1.55; }
+.welcome-capabilities { display: grid; grid-template-columns: 130px 1fr 1fr; gap: 14px; margin-top: 17px; padding: 12px; border: 1px solid #e9ece6; border-radius: 7px; color: #58675c; background: #f5f7f3; font-size: 11px; line-height: 1.55; }
 .welcome-capabilities b { color: #5c6d5f; }
 .knowledge-upload-status { padding: 10px 13px; margin: -4px 0 12px; border: 1px solid #e5eae2; border-radius: 6px; color: #68796a; background: #f8faf7; font-size: 9px; line-height: 1.5; }
 .knowledge-upload-status small { display: block; margin-top: 3px; color: #929c93; }
