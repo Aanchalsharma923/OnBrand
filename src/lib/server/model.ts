@@ -16,12 +16,26 @@ export function modelConfigured() {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
+export function modelDescriptor() {
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const endpoint = process.env.OPENAI_BASE_URL;
+  if (endpoint) {
+    try {
+      const host = new URL(endpoint).hostname.toLowerCase();
+      if (["localhost", "127.0.0.1", "::1"].includes(host)) return `locally hosted ${model}`;
+    } catch {
+      // The SDK reports invalid provider URLs as a model failure; do not leak URL details to the client.
+    }
+  }
+  return `${model} via the configured provider`;
+}
+
 function createClient() {
   if (!process.env.OPENAI_API_KEY) throw new Error("Model provider is not configured.");
   return new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
     baseURL: process.env.OPENAI_BASE_URL || undefined,
-    timeout: 12_000,
+    timeout: 75_000,
     maxRetries: 0,
   });
 }

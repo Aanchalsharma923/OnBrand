@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createDraft, reviewDraft, seedSources, sourceSnapshotHash, type Draft, type Source } from "@/lib/onbrand";
-import { modelConfigured, runAgentPanel } from "@/lib/server/model";
+import { modelConfigured, modelDescriptor, runAgentPanel } from "@/lib/server/model";
 import { z } from "zod";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });
@@ -35,7 +35,8 @@ export async function POST(request: Request) {
     const safeDraft = createDraft(draft.content, { ...draft });
     const approvedSources = (sources?.length ? sources : seedSources).filter((source) => source.approvalState === "APPROVED" && !source.revokedAt);
     const review = reviewDraft({ draft: safeDraft, sources: approvedSources });
-    const panel = modelConfigured() ? await runAgentPanel(safeDraft, review, approvedSources) : null;
+    const configuredModel = modelConfigured() ? modelDescriptor() : null;
+    const panel = configuredModel ? await runAgentPanel(safeDraft, review, approvedSources) : null;
     if (panel) {
       review.agentNotes = [
         { agent: "Advocate", summary: panel.advocate },
@@ -56,7 +57,15 @@ export async function POST(request: Request) {
       }
     }
     review.sourceSnapshotHash = sourceSnapshotHash(approvedSources);
-    return NextResponse.json({ review, engine: review.engineMode, modelDisclosure: panel ? "A model-assisted four-role panel supplied advisory notes. Code-generated statuses and citations remain authoritative." : modelConfigured() ? "The configured model failed. Review is marked needs-human; no automated pass is possible." : "No model key configured. This demo uses deterministic retrieval and policy checks; no model call was made." });
+    return NextResponse.json({
+      review,
+      engine: review.engineMode,
+      modelDisclosure: panel
+        ? `The ${configuredModel} four-role panel supplied advisory notes. Draft text and findings were processed by the configured model; code-generated statuses, citations and approval gates remain authoritative.`
+        : configuredModel
+          ? `The ${configuredModel} panel did not complete. Review is marked needs-human; no automated pass is possible.`
+          : "No model is configured. This demo uses deterministic retrieval and policy checks; no model call was made.",
+    });
   } catch (error) {
     const message = error instanceof z.ZodError ? "Invalid review request." : "Review failed safely. Check the draft and try again.";
     return NextResponse.json({ error: message }, { status: error instanceof z.ZodError ? 400 : 500 });

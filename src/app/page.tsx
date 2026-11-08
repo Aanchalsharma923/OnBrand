@@ -114,7 +114,7 @@ export default function Home() {
   const [showAudit, setShowAudit] = useState(false);
   const [lastDecision, setLastDecision] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [modelDisclosure, setModelDisclosure] = useState("No model key configured. This demo uses deterministic retrieval and policy checks; no model call is made.");
+  const [modelDisclosure, setModelDisclosure] = useState("OnBrand's evidence statuses, citations and approval gates are code-generated. A configured model may add advisory notes; people make the decision.");
 
   useEffect(() => {
     let restored: { draft?: typeof draft; versions?: typeof versions; sources?: Source[]; review?: Review; role?: Role; lastDecision?: string } | undefined;
