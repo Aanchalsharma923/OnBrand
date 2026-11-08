@@ -184,9 +184,9 @@ export const seedRules = [
   { id: "R-04", label: "Avoid absolute or miracle language", terms: ["miracle", "guaranteed", "guilt-free", "best ever"] },
   { id: "R-05", label: "Comparative claims need substantiation", terms: ["more than", "better than", "number one", "best"] },
   { id: "R-06", label: "Sponsored content needs visible disclosure", terms: ["#ad", "sponsored", "paid partnership"] },
-  { id: "R-07", label: "Do not make child-development promises", terms: ["helps children grow", "brain development", "makes kids smarter"] },
+  { id: "R-07", label: "Do not make child-development promises", terms: ["help children grow", "helps children grow", "brain development", "make kids smarter", "makes kids smarter"] },
   { id: "R-08", label: "Do not imply meal replacement", terms: ["meal replacement", "replaces a meal"] },
-  { id: "R-09", label: "Use approved product name", terms: ["sample foods", "sample foods bars"] },
+  { id: "R-09", label: "Use approved product name", terms: ["sample foods bars", "sample food oat bites"] },
   { id: "R-10", label: "Include allergen context when relevant", terms: ["peanut", "allergen", "allergy"] },
   { id: "R-11", label: "Offer terms must include expiry and eligibility", terms: ["limited offer", "discount", "free delivery"] },
   { id: "R-12", label: "Keep tone practical and non-medical", terms: ["clinically proven", "heals", "detox"] },
@@ -219,8 +219,14 @@ export function sourceSnapshotHash(sources: Source[]): string {
   return stableHash(JSON.stringify(snapshot));
 }
 
-const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s.]/gu, " ").replace(/\s+/g, " ").trim();
-const words = (s: string) => new Set(normalize(s).split(" ").filter((x) => x.length > 2));
+const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+const words = (s: string) => new Set(normalize(s).split(" ")
+  .filter((x) => x.length > 2)
+  .map((x) => x.length > 3 && x.endsWith("s") && !x.endsWith("ss") ? x.slice(0, -1) : x));
+const multiValueAttributes = new Set([
+  "ingredient", "allergen", "approved claim", "claim restriction", "voice", "audience",
+  "preferred wording", "avoid wording", "tone", "visual palette", "format", "accessibility", "disclosure",
+]);
 
 function trigramScore(a: string, b: string): number {
   const trigrams = (s: string) => {
@@ -390,7 +396,7 @@ export function reviewDraft(input: {
     const topVersion = sortedByAuthority.find((x) => x.source.authority === topAuthority && x.source.effectiveFrom === topEffectiveDate)?.source.version;
     const precedenceWinners = sortedByAuthority.filter((x) => x.source.authority === topAuthority && x.source.effectiveFrom === topEffectiveDate && x.source.version === topVersion);
     const differingValues = new Set(precedenceWinners.map((x) => `${x.fact.value} ${x.fact.unit ?? ""}`.trim()));
-    const conflict = differingValues.size > 1;
+    const conflict = Boolean(firstRelevant && !multiValueAttributes.has(normalize(firstRelevant.fact.attribute)) && differingValues.size > 1);
     const best = sortedByAuthority[0] ?? firstRelevant;
     const injection = detectInjection(claimText);
     const rule = ruleFinding(claimText, claim.context);

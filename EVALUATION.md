@@ -19,7 +19,13 @@ Run `npm run test`. The current set has twelve deterministic checks grouped arou
 | Knowledge snapshot change | Changing an approved fact changes the report snapshot and invalidates a prior decision |
 | HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
 
-**Latest run:** 12/12 automated checks passed on the synthetic seed dataset on 8 Nov 2026. These are builder-authored regression checks, not an independently labelled benchmark and not a claim of real-world accuracy.
+**Latest run:** 13/13 automated checks passed on 8 Nov 2026, including the 20-draft synthetic development set described below. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+
+## 20-draft synthetic development set
+
+`src/lib/dev-set.test.ts` composes 20 synthetic drafts across social, web and email channels, with five labelled findings per draft (100 claim instances total). Its fixture bank covers supported facts, numeric contradictions, unsupported benefits, restricted claims, equal-authority bundle conflicts and injection text. The test checks expected status agreement, exact draft-span mapping, exact source quotation/version membership in the approved fixture, and blocking of expected high-risk findings.
+
+**Latest run:** 100/100 expected statuses; 100/100 exact span and approved source quote/version checks; 0/60 missed blocks on contradicted, conflict and injection instances. The 100 claim instances reuse a small set of controlled templates, so this verifies deterministic behavior against the seeded domain and must not be presented as general accuracy. It does not replace the planned B0 single-model baseline or an independently adjudicated set.
 
 ## Manual workflow observations
 

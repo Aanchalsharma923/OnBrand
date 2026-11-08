@@ -9,7 +9,7 @@ OnBrand analyses and recommends. It does **not** publish content or execute exte
 ## Three improvements visible in the build
 
 1. **Evidence is inspectable.** Findings show the retrieved approved source, version and quotation. Retrieval combines lexical/trigram ranking with a separate attribute/value topic gate, so a product-name match alone cannot substantiate an unrelated benefit. Semantic citation entailment has not been independently validated.
-2. **Uncertainty stays distinct.** OnBrand separates unsupported claims, contradictions and same-precedence source conflicts; unresolved high-risk items keep approval blocked.
+2. **Uncertainty stays distinct.** OnBrand separates unsupported claims, contradictions and same-precedence source conflicts on single-value facts; list-valued facts such as ingredients do not conflict merely because several approved values exist. Unresolved high-risk items keep approval blocked.
 3. **A suggestion must earn acceptance.** A proposed edit is checked against the complete review pipeline again, saved as a new version, and remains subject to a human decision tied to the reviewed draft and source snapshot.
 
 ## Try the core flow
@@ -45,7 +45,7 @@ Browser editor and review workspace
 
 ### Evidence and precedence
 
-Only approved, unrevoked sources effective for the selected date and channel enter retrieval. Candidate facts are ranked by lexical overlap and trigram similarity; a bounded candidate set is then ordered by configured source authority, effective date and version. A source snapshot hash makes changes invalidate the review. If equally authoritative applicable sources disagree, OnBrand reports a conflict and requires a human to resolve ownership or effective dates instead of guessing. A weaker source cannot override a higher-authority approved source. The demo's source register shows owner, type, version, scope and lifecycle status.
+Only approved, unrevoked sources effective for the selected date and channel enter retrieval. Candidate facts are ranked by lexical overlap and trigram similarity; a bounded candidate set is then ordered by configured source authority, effective date and version. A source snapshot hash makes changes invalidate the review. If equally authoritative applicable sources disagree on a single-value fact, OnBrand reports a conflict and requires a human to resolve ownership or effective dates instead of guessing. List-valued attributes such as ingredients, allergens and approved claims can contain multiple valid entries without being treated as contradictions. A weaker source cannot override a higher-authority approved source. The demo's source register shows owner, type, version, scope and lifecycle status.
 
 ### Safety and decision boundary
 
