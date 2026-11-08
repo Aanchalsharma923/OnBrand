@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { extractUploadedFile } from "./file-extraction";
+import { extractUploadedFile, videoSampleTimestamps } from "./file-extraction";
+
+describe("reel frame sampling", () => {
+  it("samples at least three evenly spaced frames from short reels and caps long reels at six", () => {
+    const shortReel = videoSampleTimestamps(12);
+    const longReel = videoSampleTimestamps(180);
+
+    expect(shortReel).toHaveLength(3);
+    expect(shortReel[0]).toBeCloseTo(2);
+    expect(shortReel[2]).toBeCloseTo(10);
+    expect(longReel).toHaveLength(6);
+    expect(longReel[0]).toBeCloseTo(15);
+    expect(longReel[5]).toBeCloseTo(165);
+  });
+
+  it("does not create sample points for invalid video durations", () => {
+    expect(videoSampleTimestamps(0)).toEqual([]);
+    expect(videoSampleTimestamps(Number.NaN)).toEqual([]);
+  });
+});
 
 describe("browser draft text extraction", () => {
   it.each([

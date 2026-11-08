@@ -99,7 +99,7 @@ The work is intentionally split across technical and product responsibilities; b
 
 ## Round 2 scope and next steps
 
-The functional slice prioritizes the complete review loop: write or import a draft → retrieve approved evidence → inspect claim-level findings → revise and recheck → human review decision. Round 2 accepts text, Markdown, HTML, DOCX, text/scanned PDFs, common image files and MP4/WebM reels through local extraction. Reel extraction reads sampled frames only; it does not transcribe speech or inspect visual design. Remaining production steps are verified sign-in and server-enforced membership, connected PostgreSQL persistence with tenant isolation, broader semantic retrieval, complete visual-consistency analysis, stronger accessibility validation, and hosted model configuration. No external credentials are included in this repository.
+The functional slice prioritizes the complete review loop: write or import a draft → retrieve approved evidence → inspect claim-level findings → revise and recheck → human review decision. Round 2 accepts text, Markdown, HTML, DOCX, text/scanned PDFs, common image files and MP4/WebM reels through local extraction. Reel extraction samples 3 to 6 evenly spaced frames for text OCR; it does not transcribe speech or inspect visual design. Remaining production steps are verified sign-in and server-enforced membership, connected PostgreSQL persistence with tenant isolation, broader semantic retrieval, complete visual-consistency analysis, stronger accessibility validation, and hosted model configuration. No external credentials are included in this repository.
 
 ## AI and third-party disclosure
 

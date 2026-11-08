@@ -5,6 +5,7 @@ const MAX_PDF_PAGES = 20;
 const MAX_VIDEO_SECONDS = 180;
 const MAX_OCR_PIXELS = 25_000_000;
 const MAX_VIDEO_FRAME_PIXELS = 3_000_000;
+const MAX_VIDEO_FRAMES = 6;
 
 export type ExtractionProgress = (message: string) => void;
 
@@ -148,7 +149,8 @@ async function extractVideo(file: File, progress: ExtractionProgress) {
     if (video.duration > MAX_VIDEO_SECONDS) throw new Error(`Reel analysis is limited to ${MAX_VIDEO_SECONDS} seconds per video.`);
     if (!video.videoWidth || !video.videoHeight) throw new Error("This video has no readable image track.");
 
-    const frameCount = Math.min(6, Math.max(1, Math.ceil(video.duration / 15)));
+    const sampleTimestamps = videoSampleTimestamps(video.duration);
+    const frameCount = sampleTimestamps.length;
     const output: string[] = [];
     const seen = new Set<string>();
     const scale = Math.min(1, Math.sqrt(MAX_VIDEO_FRAME_PIXELS / (video.videoWidth * video.videoHeight)));
@@ -160,7 +162,7 @@ async function extractVideo(file: File, progress: ExtractionProgress) {
     worker = await createOcrWorker(progress);
 
     for (let index = 0; index < frameCount; index += 1) {
-      const timestamp = (video.duration * (index + 1)) / (frameCount + 1);
+      const timestamp = sampleTimestamps[index];
       progress(`Reading reel frame ${index + 1} of ${frameCount}…`);
       const seeked = mediaEvent(video, "seeked");
       video.currentTime = timestamp;
@@ -188,6 +190,12 @@ async function extractVideo(file: File, progress: ExtractionProgress) {
 
 function normalize(text: string) {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+export function videoSampleTimestamps(duration: number) {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const frameCount = Math.min(MAX_VIDEO_FRAMES, Math.max(3, Math.ceil(duration / 5)));
+  return Array.from({ length: frameCount }, (_, index) => ((index + 0.5) * duration) / frameCount);
 }
 
 export async function extractUploadedFile(file: File, progress: ExtractionProgress = () => {}) {
