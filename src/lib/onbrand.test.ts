@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createDraft, initialDraft, recheckSuggestion, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash } from "./onbrand";
+import { createDraft, initialDraft, recheckSuggestion, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash } from "./onbrand";
 
 describe("OnBrand evidence review evaluation", () => {
+  it("uses SHA-256 fingerprints for draft and knowledge snapshots", () => {
+    expect(stableHash("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    expect(initialDraft.hash).toMatch(/^[\da-f]{64}$/);
+    expect(sourceSnapshotHash(seedSources)).toMatch(/^[\da-f]{64}$/);
+  });
+
   it("covers the baseline with supported, contradicted and conflicting claims", () => {
     const report = reviewDraft({ draft: initialDraft, sources: seedSources });
     const statuses = new Set(report.findings.map((finding) => finding.evidence_status));

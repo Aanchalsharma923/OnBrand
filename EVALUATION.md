@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has seventeen focused checks, including suggestion grounding, source-import quarantine and route-level model-boundary fault injections:
+Run `npm run test`. The current set has eighteen focused checks, including SHA-256 fingerprinting, suggestion grounding, source-import quarantine and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -20,11 +20,12 @@ Run `npm run test`. The current set has seventeen focused checks, including sugg
 | Brand profile rule | An approved profile's avoided terms are checked in new reviews |
 | Knowledge snapshot change | Changing an approved fact changes the report snapshot and invalidates a prior decision |
 | HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
+| Version fingerprints | Draft and source snapshots use 64-character SHA-256 hashes; digest matches the standard `abc` test vector |
 | Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 | Imported prompt injection | A source containing instruction-like text is flagged for quarantine before maintainer approval |
 
-**Latest run:** 18/18 automated checks passed on 8 Nov 2026. Seventeen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 19/19 automated checks passed on 8 Nov 2026. Eighteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
