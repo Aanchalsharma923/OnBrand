@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has thirteen focused deterministic checks grouped around these expected behaviors:
+Run `npm run test`. The current set has fifteen focused checks, including route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -19,14 +19,33 @@ Run `npm run test`. The current set has thirteen focused deterministic checks gr
 | Brand profile rule | An approved profile's avoided terms are checked in new reviews |
 | Knowledge snapshot change | Changing an approved fact changes the report snapshot and invalidates a prior decision |
 | HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
+| Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
+| Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 
-**Latest run:** 14/14 automated checks passed on 8 Nov 2026, including the 20-draft synthetic development set described below. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 16/16 automated checks passed on 8 Nov 2026. Fifteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
 `src/lib/dev-set.test.ts` composes 20 synthetic drafts across social, web and email channels, with five labelled findings per draft (100 claim instances total). Its fixture bank covers supported facts, numeric contradictions, unsupported benefits, restricted claims, equal-authority bundle conflicts and injection text. The test checks expected status agreement, exact draft-span mapping, exact source quotation/version membership in the approved fixture, and blocking of expected high-risk findings.
 
 **Latest run:** 100/100 expected statuses; 100/100 exact span and approved source quote/version checks; 0/60 missed blocks on contradicted, conflict and injection instances. The 100 claim instances reuse a small set of controlled templates, so this verifies deterministic behavior against the seeded domain and must not be presented as general accuracy. It does not replace the planned B0 single-model baseline or an independently adjudicated set.
+
+## Round 1 M1–M8 delivery audit (8 Nov 2026)
+
+The statuses below describe the actual prototype against the submitted Round 1 must-build list. “Prototype complete” means demonstrable in this browser-based preview; it does not imply production controls.
+
+| Milestone | Current evidence | Status and remaining gap |
+| --- | --- | --- |
+| M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
+| M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
+| M3 — Claim extraction, spans and coverage | Sentence-level extraction, special splitting for multiple nutrition measures, original character offsets and span assertions | **Partial.** General multi-claim sentence decomposition and a separately validated uncovered-trigger detector are not implemented. |
+| M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence and explicit conflict outcome | **Partial.** This is in-memory retrieval, not PostgreSQL FTS; the evidence-support decision uses deterministic heuristics, not the planned independent semantic verifier. |
+| M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No full independent C1–C5 citation verification harness or browser-level WCAG validation. |
+| M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline before application; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
+| M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
+| M8 — Evaluation and security tests | 20-draft/100-claim synthetic set, injection and omission regressions, provider-outage failure injection | **Partial.** No B0 baseline, independent annotations, tenant-isolation test or persistent-service fault tests. |
+
+The target remains **10 Nov 2026**. Work since the Round 1 plan has added a working evidence review loop, versioned brand profile and route-level omission/outage tests. A production deployment with real authentication, tenant-scoped database and `outcoded.xyz` still depends on deployment and DNS access; the current machine is logged out of Vercel and has no PostgreSQL service or `DATABASE_URL` configured.
 
 ## Manual workflow observations
 
@@ -55,7 +74,7 @@ These are targets for future benchmark data, not current measured results:
 
 Before claiming benchmark accuracy, assemble a domain-labelled set with approved source snapshots, draft claims, expected statuses and adjudicated conflict outcomes; report per-status precision/recall and false-approval rate. Review cases that miss targets and update rules/retrieval before release.
 
-The planned 20-draft synthetic development set is implemented, but the B0 single-model baseline, independent labels, tenant-isolation tests and model fault-injection results are not yet complete. The 12 focused regression cases and synthetic set verify deterministic prototype behavior only. No user-interview or reviewer-study results are claimed.
+The planned 20-draft synthetic development set is implemented. The B0 single-model baseline, independent labels and tenant-isolation tests are not yet complete. Model omission and provider-outage behavior now have route-level fault-injection coverage, but multi-tenant database isolation cannot be tested until server-side identity and database persistence are connected. These checks verify prototype behavior only. No user-interview or reviewer-study results are claimed.
 
 ## Boundaries
 

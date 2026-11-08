@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createDraft, reviewDraft, seedSources, sourceSnapshotHash, type Draft, type Source } from "@/lib/onbrand";
-import { modelConfigured, modelDescriptor, runAgentPanel } from "@/lib/server/model";
+import { createDraft, reviewDraft, seedSources, sourceSnapshotHash, type Draft, type Source } from "../../../lib/onbrand";
+import { modelConfigured, modelDescriptor, runAgentPanel } from "../../../lib/server/model";
 import { z } from "zod";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });

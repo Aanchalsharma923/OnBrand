@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import type { Draft, Review, Source } from "@/lib/onbrand";
+import type { Draft, Review, Source } from "../onbrand";
 
 const agentOutputSchema = z.object({ summary: z.string().trim().min(1).max(500) });
 const agentPanelSchema = z.object({
