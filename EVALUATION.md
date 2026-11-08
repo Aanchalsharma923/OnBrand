@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has sixteen focused checks, including source-import quarantine and route-level model-boundary fault injections:
+Run `npm run test`. The current set has seventeen focused checks, including suggestion grounding, source-import quarantine and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -14,6 +14,7 @@ Run `npm run test`. The current set has sixteen focused checks, including source
 | Finite validity periods | Equal-precedence sources still conflict when both are within their effective dates |
 | Finding offsets | Each reported span maps back to the exact claim text in the reviewed draft |
 | Suggested revision | Candidate is accepted only after a fresh complete review and cannot pass if it remains blocking |
+| Suggestion grounding gate | A freshly reviewed but unsupported replacement is rejected even when its finding is nonblocking |
 | Unsupported benefit | Mentioning the product name alone does not retrieve an unrelated product fact as evidence |
 | Evidence topic match | A claim that matches an approved fact's attribute and value still retrieves the supporting quote |
 | Brand profile rule | An approved profile's avoided terms are checked in new reviews |
@@ -23,7 +24,7 @@ Run `npm run test`. The current set has sixteen focused checks, including source
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 | Imported prompt injection | A source containing instruction-like text is flagged for quarantine before maintainer approval |
 
-**Latest run:** 17/17 automated checks passed on 8 Nov 2026. Sixteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 18/18 automated checks passed on 8 Nov 2026. Seventeen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -58,7 +59,7 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | M3 — Claim extraction, spans and coverage | Sentence-level extraction, special splitting for multiple nutrition measures, original character offsets and span assertions | **Partial.** General multi-claim sentence decomposition and a separately validated uncovered-trigger detector are not implemented. |
 | M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence and explicit conflict outcome | **Partial.** This is in-memory retrieval, not PostgreSQL FTS; the evidence-support decision uses deterministic heuristics, not the planned independent semantic verifier. |
 | M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No full independent C1–C5 citation verification harness or browser-level WCAG validation. |
-| M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline before application; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
+| M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline; it must return `SUPPORTED` with an approved citation; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
 | M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; source injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 

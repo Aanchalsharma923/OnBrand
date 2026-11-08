@@ -500,7 +500,7 @@ export function recheckSuggestion(draft: Draft, finding: Finding, sources = seed
   const candidateDraft = { ...draft, content: candidateText, hash: stableHash(candidateText), version: draft.version + 1 };
   const checked = reviewDraft({ draft: candidateDraft, sources });
   const revised = checked.findings.find((f) => f.claim_text === finding.suggestion);
-  if (!revised || revised.blocking_for_review || revised.evidence_status === "CONTRADICTED" || revised.evidence_status === "CONFLICT") {
+  if (!revised || revised.blocking_for_review || revised.evidence_status !== "SUPPORTED" || revised.source_evidence.length === 0) {
     return { ok: false, reason: "The candidate did not pass a full review. It cannot be accepted." };
   }
   return { ok: true, candidate: candidateText, reason: "Grounded and rechecked through the complete review pipeline." };

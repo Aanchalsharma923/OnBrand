@@ -146,6 +146,15 @@ describe("OnBrand evidence review evaluation", () => {
     expect(result.candidate).toContain(risky!.suggestion);
   });
 
+  it("rejects a suggestion that is still unverified after the fresh review", () => {
+    const draft = createDraft("Sample Foods Oat Bites are sugar free.");
+    const finding = reviewDraft({ draft }).findings[0];
+    const ungrounded = { ...finding, suggestion: "Sample Foods Oat Bites improve focus." };
+    const result = recheckSuggestion(draft, ungrounded, seedSources);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("did not pass a full review");
+  });
+
   it("invalidates the source snapshot when an approved fact changes", () => {
     const original = sourceSnapshotHash(seedSources);
     const changed = seedSources.map((source) => source.id === "SRC-PRODUCT"
