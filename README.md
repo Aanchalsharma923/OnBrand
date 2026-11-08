@@ -2,7 +2,15 @@
 
 **Evidence-led review for people who publish.** OnBrand checks draft content against approved brand knowledge, identifies supported claims, gaps, conflicts, policy risks and selected accessibility issues, then offers a rechecked revision for a human to consider.
 
+**Live judge preview:** [Open OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). This is a temporary preview link and remains available only while the demo host and tunnel are running. The team's `outcoded.xyz` domain is not connected yet.
+
 OnBrand analyses and recommends. It does **not** publish content or execute external actions. A human reviewer retains approval authority. The current Round 2 build is a judge-ready prototype: demo records use browser-local storage, the role switch is simulated, and there is no production login or shared database connected.
+
+## Three improvements visible in the build
+
+1. **Evidence is inspectable.** Findings show the retrieved approved source, version and quotation. The current prototype uses deterministic lexical/trigram and structured checks; semantic citation entailment has not been independently validated.
+2. **Uncertainty stays distinct.** OnBrand separates unsupported claims, contradictions and same-precedence source conflicts; unresolved high-risk items keep approval blocked.
+3. **A suggestion must earn acceptance.** A proposed edit is checked against the complete review pipeline again, saved as a new version, and remains subject to a human decision tied to the reviewed draft and source snapshot.
 
 ## Try the core flow
 

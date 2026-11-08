@@ -73,3 +73,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
  .comment-resolve, .comment-resolved { justify-self: start; padding: 2px 6px; border: 1px solid #dfe6dc; border-radius: 3px; color: #66816a; background: #f8faf7; font-size: 7px; }
  .comment-resolved { border-color: transparent; color: #879387; background: #f2f4f0; }
+.assignment-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0 11px; border-bottom: 1px solid #eff0eb; }
+.assignment-row label { color: #89938a; font-size: 8px; font-weight: 700; letter-spacing: .3px; }
+.assignment-row select { max-width: 155px; padding: 6px 8px; border: 1px solid #e3e8e1; border-radius: 5px; color: #56645a; background: #fff; font: inherit; font-size: 9px; }
+.comment-context { color: #9aa39b; font-size: 7px; }
+.reopen-button { width: 100%; margin-top: 8px; padding: 7px 10px; border: 1px solid #dfe6dc; border-radius: 5px; color: #64766a; background: #fff; font-size: 8px; text-transform: capitalize; }
+.decision-history { margin-top: 9px; border-top: 1px solid #eff0eb; color: #79857b; font-size: 8px; }
+.decision-history summary { padding: 9px 0 6px; cursor: pointer; font-weight: 650; }
+.audit-event { display: grid; gap: 3px; padding: 7px 0; border-top: 1px solid #f1f2ee; }
+.audit-event b { color: #526157; font-size: 8px; text-transform: capitalize; }
+.audit-event span, .audit-event small { color: #8b968c; font-size: 7px; }

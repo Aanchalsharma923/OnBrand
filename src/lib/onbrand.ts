@@ -82,8 +82,9 @@ export type Review = {
   createdAt: string;
   findings: Finding[];
   assignedTo?: string;
-  comments: Array<{ id: string; author: string; text: string; resolved: boolean; at: string }>;
-  decision?: { state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string };
+  comments: Array<{ id: string; author: string; text: string; resolved: boolean; at: string; draftHash?: string; draftVersionId?: string }>;
+  decision?: { state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string; sourceSnapshotHash?: string };
+  decisionHistory?: Array<{ action: "DECISION_RECORDED" | "DECISION_REOPENED"; state?: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string; sourceSnapshotHash: string }>;
   agentNotes?: Array<{ agent: "Advocate" | "Challenger" | "Judge" | "Policy & Risk"; summary: string }>;
   engineMode?: "model-assisted" | "deterministic-preview";
 };
@@ -307,16 +308,28 @@ function htmlAccessibilityChecks(content: string): Array<{ label: string; start:
 
 function retrieve(claim: string, sources: Source[], channel: string, date: string) {
   const candidates = sources.filter((s) => eligible(s, channel, date)).flatMap((source) => source.facts.map((fact) => ({ source, fact })));
-  const ranked = candidates.map((candidate) => {
+  const scored = candidates.map((candidate) => {
     const lexical = lexicalScore(claim, candidate.fact.statement);
     const trigram = trigramScore(claim, candidate.fact.statement);
     const score = 0.65 * lexical + 0.35 * trigram;
     return { ...candidate, score };
-  }).filter((x) => x.score > 0.12).sort((a, b) => {
-    // Retrieval relevance is computed separately; authority is resolved afterward.
-    return b.score - a.score || b.source.version - a.source.version;
-  }).slice(0, 5);
-  return ranked;
+  }).filter((candidate) => candidate.score > 0.12);
+  const key = (candidate: (typeof scored)[number]) => `${candidate.source.id}\u001f${candidate.fact.id}`;
+  const lexicalRanks = new Map(scored.filter((candidate) => candidate.score > 0.12 && lexicalScore(claim, candidate.fact.statement) > 0.12)
+    .slice().sort((a, b) => lexicalScore(claim, b.fact.statement) - lexicalScore(claim, a.fact.statement) || b.score - a.score)
+    .map((candidate, index) => [key(candidate), index + 1]));
+  const trigramRanks = new Map(scored.filter((candidate) => candidate.score > 0.12 && trigramScore(claim, candidate.fact.statement) > 0.12)
+    .slice().sort((a, b) => trigramScore(claim, b.fact.statement) - trigramScore(claim, a.fact.statement) || b.score - a.score)
+    .map((candidate, index) => [key(candidate), index + 1]));
+  const ranked = scored.map((candidate) => {
+    // Reciprocal-rank fusion combines independent lexical and character-trigram rankings.
+    // It orders evidence only; the raw relevance score remains the support threshold input.
+    const lexicalRank = lexicalRanks.get(key(candidate));
+    const trigramRank = trigramRanks.get(key(candidate));
+    const reciprocalRank = (lexicalRank ? 61 / (60 + lexicalRank) : 0) + (trigramRank ? 61 / (60 + trigramRank) : 0);
+    return { ...candidate, reciprocalRank: reciprocalRank / 2 };
+  }).sort((a, b) => b.reciprocalRank - a.reciprocalRank || b.score - a.score || b.source.version - a.source.version);
+  return ranked.slice(0, 5);
 }
 
 function ruleFinding(claim: string, context: string): { label: string; severity: Severity } | undefined {
@@ -365,7 +378,8 @@ export function reviewDraft(input: {
     const sortedByAuthority = comparable.slice().sort((a, b) => b.source.authority - a.source.authority || b.source.effectiveFrom.localeCompare(a.source.effectiveFrom) || b.source.version - a.source.version);
     const topAuthority = sortedByAuthority[0]?.source.authority;
     const topEffectiveDate = sortedByAuthority.find((x) => x.source.authority === topAuthority)?.source.effectiveFrom;
-    const precedenceWinners = sortedByAuthority.filter((x) => x.source.authority === topAuthority && x.source.effectiveFrom === topEffectiveDate && !x.source.effectiveTo);
+    const topVersion = sortedByAuthority.find((x) => x.source.authority === topAuthority && x.source.effectiveFrom === topEffectiveDate)?.source.version;
+    const precedenceWinners = sortedByAuthority.filter((x) => x.source.authority === topAuthority && x.source.effectiveFrom === topEffectiveDate && x.source.version === topVersion);
     const differingValues = new Set(precedenceWinners.map((x) => `${x.fact.value} ${x.fact.unit ?? ""}`.trim()));
     const conflict = differingValues.size > 1;
     const best = sortedByAuthority[0] ?? firstRelevant;
@@ -449,6 +463,7 @@ export function reviewDraft(input: {
     createdAt: new Date().toISOString(),
     findings,
     comments: [],
+    decisionHistory: [],
   };
 }
 

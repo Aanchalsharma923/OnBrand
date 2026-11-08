@@ -208,7 +208,9 @@ export default function Home() {
       const nextReview = payload.review as Review;
       nextReview.engineMode = payload.engine === "model-assisted" ? "model-assisted" : "deterministic-preview";
       nextReview.agentNotes = nextReview.agentNotes ?? payload.agentNotes ?? [];
-      nextReview.assignedTo = nextReview.assignedTo ?? "Aanchal Sharma";
+      nextReview.assignedTo = review?.assignedTo ?? nextReview.assignedTo ?? "Aanchal Sharma";
+      nextReview.comments = review?.comments ?? [];
+      nextReview.decisionHistory = review?.decisionHistory ?? [];
       setReview(nextReview);
       setModelDisclosure(payload.modelDisclosure ?? "Review completed with disclosed fallback behavior.");
       setSelectedFinding(nextReview.findings[0]?.finding_id ?? null);
@@ -251,15 +253,47 @@ export default function Home() {
       announce("Unresolved evidence gaps or conflicts require human review before approval.");
       return;
     }
-    const decision = { state, by: role === "reviewer" ? "Aanchal Sharma · Reviewer" : "", at: new Date().toISOString(), draftHash: draft.hash };
-    setReview({ ...review, decision });
+    const at = new Date().toISOString();
+    const by = "Aanchal Sharma · Reviewer";
+    const decision = { state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash };
+    setReview({ ...review, decision, decisionHistory: [...(review.decisionHistory ?? []), { action: "DECISION_RECORDED", state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash }] });
     setLastDecision(`${state.replaceAll("_", " ")} · ${decision.by}`);
     announce(`Decision recorded for ${draft.hash.slice(0, 8)}. Nothing has been published.`);
   }
 
+  function assignReviewer(name: string) {
+    if (!review || role !== "reviewer") {
+      announce("Only a reviewer can assign this review.");
+      return;
+    }
+    setReview({ ...review, assignedTo: name });
+    announce(`Review assigned to ${name}.`);
+  }
+
+  function reopenDecision() {
+    if (!review?.decision || role !== "reviewer" || !hasCurrentReview) {
+      announce("Only a reviewer can reopen a decision on the current version.");
+      return;
+    }
+    const at = new Date().toISOString();
+    setReview({
+      ...review,
+      decision: undefined,
+      decisionHistory: [...(review.decisionHistory ?? []), {
+        action: "DECISION_REOPENED",
+        by: "Aanchal Sharma · Reviewer",
+        at,
+        draftHash: review.draftHash,
+        sourceSnapshotHash: review.sourceSnapshotHash,
+      }],
+    });
+    setLastDecision("");
+    announce("Decision reopened. The review remains tied to the same content and knowledge snapshot.");
+  }
+
   function addComment() {
     if (!review || !comment.trim()) return;
-    const newComment = { id: `C-${Date.now()}`, author: role === "creator" ? "Siddhesh Songare · Creator" : role === "maintainer" ? "Knowledge maintainer" : "Aanchal Sharma · Reviewer", text: comment.trim(), resolved: false, at: new Date().toISOString() };
+    const newComment = { id: `C-${Date.now()}`, author: role === "creator" ? "Siddhesh Songare · Creator" : role === "maintainer" ? "Knowledge maintainer" : "Aanchal Sharma · Reviewer", text: comment.trim(), resolved: false, at: new Date().toISOString(), draftHash: draft.hash, draftVersionId: `${draft.id}-v${draft.version}` };
     setReview({ ...review, comments: [...review.comments, newComment] });
     setComment("");
     announce("Comment added to the review thread.");
@@ -396,6 +430,7 @@ export default function Home() {
             </div>
 
             <aside className="detail-panel">
+              {review && <div className="assignment-row"><label htmlFor="review-assignee">Assigned reviewer</label><select id="review-assignee" value={review.assignedTo ?? "Aanchal Sharma"} onChange={(event) => assignReviewer(event.target.value)} disabled={role !== "reviewer"}><option>Aanchal Sharma</option><option>Siddhesh Songare</option></select></div>}
               <div className="detail-header"><div><span className="panel-kicker">FINDING DETAILS</span><h2>{selected ? statusLabel[selected.evidence_status] : "Review details"}</h2></div>{selected && <span className={`status-icon ${statusClass[selected.evidence_status]}`}>{selected.evidence_status === "SUPPORTED" ? "✓" : selected.evidence_status === "CONFLICT" ? "↔" : "!"}</span>}</div>
               {selected ? <>
                 <div className="detail-claim">{selected.claim_text}</div>
@@ -408,9 +443,9 @@ export default function Home() {
                   }) : <div className="no-evidence-card"><span>◌</span><p>No applicable approved evidence was found. Escalate or add an approved source.</p></div>}
                 </div>
                 {selected.suggestion && <div className="suggestion-card"><div className="suggestion-top"><span>✧</span><div><b>Suggested revision</b><small>Candidate · must pass full recheck</small></div></div><p>{selected.suggestion}</p><button className="suggestion-button" onClick={() => acceptSuggestion(selected)} disabled={!hasCurrentReview || selected.suggestion_state === "REJECTED"}><Icon name="check" /> Recheck & apply</button></div>}
-                <div className="detail-section comments-section"><div className="detail-label"><Icon name="comment" /> REVIEW THREAD <span className="evidence-count">{review?.comments.length ?? 0}</span></div>{review?.comments.map((item) => <div className="comment-item" key={item.id}><b>{item.author}</b><small>{item.text}</small>{item.resolved ? <span className="comment-resolved">Resolved</span> : role === "reviewer" && <button className="comment-resolve" onClick={() => resolveComment(item.id)}>Resolve</button>}</div>)}<div className="comment-entry"><input value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addComment()} placeholder="Add a comment…" aria-label="Add a review comment" /><button onClick={addComment} aria-label="Post comment">↗</button></div></div>
+                <div className="detail-section comments-section"><div className="detail-label"><Icon name="comment" /> REVIEW THREAD <span className="evidence-count">{review?.comments.length ?? 0}</span></div>{review?.comments.map((item) => <div className="comment-item" key={item.id}><b>{item.author}</b>{item.draftVersionId && <span className="comment-context">{item.draftVersionId} · {item.draftHash?.slice(0, 8)}</span>}<small>{item.text}</small>{item.resolved ? <span className="comment-resolved">Resolved</span> : role === "reviewer" && <button className="comment-resolve" onClick={() => resolveComment(item.id)}>Resolve</button>}</div>)}<div className="comment-entry"><input value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addComment()} placeholder="Add a comment…" aria-label="Add a review comment" /><button onClick={addComment} aria-label="Post comment">↗</button></div></div>
               </> : <div className="detail-placeholder"><div className="placeholder-art">◈</div><b>Select a finding to inspect</b><p>Each item includes its exact source, version and reasoning.</p></div>}
-              <div className="decision-area"><div className="decision-boundary"><span className="lock-icon">⌑</span><p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p></div><div className="decision-actions"><button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>Request changes</button><button className="approve-button" onClick={() => makeDecision("APPROVED")} disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0}><Icon name="check" /> Approve version</button></div>{lastDecision && <div className="decision-record">Recorded: {lastDecision} · hash {draft.hash.slice(0, 8)}</div>}{role !== "reviewer" && <div className="role-hint">Switch to Reviewer to record a decision.</div>}</div>
+              <div className="decision-area"><div className="decision-boundary"><span className="lock-icon">⌑</span><p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p></div><div className="decision-actions"><button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>Request changes</button><button className="approve-button" onClick={() => makeDecision("APPROVED")} disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0}><Icon name="check" /> Approve version</button></div>{review?.decision && <button className="reopen-button" onClick={reopenDecision} disabled={role !== "reviewer" || !hasCurrentReview}>Reopen {review.decision.state.replaceAll("_", " ").toLowerCase()}</button>}{review?.decisionHistory?.length ? <details className="decision-history"><summary>Decision audit · {review.decisionHistory.length} event{review.decisionHistory.length === 1 ? "" : "s"}</summary>{review.decisionHistory.slice().reverse().map((event, index) => <div className="audit-event" key={`${event.at}-${index}`}><b>{event.action === "DECISION_REOPENED" ? "Decision reopened" : event.state?.replaceAll("_", " ")}</b><span>{event.by} · {new Date(event.at).toLocaleString()}</span><small>Draft {event.draftHash.slice(0, 8)} · knowledge {event.sourceSnapshotHash.slice(0, 8)}</small></div>)}</details> : null}{lastDecision && <div className="decision-record">Recorded: {lastDecision} · hash {draft.hash.slice(0, 8)}</div>}{role !== "reviewer" && <div className="role-hint">Switch to Reviewer to record a decision.</div>}</div>
             </aside>
           </section>
         </> : view === "knowledge" ? <>

@@ -48,6 +48,47 @@ describe("OnBrand evidence review evaluation", () => {
     expect(finding.explanation).toContain("highest-precedence approved source states 6 g");
   });
 
+  it("uses the newer source version before deciding whether evidence conflicts", () => {
+    const product = seedSources.find((source) => source.id === "SRC-PRODUCT");
+    if (!product) throw new Error("Product source fixture is missing.");
+    const newerVersion = {
+      ...product,
+      id: "SRC-PRODUCT-V2",
+      title: "Sample Foods product specification v2",
+      version: 2,
+      facts: product.facts.map((fact) => fact.attribute === "protein per serving" ? {
+        ...fact,
+        id: "SRC-PRODUCT-V2-PROTEIN",
+        value: "7",
+        statement: "Sample Foods Oat Bites: protein per serving — 7 g.",
+        sourceId: "SRC-PRODUCT-V2",
+      } : { ...fact, id: `V2-${fact.id}`, sourceId: "SRC-PRODUCT-V2" }),
+    };
+    const finding = reviewDraft({ draft: createDraft("Each serving contains 7 g protein."), sources: [product, newerVersion] }).findings[0];
+    expect(finding.evidence_status).toBe("SUPPORTED");
+    expect(finding.source_evidence.some((evidence) => evidence.source_version === 2)).toBe(true);
+  });
+
+  it("detects an equal-precedence conflict while both sources are within their effective period", () => {
+    const product = seedSources.find((source) => source.id === "SRC-PRODUCT");
+    if (!product) throw new Error("Product source fixture is missing.");
+    const activeThroughYearEnd = { ...product, id: "SRC-TERM-A", effectiveTo: "2026-12-31" };
+    const conflictingSource = {
+      ...activeThroughYearEnd,
+      id: "SRC-TERM-B",
+      title: "Regional product specification",
+      facts: product.facts.map((fact) => fact.attribute === "protein per serving" ? {
+        ...fact,
+        id: "SRC-TERM-B-PROTEIN",
+        value: "7",
+        statement: "Sample Foods Oat Bites: protein per serving — 7 g.",
+        sourceId: "SRC-TERM-B",
+      } : { ...fact, id: `TERM-B-${fact.id}`, sourceId: "SRC-TERM-B" }),
+    };
+    const finding = reviewDraft({ draft: createDraft("Each serving contains 7 g protein."), sources: [activeThroughYearEnd, conflictingSource] }).findings[0];
+    expect(finding.evidence_status).toBe("CONFLICT");
+  });
+
   it("keeps exact character spans for claim-level findings", () => {
     const draft = createDraft("Meet Sample Foods Oat Bites. This claim has no evidence.");
     const report = reviewDraft({ draft });
