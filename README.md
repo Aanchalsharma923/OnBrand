@@ -36,7 +36,8 @@ Browser editor and review workspace
        ├─ hybrid lexical + character-trigram retrieval
        ├─ resolve by source authority, effective date, version and channel
        ├─ deterministic claim, omission, risk and HTML accessibility checks
-       └─ optional bounded four-perspective model call (advisory only)
+       └─ optional four-call panel: independent Advocate, Challenger and Policy/Risk
+            └─ Judge synthesizes those notes; advisory only
             └─ statuses, quotations and approval gates remain code-controlled
 ```
 
@@ -58,7 +59,7 @@ Drafts and imported source text are untrusted data. The API schema bounds fields
 | Styling | CSS and Tailwind tooling | Responsive, consistent interface without a component-library dependency |
 | Request validation | Zod | Reject malformed or oversized review requests before analysis |
 | Review engine | Deterministic TypeScript rules + hybrid lexical/trigram retrieval | Reproducible evidence status, citations, source precedence and demo behavior |
-| Optional advisory panel | OpenAI-compatible API through the official OpenAI SDK | Structured Advocate, Challenger, Judge and Policy/Risk notes; never the source of verdicts |
+| Optional advisory panel | OpenAI-compatible API through the official OpenAI SDK | Three independent perspectives run concurrently; a fourth Judge call synthesizes them. Notes are advisory and never the source of verdicts |
 | Planned persistence | PostgreSQL + Drizzle ORM | Versioned, tenant-scoped records when verified auth and database credentials are available |
 | Current demo persistence | Browser `localStorage` | Lets judges use the full prototype without account setup; data stays in that browser |
 
@@ -88,4 +89,4 @@ The functional slice prioritizes the complete review loop: edit or submit a draf
 
 ## AI and third-party disclosure
 
-This prototype was built on the official Next.js starter. It uses the listed open-source packages and contains an optional OpenAI-compatible advisory call. With no key configured, no external model request is made. With a key, only the current draft text, generated findings and limited source metadata/quotes are sent to that configured provider. Four panel perspectives are returned by one bounded model call, not four independent agents. Deterministic code remains authoritative for evidence findings and human decisions.
+This prototype was built on the official Next.js starter. It uses the listed open-source packages and contains an optional OpenAI-compatible advisory panel. With no key configured, no external model request is made. With a key, the current draft text, generated findings and limited source metadata/quotes are sent to that configured provider in four bounded calls: Advocate, Challenger and Policy/Risk run independently, followed by a Judge synthesis. Any failed or malformed call makes the panel unavailable and the route adds a blocking human-review finding. The model cannot change code statuses, source quotes or human decisions; the deterministic engine remains authoritative.

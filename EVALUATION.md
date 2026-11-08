@@ -29,6 +29,7 @@ Run `npm run test`. The current set has ten deterministic checks grouped around 
 - The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
 - The deployed preview returned a seven-claim report: five supported claims, one same-authority source conflict and one contradicted policy claim. The two high-severity findings remain unresolved and block approval.
 - A temporary public preview is available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not a production deployment.
+- The configured-model code path now uses three independent advisory calls (Advocate, Challenger, Policy/Risk) followed by a Judge synthesis call. The four-call path has not been exercised against a live provider because no model key is configured; malformed/failed panel output fails closed to a blocking human-review finding.
 
 ## Targets for a larger labelled set
 
