@@ -31,7 +31,7 @@ Run `npm run test`. The current set has thirty-four focused checks, including at
 | Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
 | Browser file imports | TXT, Markdown and HTML content is retained as editable draft text; unsupported, oversized text and video files are rejected before parsing |
 
-**Latest run:** 37/37 automated checks passed on 8 Nov 2026. Thirty-six focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. The video test verifies the 50 MB limit before decode; it does not prove that a real MP4/WebM reel is decoded or that frame OCR is accurate. Semantic-verifier tests stub the provider and prove output-contract behavior, not model accuracy. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 32/32 automated checks passed on 8 Nov 2026. Thirty-one focused checks and one 20-draft synthetic development-set test ran. An API regression verifies that public reviews stay deterministic even when a provider is configured and a browser requests model use. The video test verifies the 50 MB limit before decode; it does not prove real MP4/WebM frame OCR. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -84,7 +84,7 @@ The target remains **10 Nov 2026**. The latest UI commit `67987a8` deployed succ
 - The live start screen offers the Sample Foods demo or a new own-brand workspace and explains the knowledge → upload → review flow. Poster/image and MP4/WebM upload controls are present. Real MP4/WebM extraction and frame OCR have not yet received a manual smoke test.
 - The local build completed one two-claim review through the configured model and returned all four advisory roles; this is a single smoke run, not evidence of model accuracy or dependable latency.
 - A temporary Cloudflare preview is also available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not the production deployment.
-- The local app is configured to use locally hosted Ollama `qwen2.5:3b` for two semantic-verification passes and the four-role advisory panel. Semantic-pass regression tests stub the provider; model accuracy is not independently measured, and the one smoke run is not a latency benchmark. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to an external model provider there.
+- The public review API enforces deterministic mode regardless of browser flags or provider configuration. Model-verification and four-role advisory code remains in the repository for future controlled evaluation, but the public route makes no model calls; no model accuracy is claimed.
 
 ## Targets for a larger labelled set
 
