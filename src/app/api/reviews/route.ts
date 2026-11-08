@@ -7,7 +7,7 @@ const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(2
 const sourceSchema = z.object({
   id: z.string().min(1).max(120), title: z.string().min(1).max(240), kind: z.enum(["PRODUCT_FACT", "APPROVED_CLAIM", "GUIDELINE", "DISCLOSURE"]),
   authority: z.number().min(0).max(100), version: z.number().int().positive(), effectiveFrom: z.string().date(), effectiveTo: z.string().date().optional(), revokedAt: z.string().optional(),
-  channels: z.array(z.string().max(40)).max(20), owner: z.string().max(160), approvalState: z.enum(["APPROVED", "PENDING_REVIEW", "REVOKED"]), facts: z.array(factSchema).max(1000),
+  channels: z.array(z.string().max(40)).max(20), owner: z.string().max(160), approvalState: z.enum(["APPROVED", "PENDING_REVIEW", "REVOKED"]), ingestionWarnings: z.array(z.string().max(300)).max(20).optional(), facts: z.array(factSchema).max(1000),
 });
 const reviewRequest = z.object({
   draft: z.object({
@@ -22,6 +22,8 @@ const reviewRequest = z.object({
     hash: z.string().min(1).max(64),
   }),
   sources: z.array(sourceSchema).max(100).optional().refine((sources) => !sources || sources.reduce((total, source) => total + source.facts.length, 0) <= 2500, "Too many facts in one review request."),
+  includeDemoRules: z.boolean().optional(),
+  useAdvisoryModel: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -38,7 +40,7 @@ export async function POST(request: Request) {
     const quarantinedIds = new Set(quarantinedSources.map((source) => source.id));
     // The API must not trust a browser-supplied APPROVED flag for instruction-bearing content.
     const approvedSources = submittedSources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt && !quarantinedIds.has(source.id));
-    const review = reviewDraft({ draft: safeDraft, sources: approvedSources });
+    const review = reviewDraft({ draft: safeDraft, sources: approvedSources, includeDemoRules: body.includeDemoRules ?? true });
     for (const source of quarantinedSources) {
       review.findings.push({
         finding_id: `F-SOURCE-QUARANTINE-${stableHash(source.id).slice(0, 8)}`, review_id: review.id, draft_id: safeDraft.id,
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
         source_evidence: [], created_at: new Date().toISOString(),
       });
     }
-    const configuredModel = modelConfigured() ? modelDescriptor() : null;
+    const configuredModel = body.useAdvisoryModel === false ? null : modelConfigured() ? modelDescriptor() : null;
     const semantic = configuredModel
       ? await verifySemanticEvidence(review, safeDraft, approvedSources)
       : { review, state: "not-applicable" as const, candidateCount: 0, unresolvedCount: 0 };

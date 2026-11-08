@@ -1,9 +1,10 @@
 "use client";
 
-import { ChangeEvent, startTransition, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDraft,
   computeDraftHash,
+  codePointToUtf16Offset,
   Finding,
   initialDraft,
   Review,
@@ -20,6 +21,7 @@ import { extractUploadedFile } from "@/lib/file-extraction";
 
 type View = "review" | "knowledge" | "insights";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
+type WorkspaceMode = "demo" | "own";
 const storageKey = "onbrand-demo-v1";
 const statusLabel: Record<Finding["evidence_status"], string> = {
   SUPPORTED: "Supported",
@@ -104,6 +106,7 @@ function Icon({ name }: { name: string }) {
 }
 
 export default function Home() {
+  const draftEditorRef = useRef<HTMLTextAreaElement>(null);
   const [view, setView] = useState<View>("review");
   const [role, setRole] = useState<Role>("reviewer");
   const [draft, setDraft] = useState(initialDraft);
@@ -119,12 +122,16 @@ export default function Home() {
   const [showAudit, setShowAudit] = useState(false);
   const [lastDecision, setLastDecision] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [modelDisclosure, setModelDisclosure] = useState("OnBrand's evidence statuses, citations and approval gates are code-generated. A configured model may add advisory notes; people make the decision.");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("demo");
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [ownBrandName, setOwnBrandName] = useState("");
+  const [ownProfile, setOwnProfile] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
+  const [modelDisclosure, setModelDisclosure] = useState("This workspace is using deterministic checks. Evidence statuses, citations and approval gates are code-generated. People review every recommendation and make the decision.");
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
 
   useEffect(() => {
-    let restored: { draft?: typeof draft; versions?: typeof versions; sources?: Source[]; review?: Review; role?: Role; lastDecision?: string } | undefined;
+    let restored: { draft?: typeof draft; versions?: typeof versions; sources?: Source[]; review?: Review; role?: Role; lastDecision?: string; workspaceMode?: WorkspaceMode } | undefined;
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) restored = JSON.parse(saved) as typeof restored;
@@ -132,7 +139,9 @@ export default function Home() {
       localStorage.removeItem(storageKey);
     }
     startTransition(() => {
-      if (restored?.draft?.content) setDraft(restored.draft);
+      if (!restored) setShowWelcome(true);
+      if (restored?.workspaceMode) setWorkspaceMode(restored.workspaceMode);
+      if (restored?.draft) setDraft(restored.draft);
       if (restored?.versions?.length) setVersions(restored.versions);
       if (restored?.sources?.length) setSources(restored.sources);
       if (restored?.review) setReview(restored.review);
@@ -143,9 +152,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
-    localStorage.setItem(storageKey, JSON.stringify({ draft, versions, sources, review, role, lastDecision }));
-  }, [draft, versions, sources, review, role, lastDecision, loaded]);
+    if (!loaded || showWelcome) return;
+    localStorage.setItem(storageKey, JSON.stringify({ draft, versions, sources, review, role, lastDecision, workspaceMode }));
+  }, [draft, versions, sources, review, role, lastDecision, workspaceMode, loaded, showWelcome]);
 
   const findings = useMemo(() => review?.findings ?? [], [review]);
   const selected = findings.find((finding) => finding.finding_id === selectedFinding) ?? findings[0];
@@ -158,11 +167,11 @@ export default function Home() {
   }), [findings]);
   const currentProfileSource = sources.find((source) => source.id === "SRC-VOICE" && !source.revokedAt);
   const profileValue = (attribute: string, fallback: string) => currentProfileSource?.facts.find((fact) => fact.attribute === attribute)?.value ?? fallback;
-  const profileVoice = profileValue("voice", "warm, practical and curious");
-  const profileAudience = profileValue("audience", "busy adults looking for convenient snacks");
-  const profileAvoidTerms = profileValue("avoid wording", "miracle, guilt-free, guaranteed").split(/[,;|]/).map((term) => term.trim()).filter(Boolean);
-  const parsedProfilePalette = profileValue("visual palette", "#183f35, #f2ead9, #6b4434").split(/[,;|]/).map((color) => color.trim()).filter((color) => /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(color));
-  const profilePalette = parsedProfilePalette.length >= 3 ? parsedProfilePalette : ["#183f35", "#f2ead9", "#6b4434"];
+  const profileVoice = profileValue("voice", workspaceMode === "demo" ? "warm, practical and curious" : "Not provided");
+  const profileAudience = profileValue("audience", workspaceMode === "demo" ? "busy adults looking for convenient snacks" : "Not provided");
+  const profileAvoidTerms = profileValue("avoid wording", workspaceMode === "demo" ? "miracle, guilt-free, guaranteed" : "Not provided").split(/[,;|]/).map((term) => term.trim()).filter(Boolean);
+  const parsedProfilePalette = profileValue("visual palette", workspaceMode === "demo" ? "#183f35, #f2ead9, #6b4434" : "Not provided").split(/[,;|]/).map((color) => color.trim()).filter((color) => /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(color));
+  const profilePalette = parsedProfilePalette.length >= 3 ? parsedProfilePalette : workspaceMode === "demo" ? ["#183f35", "#f2ead9", "#6b4434"] : [];
 
   function announce(message: string) {
     setToast(message);
@@ -178,7 +187,57 @@ export default function Home() {
     setRole("reviewer");
     setLastDecision("");
     setSelectedFinding(null);
+    setExtractionStatus("");
+    setIsExtracting(false);
+    setView("review");
+    setProfileEditing(false);
+    setWorkspaceMode("demo");
+    setShowWelcome(false);
     announce("OnBrand demo workspace reset.");
+  }
+
+  function enterDemo() {
+    setWorkspaceMode("demo");
+    setDraft(initialDraft);
+    setVersions([initialDraft]);
+    setSources(seedSources);
+    setReview(null);
+    setRole("reviewer");
+    setLastDecision("");
+    setView("review");
+    setShowWelcome(false);
+  }
+
+  function createOwnWorkspace(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const brandName = ownBrandName.trim();
+    const voice = ownProfile.voice.trim();
+    const audience = ownProfile.audience.trim();
+    if (!brandName || !voice || !audience) return;
+    const template = seedSources.find((source) => source.id === "SRC-VOICE");
+    if (!template) return;
+    const values: Record<string, string> = {
+      voice,
+      audience,
+      "avoid wording": ownProfile.avoidWording.trim() || "Not provided",
+      "visual palette": ownProfile.palette.trim() || "Not provided",
+    };
+    const facts = template.facts.filter((fact, index, all) => Object.hasOwn(values, fact.attribute) && all.findIndex((item) => item.attribute === fact.attribute) === index).map((fact, index) => {
+      const value = values[fact.attribute];
+      return { ...fact, id: `SRC-VOICE-F${index + 1}`, subject: brandName, value, statement: `${brandName}: ${fact.attribute} — ${value}.` };
+    });
+    const profile: Source = { ...template, id: "SRC-VOICE", title: `${brandName} brand profile`, owner: "Workspace owner", facts };
+    const cleanDraft = createDraft("", { title: "Untitled content draft", product: brandName, audience });
+    setWorkspaceMode("own");
+    setDraft(cleanDraft);
+    setVersions([cleanDraft]);
+    setSources([profile]);
+    setReview(null);
+    setRole("maintainer");
+    setLastDecision("");
+    setView("review");
+    setShowWelcome(false);
+    announce(`${brandName} workspace created. Add approved knowledge before relying on evidence checks.`);
   }
 
   function updateDraftContent(content: string) {
@@ -187,6 +246,21 @@ export default function Home() {
       return { ...next, hash: computeDraftHash(next) };
     });
     setLastDecision("");
+  }
+
+  function selectFinding(finding: Finding) {
+    setSelectedFinding(finding.finding_id);
+    if (finding.end <= finding.start) return;
+    window.setTimeout(() => {
+      const editor = draftEditorRef.current;
+      if (!editor) return;
+      editor.scrollIntoView({ behavior: "smooth", block: "center" });
+      editor.focus();
+      editor.setSelectionRange(
+        codePointToUtf16Offset(draft.content, finding.start),
+        codePointToUtf16Offset(draft.content, finding.end),
+      );
+    }, 0);
   }
 
   function updateDraftMetadata(patch: Partial<typeof draft>) {
@@ -242,7 +316,7 @@ export default function Home() {
         setDraft(reviewDraftVersion);
         setVersions((current) => [...current, reviewDraftVersion]);
       }
-      const response = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: reviewDraftVersion, sources }) });
+      const response = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: reviewDraftVersion, sources, includeDemoRules: workspaceMode === "demo", useAdvisoryModel: false }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Review request failed.");
       const nextReview = payload.review as Review;
@@ -274,7 +348,7 @@ export default function Home() {
     setDraft(updated);
     setVersions((current) => [...current, updated]);
     setLastDecision("");
-    const newReview = reviewDraft({ draft: updated, sources });
+    const newReview = reviewDraft({ draft: updated, sources, includeDemoRules: workspaceMode === "demo" });
     setReview(newReview);
     setSelectedFinding(newReview.findings[0]?.finding_id ?? null);
     announce("Suggestion rechecked and applied to a new draft version. Review the new findings.");
@@ -419,6 +493,58 @@ export default function Home() {
     announce("Imported source removed from the demo workspace.");
   }
 
+  async function handleKnowledgeDocument(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (role !== "maintainer") {
+      announce("Switch to Maintainer to add knowledge documents.");
+      input.value = "";
+      return;
+    }
+    setIsExtracting(true);
+    setExtractionStatus("Reading knowledge document on this device…");
+    try {
+      const extracted = await extractUploadedFile(file, setExtractionStatus);
+      const paragraphs = extracted.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+      const chunks: string[] = [];
+      let chunk = "";
+      for (const paragraph of paragraphs) {
+        if (chunk && `${chunk}\n\n${paragraph}`.length > 420) { chunks.push(chunk); chunk = ""; }
+        chunk = chunk ? `${chunk}\n\n${paragraph}` : paragraph;
+        while (chunk.length > 420) { const splitAt = chunk.lastIndexOf(" ", 420); const boundary = splitAt > 200 ? splitAt : 420; chunks.push(chunk.slice(0, boundary)); chunk = chunk.slice(boundary).trim(); }
+      }
+      if (chunk) chunks.push(chunk);
+      if (!chunks.length || chunks.length > 48) throw new Error("This document needs to be split into smaller files (maximum 48 passages per upload).");
+      const brand = currentProfileSource?.facts[0]?.subject ?? "Workspace";
+      const sourceId = `SRC-DOC-${crypto.randomUUID()}`;
+      const source: Source = {
+        id: sourceId,
+        title: file.name,
+        kind: "GUIDELINE",
+        authority: 60,
+        version: 1,
+        effectiveFrom: new Date().toISOString().slice(0, 10),
+        channels: ["social", "web", "email", "packaging"],
+        owner: "Knowledge maintainer",
+        approvalState: "PENDING_REVIEW",
+        facts: chunks.map((value, index) => ({ id: `${sourceId}-P${index + 1}`, subject: brand, attribute: "knowledge passage", value, statement: `Knowledge passage ${index + 1}: ${value}`, sourceId })),
+      };
+      const withWarnings = { ...source, ingestionWarnings: sourceInjectionWarnings(source) };
+      setSources((current) => [...current, withWarnings]);
+      setReview(null);
+      setExtractionStatus(`${file.name} · ${chunks.length} passage${chunks.length === 1 ? "" : "s"} extracted. Pending maintainer review.`);
+      announce(withWarnings.ingestionWarnings?.length ? "Document quarantined for a possible embedded instruction. Review or remove it before approval." : "Knowledge added as pending review. A maintainer must verify it before use.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "This document could not be read.";
+      setExtractionStatus(message);
+      announce(message);
+    } finally {
+      setIsExtracting(false);
+      input.value = "";
+    }
+  }
+
   function beginProfileEdit() {
     if (role !== "maintainer") {
       announce("Switch the demo role to Maintainer to edit the brand profile.");
@@ -494,13 +620,15 @@ export default function Home() {
 
   const activeSources = sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt);
   const coverage = Math.round((activeSources.reduce((sum, source) => sum + source.facts.length, 0) / 40) * 100);
+  const currentBrandName = currentProfileSource?.facts[0]?.subject ?? (workspaceMode === "demo" ? "Sample Foods" : "Your brand");
 
   return (
     <div className="app-shell">
+      {showWelcome && <div className="welcome-backdrop"><section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title"><div className="welcome-brand"><BrandMark /><span>OnBrand</span></div><div className="eyebrow"><span className="eyebrow-dot" /> START HERE</div><h1 id="welcome-title">Choose how you want to try OnBrand</h1><p className="welcome-lead">Review a sample brand, or set up your own workspace and add your brand knowledge. Choosing a workspace replaces the one saved in this browser.</p><div className="welcome-options"><button className="welcome-option" onClick={enterDemo}><span className="welcome-option-mark">✳</span><b>Explore demo data</b><small>Open Sample Foods with example content and approved demo knowledge. Best for a quick tour.</small><span className="welcome-action">Try the demo →</span></button><div className="welcome-option own-option"><span className="welcome-option-mark">＋</span><b>Use my own brand</b><small>Create a browser-local workspace. Your uploaded files stay on this device; extracted text is sent to the review service only when you run a review.</small><form onSubmit={createOwnWorkspace}><label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Northstar Studio" /></label><label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, warm and direct" /></label><label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. first-time home buyers" /></label><details><summary>Add optional guardrails</summary><label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" /></label><label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" /></label></details><button className="welcome-submit" type="submit">Create my workspace →</button></form></div></div><div className="welcome-capabilities"><b>What can I review?</b><span>Posters/images: text in the image (OCR). Reels: text in up to six sampled frames, up to 3 minutes. Spoken audio, visual design, colors and logos are not analysed.</span><span>OnBrand gives deterministic, evidence-linked recommendations. It does not publish content or take external actions. You decide what to approve.</span></div></section></div>}
       <aside className="sidebar">
         <div className="brand-lockup"><BrandMark /><span>OnBrand</span><span className="brand-beta">BETA</span></div>
-        <button className="workspace-switcher" aria-label="Current workspace">
-          <span className="workspace-avatar">O</span><span className="workspace-copy"><b>OnBrand</b><small>Demo workspace</small></span><span className="chevron">⌄</span>
+        <button className="workspace-switcher" aria-label="Current workspace" onClick={() => setShowWelcome(true)}>
+          <span className="workspace-avatar">O</span><span className="workspace-copy"><b>{currentBrandName}</b><small>{workspaceMode === "demo" ? "Demo workspace" : "Your workspace · this browser"}</small></span><span className="chevron">⌄</span>
         </button>
         <div className="nav-group-label">WORKSPACE</div>
         <nav className="main-nav" aria-label="Main navigation">
@@ -516,7 +644,7 @@ export default function Home() {
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumbs"><span>OnBrand</span><span className="crumb-slash">/</span><b>{view === "review" ? "Review queue" : view === "knowledge" ? "Knowledge base" : "Insights"}</b></div>
-          <div className="topbar-right"><div className="secure-indicator"><span className="secure-dot" /> Demo workspace</div><label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label><button className="avatar-button" aria-label="Current account">AS</button></div>
+          <div className="topbar-right"><div className="secure-indicator"><span className="secure-dot" /> {workspaceMode === "demo" ? "Demo workspace" : "Saved in this browser"}</div><label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label><button className="avatar-button" aria-label="Current account">AS</button></div>
         </header>
 
         {view === "review" ? <>
@@ -524,6 +652,7 @@ export default function Home() {
             <div><div className="eyebrow"><span className="eyebrow-dot" /> PRE-PUBLICATION CHECK</div><h1>Review workspace</h1><p>One calm, evidence-led pass before your content goes live.</p></div>
             <div className="heading-actions"><button className="quiet-button" onClick={() => setShowAudit((v) => !v)}><span className="history-icon">◷</span> {showAudit ? "Hide history" : "Version history"}</button><button className="primary-button" onClick={runReview} disabled={isReviewing}>{isReviewing ? <><span className="spinner" /> Checking evidence…</> : <><span className="sparkle">✳</span> Run review</>}</button></div>
           </div>
+          {workspaceMode === "own" && activeSources.length <= 1 && <div className="next-step-banner"><span className="next-step-number">1</span><div><b>Start by adding your approved brand knowledge</b><small>Bring in your claims, product facts, policies or guidelines. Review each passage and approve it before running a content check.</small></div><button className="small-ghost" onClick={() => setView("knowledge")}>Set up knowledge <Icon name="arrow" /></button></div>}
           {!hasCurrentReview && review && <div className="stale-banner"><span>↻</span> This draft or its approved knowledge changed. The previous decision is no longer current. Run a fresh review.</div>}
           {showAudit && <div className="history-strip"><b>Version history</b>{versions.slice().reverse().map((item) => <span key={`${item.id}-${item.version}-${item.hash}`} className={item.hash === draft.hash && item.version === draft.version ? "history-current" : ""}>v{item.version} · {item.hash.slice(0, 10)}</span>)}{review && <span>Last review · {new Date(review.createdAt).toLocaleString()}</span>}</div>}
 
@@ -537,8 +666,8 @@ export default function Home() {
               <div className="panel-header"><div><span className="panel-kicker">CONTENT DRAFT</span><h2>{draft.title}</h2></div><button className="text-button" onClick={() => updateDraftContent("")}>Clear draft</button></div>
               <div className="draft-meta"><span className="meta-chip"><span className="tiny-icon">▣</span>{draft.channel}</span><span className="meta-chip"><span className="tiny-icon">◌</span>{draft.product}</span><span className="meta-chip"><span className="tiny-icon">◷</span>{draft.audience}</span></div>
               <label className="sr-only" htmlFor="draft-content">Draft content</label>
-              <textarea id="draft-content" className="draft-editor" value={draft.content} onChange={(event) => updateDraftContent(event.target.value)} placeholder="Paste or write draft copy to check it against approved brand knowledge…" />
-              <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload a file"}<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload a text, Word, PDF or image file" /></label><div aria-live="polite">{extractionStatus || "DOCX · PDF · images with OCR · TXT · Markdown · HTML · up to 10 MB"}<small>Files are read in your browser. OCR reads text only; its engine and language files load from jsDelivr, while your file stays here. Proofread imported text. Visual layout and logos are not checked.</small></div></div>
+              <textarea ref={draftEditorRef} id="draft-content" className="draft-editor" value={draft.content} onChange={(event) => updateDraftContent(event.target.value)} placeholder="Paste or write draft copy to check it against approved brand knowledge…" />
+              <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload content"}<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.mp4,.webm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload a poster, reel, document or text file" /></label><div aria-live="polite">{extractionStatus || "Poster/image, MP4/WebM reel, DOCX, PDF, TXT, Markdown or HTML"}<small>Poster: checks visible text only. Reel: OCR from up to 6 sampled frames (3 minutes, 50 MB max); no spoken audio transcription. Other uploads: 10 MB max. Colors, logos and layout are not checked. Files are read in your browser; extracted text is sent for review only when you run it. Proofread OCR text.</small></div></div>
               <div className="editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span><button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>Save version</button><span className="saved-label"><span /> Saved locally</span></div>
               <div className="editor-callout"><span className="callout-symbol">i</span><span>Draft text is treated as untrusted content. Instructions inside a draft cannot change OnBrand’s review rules.</span></div>
               <div className="section-rule" />
@@ -550,7 +679,7 @@ export default function Home() {
 
             <div className="findings-column">
               <div className="findings-header"><div><span className="panel-kicker">EVIDENCE REPORT</span><h2>What we found <span className="count-pill">{findings.length}</span></h2></div><button className="filter-button" onClick={() => announce("Showing all finding types.")}>All findings <span>⌄</span></button></div>
-              {findings.length ? <div className="finding-list">{findings.map((finding) => <button key={finding.finding_id} className={`finding-card ${selected?.finding_id === finding.finding_id ? "selected" : ""}`} onClick={() => setSelectedFinding(finding.finding_id)}>
+              {findings.length ? <div className="finding-list">{findings.map((finding) => <button key={finding.finding_id} className={`finding-card ${selected?.finding_id === finding.finding_id ? "selected" : ""}`} onClick={() => selectFinding(finding)}>
                 <div className="finding-card-top"><span className={`status-dot ${statusClass[finding.evidence_status]}`} /><span className={`status-text ${statusClass[finding.evidence_status]}`}>{statusLabel[finding.evidence_status]}</span><span className={`severity-tag ${finding.severity.toLowerCase()}`}>{finding.severity}</span><span className="finding-menu">···</span></div>
                 <div className="claim-quote">“{finding.claim_text}”</div>
                 <div className="finding-card-bottom"><span className="finding-category">{finding.category.replaceAll("_", " ")}</span><span className="finding-source-count">{finding.source_evidence.length ? `${finding.source_evidence.length} source${finding.source_evidence.length > 1 ? "s" : ""}` : "No source"}</span></div>
@@ -584,12 +713,13 @@ export default function Home() {
             </aside>
           </section>
         </> : view === "knowledge" ? <>
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> APPROVED ORGANISATIONAL MEMORY</div><h1>Knowledge base</h1><p>Current, owned sources that ground this review.</p></div><label className={`primary-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Import sources<input type="file" accept=".json,.csv" onChange={handleImport} disabled={role !== "maintainer"} /></label></div>
-          <div className="knowledge-summary"><div className="knowledge-stat"><span className="stat-mark">▤</span><div><b>{activeSources.length}</b><small>ACTIVE SOURCES</small></div></div><div className="knowledge-stat"><span className="stat-mark">◈</span><div><b>{activeSources.reduce((sum, source) => sum + source.facts.length, 0)}</b><small>APPROVED FACTS</small></div></div><div className="knowledge-stat"><span className="stat-mark">◎</span><div><b>1</b><small>BRAND PROFILE</small></div></div><div className="coverage-card"><div><b>Knowledge coverage</b><small>Seed set benchmark · 40 approved facts</small></div><div className="coverage-bar"><span style={{ width: `${Math.min(coverage, 100)}%` }} /></div><strong>{Math.min(coverage, 100)}%</strong></div></div>
-          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); const quarantined = Boolean(source.ingestionWarnings?.length); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{quarantined ? "Possible embedded instruction · quarantined" : `${source.facts.length} structured facts · ${source.channels.slice(0, 2).join(", ")}`}</small></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : quarantined ? "Quarantined" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? quarantined ? <button className="comment-resolve" onClick={() => removeImportedSource(source.id)}>Remove</button> : <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
-            <aside className="panel profile-panel"><span className="panel-kicker">SYNTHETIC CLIENT PROFILE</span><h2>Sample Foods</h2><p className="profile-intro">Fictional demo brand used to demonstrate OnBrand’s review workflow.</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Palette colors are stored as guidance; this MVP does not inspect images or design files.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small><div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div></div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
+          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> APPROVED ORGANISATIONAL MEMORY</div><h1>Knowledge base</h1><p>Current, owned sources that ground this review.</p></div><div className="heading-actions"><label className={`quiet-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Add a knowledge document<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm" onChange={handleKnowledgeDocument} disabled={role !== "maintainer" || isExtracting} /></label><label className={`primary-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Import JSON/CSV<input type="file" accept=".json,.csv" onChange={handleImport} disabled={role !== "maintainer"} /></label></div></div>
+          {extractionStatus && <div className="knowledge-upload-status" aria-live="polite">{extractionStatus}<small>Uploaded knowledge is always pending review. Check its source and passages, then a maintainer may approve it. Embedded instructions are quarantined.</small></div>}
+          <div className="knowledge-summary"><div className="knowledge-stat"><span className="stat-mark">▤</span><div><b>{activeSources.length}</b><small>ACTIVE SOURCES</small></div></div><div className="knowledge-stat"><span className="stat-mark">◈</span><div><b>{activeSources.reduce((sum, source) => sum + source.facts.length, 0)}</b><small>APPROVED PASSAGES / FACTS</small></div></div><div className="knowledge-stat"><span className="stat-mark">◎</span><div><b>{currentProfileSource ? "1" : "0"}</b><small>BRAND PROFILE</small></div></div><div className="coverage-card"><div><b>{workspaceMode === "demo" ? "Demo knowledge coverage" : "Approved knowledge"}</b><small>{workspaceMode === "demo" ? "Sample set indicator · not a quality score" : `${Math.max(0, activeSources.length - 1)} approved knowledge document${activeSources.length - 1 === 1 ? "" : "s"}; pending documents are excluded`}</small></div>{workspaceMode === "demo" ? <><div className="coverage-bar"><span style={{ width: `${Math.min(coverage, 100)}%` }} /></div><strong>{Math.min(coverage, 100)}%</strong></> : <strong>{activeSources.length > 1 ? "Ready" : "Add sources"}</strong>}</div></div>
+          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); const quarantined = Boolean(source.ingestionWarnings?.length); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{quarantined ? "Possible embedded instruction · quarantined" : `${source.facts.length} ${source.kind === "GUIDELINE" ? "passages" : "structured facts"} · ${source.channels.slice(0, 2).join(", ")}`}</small><details className="source-preview"><summary>Preview {Math.min(3, source.facts.length)} of {source.facts.length} passages</summary>{source.facts.slice(0, 3).map((fact) => <blockquote key={fact.id}>{fact.value || fact.statement}</blockquote>)}{source.facts.length > 3 && <small>Showing first 3 passages. The full source is retained in this browser.</small>}</details></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : quarantined ? "Quarantined" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? quarantined ? <button className="comment-resolve" onClick={() => removeImportedSource(source.id)}>Remove</button> : <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
+            <aside className="panel profile-panel"><span className="panel-kicker">{workspaceMode === "demo" ? "SYNTHETIC CLIENT PROFILE" : "YOUR BRAND PROFILE"}</span><h2>{currentBrandName}</h2><p className="profile-intro">{workspaceMode === "demo" ? "Fictional demo brand used to demonstrate OnBrand’s review workflow." : "This profile stays in this browser and guides review context."}</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Palette colors are guidance only; this MVP does not inspect colors, logos or layout in uploads.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small>{profilePalette.length ? <div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div> : <b>Not provided</b>}</div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
           </section>
-          <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">DETERMINISTIC POLICY LAYER</span><h2>Review rules</h2></div><span className="rules-count">{seedRules.length} active rules</span></div><div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · approved by Brand and Legal</small></div></div>)}</div></section>
+          <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">{workspaceMode === "demo" ? "DEMO POLICY LAYER" : "YOUR REVIEW CONTROLS"}</span><h2>{workspaceMode === "demo" ? "Sample Foods review rules" : "How your own-brand review works"}</h2></div><span className="rules-count">{workspaceMode === "demo" ? `${seedRules.length} demo rules` : "Your approved knowledge"}</span></div>{workspaceMode === "demo" ? <div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · Sample Foods demo policy</small></div></div>)}</div> : <div className="own-policy-note"><p>Sample Foods rules are switched off in your workspace. OnBrand checks claims against the knowledge you add and approve, and checks your “words to avoid” list.</p><p>General claim meaning and design checks remain limited in this deterministic build. Review each suggestion and evidence passage yourself before approval.</p><button className="small-ghost" onClick={() => setView("review")}>Go to content review <Icon name="arrow" /></button></div>}</section>
         </> : <>
           <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> GOVERNANCE SIGNALS</div><h1>Insights</h1><p>Patterns that can help your team strengthen its guidance.</p></div><span className="demo-badge">DEMO DATASET</span></div>
           <div className="insights-cards"><div className="insight-metric"><span>01 / REVIEW HEALTH</span><strong>{review ? Math.max(0, 100 - counts.blocking * 12) : "—"}<small>/100</small></strong><p>Calculated from the current draft only. Not a production score.</p></div><div className="insight-metric"><span>02 / EVIDENCE GAPS</span><strong>{counts.unsupported}</strong><p>Claims needing an approved source in this review.</p></div><div className="insight-metric"><span>03 / SOURCE CONFLICTS</span><strong>{counts.conflicts}</strong><p>Same-authority sources disagreeing in this review.</p></div></div>

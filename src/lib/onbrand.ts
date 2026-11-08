@@ -274,12 +274,17 @@ export function computeDraftHash(draft: Pick<Draft, "content" | "channel" | "pro
 
 export function sourceSnapshotHash(sources: Source[]): string {
   const snapshot = sources.slice().sort((a, b) => a.id.localeCompare(b.id) || a.version - b.version);
-  return stableHash(JSON.stringify(snapshot));
+  const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonicalize(item)]));
+    return value;
+  };
+  return stableHash(JSON.stringify(canonicalize(snapshot)));
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 const utf16ToCodePointOffset = (text: string, offset: number) => Array.from(text.slice(0, offset)).length;
-const codePointToUtf16Offset = (text: string, offset: number) => Array.from(text).slice(0, offset).join("").length;
+export const codePointToUtf16Offset = (text: string, offset: number) => Array.from(text).slice(0, offset).join("").length;
 const words = (s: string) => new Set(normalize(s).split(" ")
   .filter((x) => x.length > 2)
   .map((x) => x.length > 3 && x.endsWith("s") && !x.endsWith("ss") ? x.slice(0, -1) : x));
@@ -413,9 +418,9 @@ function retrieve(claim: string, sources: Source[], channel: string, date: strin
   return ranked.slice(0, 5);
 }
 
-function ruleFinding(claim: string, context: string, sources: Source[], channel: string, date: string): { label: string; severity: Severity } | undefined {
+function ruleFinding(claim: string, context: string, sources: Source[], channel: string, date: string, includeDemoRules = true): { label: string; severity: Severity } | undefined {
   const normalizedClaim = normalize(claim);
-  for (const rule of seedRules) {
+  for (const rule of (includeDemoRules ? seedRules : [])) {
     if (rule.id === "R-09" && /sample foods oat bites/i.test(context)) continue;
     if (rule.id === "R-03" && /protein|added sugar|calories/i.test(claim) && /serving/i.test(context)) continue;
     if (rule.terms.some((term) => term.startsWith("#")
@@ -426,7 +431,7 @@ function ruleFinding(claim: string, context: string, sources: Source[], channel:
   }
   const avoidedTerms = sources.filter((source) => eligible(source, channel, date))
     .flatMap((source) => source.facts.filter((fact) => normalize(fact.attribute) === "avoid wording")
-      .flatMap((fact) => fact.value.split(/[,;|]/).map((term) => normalize(term.trim())).filter(Boolean)));
+      .flatMap((fact) => fact.value.split(/[,;|]/).map((term) => normalize(term.trim())).filter((term) => term && !["not provided", "none", "—", "n/a"].includes(term))));
   const normalizedWithBoundaries = ` ${normalizedClaim} `;
   const matchedAvoidance = avoidedTerms.find((term) => normalizedWithBoundaries.includes(` ${term} `));
   if (matchedAvoidance) return { label: `Avoid brand wording: “${matchedAvoidance}”`, severity: "MEDIUM" };
@@ -436,6 +441,7 @@ function ruleFinding(claim: string, context: string, sources: Source[], channel:
 export function reviewDraft(input: {
   draft: Draft;
   sources?: Source[];
+  includeDemoRules?: boolean;
   reviewId?: string;
   actor?: string;
 }): Review {
@@ -545,7 +551,7 @@ export function reviewDraft(input: {
     const conflict = Boolean(firstRelevant && !multiValueAttributes.has(normalize(firstRelevant.fact.attribute)) && differingValues.size > 1);
     const best = sortedByAuthority[0] ?? firstRelevant;
     const injection = detectInjection(claimText);
-    const rule = ruleFinding(claimText, claim.context, sources, draft.channel, draft.publicationDate);
+    const rule = ruleFinding(claimText, claim.context, sources, draft.channel, draft.publicationDate, input.includeDemoRules ?? true);
     const claimQuantities = parseQuantities(claimText);
     const normalizedClaim = normalize(claimText);
     const directFactRelation = retrieved.some(({ source, fact }) => {

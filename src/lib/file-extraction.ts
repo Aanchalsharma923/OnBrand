@@ -1,7 +1,10 @@
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_TEXT_CHARS = 20_000;
 const MAX_PDF_PAGES = 20;
+const MAX_VIDEO_SECONDS = 180;
 const MAX_OCR_PIXELS = 25_000_000;
+const MAX_VIDEO_FRAME_PIXELS = 3_000_000;
 
 export type ExtractionProgress = (message: string) => void;
 
@@ -112,14 +115,91 @@ async function extractImage(file: File, progress: ExtractionProgress) {
   }
 }
 
+function mediaEvent(target: HTMLMediaElement, eventName: "loadedmetadata" | "loadeddata" | "seeked", timeoutMs = 15_000) {
+  return new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => finish(new Error("The browser could not read this video frame in time.")), timeoutMs);
+    const finish = (error?: Error) => {
+      window.clearTimeout(timeout);
+      target.removeEventListener(eventName, onReady);
+      target.removeEventListener("error", onError);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onReady = () => finish();
+    const onError = () => finish(new Error("This video could not be decoded by the browser. Try an MP4 or WebM file exported with a common codec."));
+    target.addEventListener(eventName, onReady, { once: true });
+    target.addEventListener("error", onError, { once: true });
+  });
+}
+
+async function extractVideo(file: File, progress: ExtractionProgress) {
+  const video = document.createElement("video");
+  const url = URL.createObjectURL(file);
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+  let worker: Awaited<ReturnType<typeof createOcrWorker>> | undefined;
+  try {
+    const metadataReady = mediaEvent(video, "loadedmetadata");
+    video.load();
+    await metadataReady;
+    if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error("This video has no readable duration.");
+    if (video.duration > MAX_VIDEO_SECONDS) throw new Error(`Reel analysis is limited to ${MAX_VIDEO_SECONDS} seconds per video.`);
+    if (!video.videoWidth || !video.videoHeight) throw new Error("This video has no readable image track.");
+
+    const frameCount = Math.min(6, Math.max(1, Math.ceil(video.duration / 15)));
+    const output: string[] = [];
+    const seen = new Set<string>();
+    const scale = Math.min(1, Math.sqrt(MAX_VIDEO_FRAME_PIXELS / (video.videoWidth * video.videoHeight)));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.floor(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.floor(video.videoHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("The browser could not prepare video frames for local OCR.");
+    worker = await createOcrWorker(progress);
+
+    for (let index = 0; index < frameCount; index += 1) {
+      const timestamp = (video.duration * (index + 1)) / (frameCount + 1);
+      progress(`Reading reel frame ${index + 1} of ${frameCount}…`);
+      const seeked = mediaEvent(video, "seeked");
+      video.currentTime = timestamp;
+      await seeked;
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) await mediaEvent(video, "loadeddata");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const text = (await worker.recognize(canvas)).data.text.trim();
+      const key = normalize(text);
+      if (text && key && !seen.has(key)) {
+        seen.add(key);
+        output.push(text);
+      }
+    }
+    canvas.width = 0;
+    canvas.height = 0;
+    return limitText(output.join("\n\n"));
+  } finally {
+    await worker?.terminate();
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    URL.revokeObjectURL(url);
+  }
+}
+
+function normalize(text: string) {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 export async function extractUploadedFile(file: File, progress: ExtractionProgress = () => {}) {
-  if (file.size > MAX_FILE_BYTES) throw new Error("Files must be 10 MB or smaller.");
   const extension = file.name.split(".").pop()?.toLowerCase();
+  const isVideo = ["mp4", "webm"].includes(extension ?? "");
+  if (file.size > (isVideo ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) throw new Error(isVideo ? "Videos must be 50 MB or smaller." : "Files must be 10 MB or smaller.");
   let text: string;
   if (extension === "docx") text = await extractDocx(file);
   else if (extension === "pdf") text = await extractPdf(file, progress);
+  else if (isVideo) text = await extractVideo(file, progress);
   else if (["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"].includes(extension ?? "")) text = await extractImage(file, progress);
   else if (["txt", "md", "markdown", "html", "htm"].includes(extension ?? "")) text = limitText(await file.text());
-  else throw new Error("Supported files: DOCX, text PDF, PNG/JPG/WebP images, TXT, Markdown and HTML.");
+  else throw new Error("Supported files: DOCX, text PDF, PNG/JPG/WebP images, MP4/WebM video, TXT, Markdown and HTML.");
   return limitText(text);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDraft, initialDraft, recheckSuggestion, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash } from "./onbrand";
+import { codePointToUtf16Offset, createDraft, initialDraft, recheckSuggestion, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash } from "./onbrand";
 
 describe("OnBrand evidence review evaluation", () => {
   it("uses SHA-256 fingerprints for draft and knowledge snapshots", () => {
@@ -175,6 +175,7 @@ describe("OnBrand evidence review evaluation", () => {
     const finding = reviewDraft({ draft }).findings.find((item) => item.suggestion);
     expect(finding).toBeDefined();
     expect(Array.from(content).slice(finding!.start, finding!.end).join("")).toBe(finding!.claim_text);
+    expect(codePointToUtf16Offset(content, finding!.start)).toBe(content.indexOf(finding!.claim_text));
     const result = recheckSuggestion(draft, finding!, seedSources);
     expect(result.ok).toBe(true);
     expect(result.candidate).toContain("🧪 ");
@@ -198,6 +199,15 @@ describe("OnBrand evidence review evaluation", () => {
     const result = recheckSuggestion(draft, ungrounded, seedSources);
     expect(result.ok).toBe(false);
     expect(result.reason).toContain("did not pass a full review");
+  });
+
+  it("does not apply the Sample Foods rule set to an own-brand workspace", () => {
+    const draft = createDraft("This snack is sugar free.");
+    const demo = reviewDraft({ draft, sources: seedSources });
+    const ownBrand = reviewDraft({ draft, sources: seedSources, includeDemoRules: false });
+    expect(demo.findings.some((finding) => finding.category === "POLICY")).toBe(true);
+    expect(ownBrand.findings.some((finding) => finding.category === "POLICY")).toBe(false);
+    expect(ownBrand.findings[0].evidence_status).toBe("NEEDS_HUMAN");
   });
 
   it("invalidates the source snapshot when an approved fact changes", () => {
