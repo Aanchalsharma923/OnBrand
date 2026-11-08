@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS findings (
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   review_id uuid NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
   claim_text text NOT NULL,
+  -- Half-open Unicode code-point offsets into the immutable original draft text.
   start_offset integer NOT NULL,
   end_offset integer NOT NULL,
   category varchar(40) NOT NULL,

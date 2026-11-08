@@ -138,7 +138,7 @@ describe("OnBrand evidence review evaluation", () => {
     const draft = createDraft("Meet Sample Foods Oat Bites. This claim has no evidence.");
     const report = reviewDraft({ draft });
     for (const finding of report.findings) {
-      expect(draft.content.slice(finding.start, finding.end)).toBe(finding.claim_text);
+      expect(Array.from(draft.content).slice(finding.start, finding.end).join("")).toBe(finding.claim_text);
     }
   });
 
@@ -150,7 +150,7 @@ describe("OnBrand evidence review evaluation", () => {
       "Sample Foods Oat Bites are made with wholegrain oats",
       "contain cocoa.",
     ]);
-    for (const finding of findings) expect(content.slice(finding.start, finding.end)).toBe(finding.claim_text);
+    for (const finding of findings) expect(Array.from(content).slice(finding.start, finding.end).join("")).toBe(finding.claim_text);
     expect(findings[1].evidence_status).toBe("SUPPORTED");
     expect(findings[1].source_evidence.some((evidence) => evidence.quote.includes("cocoa"))).toBe(true);
     expect(findings[1].source_evidence.some((evidence) => evidence.quote.includes("wholegrain oats"))).toBe(false);
@@ -163,10 +163,22 @@ describe("OnBrand evidence review evaluation", () => {
     const findings = reviewDraft({ draft }).findings;
     const omittedBenefit = findings.find((finding) => finding.claim_text === "improves focus.");
     expect(omittedBenefit).toBeDefined();
-    expect(content.slice(omittedBenefit!.start, omittedBenefit!.end)).toBe(omittedBenefit!.claim_text);
+    expect(Array.from(content).slice(omittedBenefit!.start, omittedBenefit!.end).join("")).toBe(omittedBenefit!.claim_text);
     expect(omittedBenefit!.evidence_status).toBe("NEEDS_HUMAN");
     expect(omittedBenefit!.blocking_for_review).toBe(true);
     expect(omittedBenefit!.explanation).toContain("outside the atomic claims");
+  });
+
+  it("uses Unicode code-point offsets and preserves text before a suggestion", () => {
+    const content = `🧪 ${initialDraft.content}`;
+    const draft = createDraft(content);
+    const finding = reviewDraft({ draft }).findings.find((item) => item.suggestion);
+    expect(finding).toBeDefined();
+    expect(Array.from(content).slice(finding!.start, finding!.end).join("")).toBe(finding!.claim_text);
+    const result = recheckSuggestion(draft, finding!, seedSources);
+    expect(result.ok).toBe(true);
+    expect(result.candidate).toContain("🧪 ");
+    expect(result.candidate).not.toContain(finding!.claim_text);
   });
 
   it("accepts a suggested revision only after a full fresh review", () => {

@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has twenty-five focused checks, including atomic-clause spans, SHA-256 fingerprinting, citation validation, two-pass semantic checks, suggestion grounding, API-side source quarantine and route-level model-boundary fault injections:
+Run `npm run test`. The current set has thirty-four focused checks, including atomic-clause spans, SHA-256 fingerprinting, citation validation, two-pass semantic checks, suggestion grounding, API-side source quarantine, text-file import limits and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -12,7 +12,7 @@ Run `npm run test`. The current set has twenty-five focused checks, including at
 | Contradictory sources | Higher-authority active evidence takes precedence; lower authority does not create a tie |
 | Source version precedence | A newer version wins when authority and effective date match |
 | Finite validity periods | Equal-precedence sources still conflict when both are within their effective dates |
-| Finding offsets | Each reported span maps back to the exact claim text in the reviewed draft |
+| Finding offsets | Each reported Unicode code-point span maps back to the exact claim text, including a non-BMP character before the finding; suggestion replacement preserves the prefix |
 | Compound sentence coverage | Independent factual clauses are reviewed separately; only subject context is inherited, exact clause offsets are retained, and neighboring clause evidence cannot support the claim |
 | Multi-metric coverage gap | With multiple numeric claims plus another factual predicate, the predicate becomes a blocking `NEEDS_HUMAN` finding with its original span |
 | Citation C1–C4 validation | Every retrieved quote is checked against source identity, approved version/effective date, channel and exact source text; failures are excluded and block review |
@@ -29,8 +29,9 @@ Run `npm run test`. The current set has twenty-five focused checks, including at
 | Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 | Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
+| Browser text imports | TXT, Markdown and HTML content is retained as editable draft text; empty, unsupported, oversized and overlong files are rejected |
 
-**Latest run:** 26/26 automated checks passed on 8 Nov 2026. Twenty-five focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. Semantic-verifier tests stub the provider and prove output-contract behavior, not model accuracy. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 35/35 automated checks passed on 8 Nov 2026. Thirty-four focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. Semantic-verifier tests stub the provider and prove output-contract behavior, not model accuracy. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -62,14 +63,14 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | --- | --- | --- |
 | M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields; imported instruction-like text is quarantined | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
 | M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, SHA-256 content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
-| M3 — Claim extraction, spans and coverage | Sentence segmentation, separate numeric-claim extraction, predicate-clause splitting, subject-only retrieval context, original character offsets, and a regression-checked detector that routes an extra factual predicate after multiple numeric claims to human review | **Partial.** Broader linguistic coverage, multilingual text and diverse real-world drafts remain unvalidated. |
+| M3 — Claim extraction, spans and coverage | Sentence segmentation, separate numeric-claim extraction, predicate-clause splitting, subject-only retrieval context, half-open Unicode code-point spans against the unchanged original draft, and a regression-checked detector that routes an extra factual predicate after multiple numeric claims to human review | **Partial.** The prototype does not transform the draft before extraction, so offsets reference the original directly; no separately versioned normalization/offset-map layer exists. Broader linguistic coverage, multilingual text and diverse real-world drafts remain unvalidated. |
 | M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence, explicit conflict outcome, C1–C4 checks, and an optional two-pass C5 verifier for free-text claims | **Partial.** Retrieval remains in memory rather than PostgreSQL FTS; the semantic model has not been independently accuracy-tested and is not configured in Vercel production. |
 | M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, C1–C4 mechanical citation checks, optional two-pass C5 relation checks, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No human-labelled citation-entailment benchmark or browser-level WCAG validation. |
 | M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline; it must return `SUPPORTED` with an approved citation; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
 | M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; client-import and API-boundary source-injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 
-The target remains **10 Nov 2026**. Commit `0b232ba` deployed successfully to Vercel production on 8 Nov 2026. Both [outcoded.xyz](https://outcoded.xyz) and the [Vercel fallback](https://on-brand-zeta.vercel.app) return HTTP 200 for the homepage, health endpoint and PDF worker; the homepage includes the latest OCR disclosure. Public Google and Cloudflare DNS resolvers return Vercel's assigned apex A record `216.198.79.1`. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
+The target remains **10 Nov 2026**. The latest code commit deployed successfully to Vercel production on 8 Nov 2026. Both [outcoded.xyz](https://outcoded.xyz) and the [Vercel fallback](https://on-brand-zeta.vercel.app) return HTTP 200 for the homepage, health endpoint and PDF worker; the homepage includes the latest OCR disclosure. Public Google and Cloudflare DNS resolvers return Vercel's assigned apex A record `216.198.79.1`. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
 
 ## Manual workflow observations
 

@@ -84,6 +84,7 @@ export const findings = pgTable("findings", {
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
   reviewId: uuid("review_id").references(() => reviews.id).notNull(),
   claimText: text("claim_text").notNull(),
+  // Half-open Unicode code-point offsets into the immutable original draft text.
   startOffset: integer("start_offset").notNull(),
   endOffset: integer("end_offset").notNull(),
   category: varchar("category", { length: 40 }).notNull(),

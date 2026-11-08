@@ -83,7 +83,7 @@ describe("20-draft synthetic development set", () => {
       return counts;
     }, {});
     const exactSourceQuoteValidity = outcomes.filter(({ finding, draft }) =>
-      finding.start >= 0 && finding.end <= draft.content.length && draft.content.slice(finding.start, finding.end) === finding.claim_text
+      finding.start >= 0 && finding.end <= Array.from(draft.content).length && Array.from(draft.content).slice(finding.start, finding.end).join("") === finding.claim_text
       && finding.source_evidence.every((evidence) => seedSources.some((approved) =>
         approved.id === evidence.source_id
         && approved.version === evidence.source_version

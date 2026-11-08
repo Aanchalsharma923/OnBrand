@@ -278,6 +278,8 @@ export function sourceSnapshotHash(sources: Source[]): string {
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+const utf16ToCodePointOffset = (text: string, offset: number) => Array.from(text.slice(0, offset)).length;
+const codePointToUtf16Offset = (text: string, offset: number) => Array.from(text).slice(0, offset).join("").length;
 const words = (s: string) => new Set(normalize(s).split(" ")
   .filter((x) => x.length > 2)
   .map((x) => x.length > 3 && x.endsWith("s") && !x.endsWith("ss") ? x.slice(0, -1) : x));
@@ -632,6 +634,11 @@ export function reviewDraft(input: {
       evidence_status: "NEEDS_HUMAN", severity: "MEDIUM", blocking_for_review: true, explanation: check.explanation, source_evidence: [], created_at: new Date().toISOString(),
     });
   }
+  // JavaScript regex/string indices are UTF-16 code units; the API contract uses Unicode code points.
+  for (const finding of findings) {
+    finding.start = utf16ToCodePointOffset(draft.content, finding.start);
+    finding.end = utf16ToCodePointOffset(draft.content, finding.end);
+  }
   return {
     id: reviewId,
     draftId: draft.id,
@@ -647,7 +654,9 @@ export function reviewDraft(input: {
 
 export function recheckSuggestion(draft: Draft, finding: Finding, sources = seedSources): { ok: boolean; candidate?: string; reason: string } {
   if (!finding.suggestion) return { ok: false, reason: "No safe candidate is available; edit manually and run a fresh review." };
-  const candidateText = draft.content.slice(0, finding.start) + finding.suggestion + draft.content.slice(finding.end);
+  const start = codePointToUtf16Offset(draft.content, finding.start);
+  const end = codePointToUtf16Offset(draft.content, finding.end);
+  const candidateText = draft.content.slice(0, start) + finding.suggestion + draft.content.slice(end);
   const candidateDraft = { ...draft, content: candidateText, hash: computeDraftHash({ ...draft, content: candidateText }), version: draft.version + 1 };
   const checked = reviewDraft({ draft: candidateDraft, sources });
   const revised = checked.findings.find((f) => f.claim_text === finding.suggestion);
