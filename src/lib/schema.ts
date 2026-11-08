@@ -17,6 +17,7 @@ export const memberships = pgTable("memberships", {
 export const sources = pgTable("sources", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  sourceKey: text("source_key").notNull(),
   title: text("title").notNull(),
   kind: varchar("kind", { length: 32 }).notNull(),
   authority: integer("authority").notNull(),
@@ -24,6 +25,7 @@ export const sources = pgTable("sources", {
   effectiveFrom: date("effective_from").notNull(),
   effectiveTo: date("effective_to"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  approvalState: varchar("approval_state", { length: 24 }).notNull(),
   channels: jsonb("channels").$type<string[]>().notNull(),
   owner: text("owner").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
