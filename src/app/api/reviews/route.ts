@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createDraft, reviewDraft, seedSources, sourceSnapshotHash, type Draft, type Source } from "../../../lib/onbrand";
-import { modelConfigured, modelDescriptor, runAgentPanel } from "../../../lib/server/model";
+import { createDraft, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash, type Draft, type Source } from "../../../lib/onbrand";
+import { modelConfigured, modelDescriptor, runAgentPanel, verifySemanticEvidence } from "../../../lib/server/model";
 import { z } from "zod";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });
@@ -33,37 +33,48 @@ export async function POST(request: Request) {
     const sources = body.sources as Source[] | undefined;
     // Never trust caller-supplied hashes: the server recomputes the content fingerprint.
     const safeDraft = createDraft(draft.content, { ...draft });
-    const approvedSources = (sources?.length ? sources : seedSources).filter((source) => source.approvalState === "APPROVED" && !source.revokedAt);
+    const submittedSources = sources?.length ? sources : seedSources;
+    const quarantinedSources = submittedSources.filter((source) => sourceInjectionWarnings(source).length > 0);
+    const quarantinedIds = new Set(quarantinedSources.map((source) => source.id));
+    // The API must not trust a browser-supplied APPROVED flag for instruction-bearing content.
+    const approvedSources = submittedSources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt && !quarantinedIds.has(source.id));
     const review = reviewDraft({ draft: safeDraft, sources: approvedSources });
+    for (const source of quarantinedSources) {
+      review.findings.push({
+        finding_id: `F-SOURCE-QUARANTINE-${stableHash(source.id).slice(0, 8)}`, review_id: review.id, draft_id: safeDraft.id,
+        draft_version_id: `${safeDraft.id}-v${safeDraft.version}`, draft_hash: safeDraft.hash,
+        claim_id: `SRC-${stableHash(source.id).slice(0, 8)}`, claim_text: `Knowledge source quarantined: ${source.title}`,
+        start: 0, end: 0, category: "SOURCE_SECURITY", evidence_status: "NEEDS_HUMAN", severity: "REVIEW",
+        blocking_for_review: true,
+        explanation: "The submitted source contains instruction-like text. The API excluded it from this review's evidence set. A maintainer must inspect and correct or reject the source before use.",
+        source_evidence: [], created_at: new Date().toISOString(),
+      });
+    }
     const configuredModel = modelConfigured() ? modelDescriptor() : null;
-    const panel = configuredModel ? await runAgentPanel(safeDraft, review, approvedSources) : null;
+    const semantic = configuredModel
+      ? await verifySemanticEvidence(review, safeDraft, approvedSources)
+      : { review, state: "not-applicable" as const, candidateCount: 0, unresolvedCount: 0 };
+    const finalReview = semantic.review;
+    const panel = configuredModel ? await runAgentPanel(safeDraft, finalReview, approvedSources) : null;
     if (panel) {
-      review.agentNotes = [
+      finalReview.agentNotes = [
         { agent: "Advocate", summary: panel.advocate },
         { agent: "Challenger", summary: panel.challenger },
         { agent: "Judge", summary: panel.judge },
         { agent: "Policy & Risk", summary: panel.policyRisk },
       ];
-      review.engineMode = "model-assisted";
+      finalReview.engineMode = "model-assisted";
     } else {
-      review.engineMode = "deterministic-preview";
-      if (modelConfigured()) {
-        review.findings.push({
-          finding_id: "F-MODEL-UNAVAILABLE", review_id: review.id, draft_id: safeDraft.id, draft_version_id: `${safeDraft.id}-v${safeDraft.version}`,
-          draft_hash: safeDraft.hash, claim_id: "C-MODEL", claim_text: "The advisory AI panel did not complete this review.", start: 0, end: 0,
-          category: "SYSTEM", evidence_status: "NEEDS_HUMAN", severity: "REVIEW", blocking_for_review: true,
-          explanation: "The model call failed or returned an invalid response. Retry the review or have an authorised person inspect every claim manually. Deterministic findings are retained, but this report cannot be approved as complete.", source_evidence: [], created_at: new Date().toISOString(),
-        });
-      }
+      finalReview.engineMode = semantic.state === "verified" ? "model-assisted" : "deterministic-preview";
     }
-    review.sourceSnapshotHash = sourceSnapshotHash(approvedSources);
+    finalReview.sourceSnapshotHash = sourceSnapshotHash(approvedSources);
     return NextResponse.json({
-      review,
-      engine: review.engineMode,
+      review: finalReview,
+      engine: finalReview.engineMode,
       modelDisclosure: panel
-        ? `The ${configuredModel} four-role panel supplied advisory notes. Draft text and findings were processed by the configured model; code-generated statuses, citations and approval gates remain authoritative.`
+        ? `The ${configuredModel} two-pass semantic verifier checked ${semantic.candidateCount} free-text claims; ${semantic.unresolvedCount} need human review. The four-role panel supplied advisory notes. Code checks remain authoritative.`
         : configuredModel
-          ? `The ${configuredModel} panel did not complete. Review is marked needs-human; no automated pass is possible.`
+          ? `The ${configuredModel} advisory panel did not complete. ${semantic.unresolvedCount} free-text claims need human review after the semantic checks; the code findings remain available. The advisory panel is optional.`
           : "No model is configured. This demo uses deterministic retrieval and policy checks; no model call was made.",
     });
   } catch (error) {

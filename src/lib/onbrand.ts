@@ -55,6 +55,13 @@ export type Finding = {
     quote: string;
     authority: number;
     score: number;
+    citation_validation?: {
+      c1_source_exists: boolean;
+      c2_version_valid: boolean;
+      c3_scope_eligible: boolean;
+      c4_quote_valid: boolean;
+      c5_relation: "SUPPORTS" | "PARTIALLY_SUPPORTS" | "CONTRADICTS" | "INSUFFICIENT" | "NOT_RUN" | "DISAGREEMENT";
+    };
   }>;
   suggestion?: string;
   suggestion_state?: "CANDIDATE" | "RECHECK_PASSED" | "REJECTED";
@@ -499,6 +506,32 @@ export function reviewDraft(input: {
     const start = claim.start;
     const end = claim.end;
     const retrieved = retrieve(claim.retrievalText, sources, draft.channel, draft.publicationDate);
+    const evidenceCandidates = retrieved.slice(0, 3).map((x) => {
+      const sourceExists = sources.some((source) => source.id === x.source.id);
+      const source = sources.find((candidate) => candidate.id === x.source.id);
+      const versionValid = Boolean(source && source.version === x.source.version && source.approvalState === "APPROVED"
+        && !source.revokedAt && source.effectiveFrom <= draft.publicationDate && (!source.effectiveTo || source.effectiveTo >= draft.publicationDate));
+      const scopeEligible = Boolean(source && (source.channels.includes("all") || source.channels.includes(draft.channel.toLowerCase())));
+      const quoteValid = Boolean(source && source.facts.some((fact) => fact.sourceId === source.id && fact.statement === x.fact.statement));
+      return {
+        source_id: x.source.id,
+        source_version: x.source.version,
+        quote: x.fact.statement,
+        authority: x.source.authority,
+        score: Number(x.score.toFixed(3)),
+        citation_validation: {
+          c1_source_exists: sourceExists,
+          c2_version_valid: versionValid,
+          c3_scope_eligible: scopeEligible,
+          c4_quote_valid: quoteValid,
+          c5_relation: "NOT_RUN" as const,
+        },
+      };
+    });
+    const citationFailures = evidenceCandidates.some((evidence) => !evidence.citation_validation.c1_source_exists
+      || !evidence.citation_validation.c2_version_valid || !evidence.citation_validation.c3_scope_eligible || !evidence.citation_validation.c4_quote_valid);
+    const evidence = evidenceCandidates.filter((item) => item.citation_validation.c1_source_exists
+      && item.citation_validation.c2_version_valid && item.citation_validation.c3_scope_eligible && item.citation_validation.c4_quote_valid);
     const firstRelevant = retrieved[0];
     const comparable = firstRelevant ? retrieved.filter((x) => x.fact.attribute === firstRelevant.fact.attribute && x.score >= Math.max(0.16, firstRelevant.score * 0.68)) : [];
     const sortedByAuthority = comparable.slice().sort((a, b) => b.source.authority - a.source.authority || b.source.effectiveFrom.localeCompare(a.source.effectiveFrom) || b.source.version - a.source.version);
@@ -512,6 +545,18 @@ export function reviewDraft(input: {
     const injection = detectInjection(claimText);
     const rule = ruleFinding(claimText, claim.context, sources, draft.channel, draft.publicationDate);
     const claimQuantities = parseQuantities(claimText);
+    const normalizedClaim = normalize(claimText);
+    const directFactRelation = retrieved.some(({ source, fact }) => {
+      const value = normalize(fact.value);
+      return value.length >= 3 && normalizedClaim.includes(value)
+        && ((normalize(fact.attribute) === "ingredient" && /\b(?:made with|contains?|includes?)\b/.test(normalizedClaim))
+          || (normalize(fact.attribute) === "allergen" && /\b(?:contains?|may contain)\b/.test(normalizedClaim)))
+        && source.approvalState === "APPROVED";
+    });
+    const literalApprovedClaimMatch = retrieved.some(({ source, fact }) => {
+      const value = normalize(fact.value);
+      return source.kind === "APPROVED_CLAIM" && value.length >= 8 && normalizedClaim.includes(value);
+    });
     const evidenceQuantity = best ? parseQuantities(best.fact.statement)[0] : undefined;
     const quantityMatches = Boolean(evidenceQuantity && claimQuantities.some((q) => q.number === evidenceQuantity.number && q.unit[0] === evidenceQuantity.unit[0]));
     const isRisk = isAbsoluteRisk(claimText) || Boolean(rule && rule.severity === "HIGH");
@@ -524,6 +569,9 @@ export function reviewDraft(input: {
     } else if (injection) {
       status = "NEEDS_HUMAN"; severity = "REVIEW";
       explanation = "This text resembles an instruction embedded in submitted content. It is treated as untrusted data and cannot change review rules.";
+    } else if (citationFailures) {
+      status = "NEEDS_HUMAN"; severity = "REVIEW";
+      explanation = "A retrieved citation failed its source, version, scope or exact-quote check. The citation was excluded; a reviewer must inspect this claim.";
     } else if (conflict) {
       status = "CONFLICT"; severity = "HIGH";
       explanation = "Eligible approved sources at the same authority level disagree. The system will not choose a value automatically.";
@@ -538,9 +586,11 @@ export function reviewDraft(input: {
     } else if (claimQuantities.length && evidenceQuantity && !quantityMatches && claimQuantities.some((q) => q.unit[0] === evidenceQuantity.unit[0])) {
       status = "CONTRADICTED"; severity = "HIGH";
       explanation = `The draft states ${claimQuantities.map((q) => `${q.number} ${q.unit}`).join(", ")}; the highest-precedence approved source states ${evidenceQuantity.number} ${evidenceQuantity.unit}.`;
-    } else if (best.score >= 0.42 || quantityMatches) {
+    } else if (literalApprovedClaimMatch || directFactRelation || quantityMatches) {
       status = "SUPPORTED"; severity = "LOW";
-      explanation = `Supported by an applicable approved source: “${best.fact.statement}”`;
+      explanation = literalApprovedClaimMatch
+        ? `The draft includes wording from an applicable approved claim: “${best.fact.statement}”`
+        : `Supported by an applicable approved source: “${best.fact.statement}”`;
     } else {
       status = "NEEDS_HUMAN"; severity = "REVIEW";
       explanation = "Related approved information was found, but its support for this wording is uncertain. A reviewer should decide.";
@@ -552,7 +602,6 @@ export function reviewDraft(input: {
         : status === "NO_APPROVED_EVIDENCE" || status === "NEEDS_HUMAN"
           ? undefined
           : undefined;
-    const evidence = retrieved.slice(0, 3).map((x) => ({ source_id: x.source.id, source_version: x.source.version, quote: x.fact.statement, authority: x.source.authority, score: Number(x.score.toFixed(3)) }));
     return {
       finding_id: `F-${index + 1}-${stableHash(claimText).slice(0, 6)}`,
       review_id: reviewId,

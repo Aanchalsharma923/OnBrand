@@ -92,3 +92,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .profile-form-note { margin: 0; padding: 8px; border-radius: 5px; color: #7b887d; background: #f6f8f4; font-size: 7px; line-height: 1.55; }
 .profile-editor-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .profile-editor-actions .table-approve { padding: 7px 10px; }
+.draft-upload-row { display: flex; align-items: flex-start; gap: 9px; margin-top: 8px; }
+.draft-upload-button { min-height: 28px; flex: 0 0 auto; padding: 0 9px; font-size: 8px; }
+.draft-upload-button .icon { width: 12px; height: 12px; }
+.draft-upload-row > div { min-width: 0; color: #7b877d; font-size: 7px; line-height: 1.5; }
+.draft-upload-row small { display: block; margin-top: 2px; color: #9aa29a; font-size: 7px; }
+@media (max-width: 560px) { .draft-upload-row { align-items: stretch; flex-direction: column; }.draft-upload-button { align-self: flex-start; } }

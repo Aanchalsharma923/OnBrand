@@ -117,7 +117,7 @@ describe("OnBrand evidence review evaluation", () => {
   it("detects an equal-precedence conflict while both sources are within their effective period", () => {
     const product = seedSources.find((source) => source.id === "SRC-PRODUCT");
     if (!product) throw new Error("Product source fixture is missing.");
-    const activeThroughYearEnd = { ...product, id: "SRC-TERM-A", effectiveTo: "2026-12-31" };
+    const activeThroughYearEnd = { ...product, id: "SRC-TERM-A", effectiveTo: "2026-12-31", facts: product.facts.map((fact) => ({ ...fact, id: `TERM-A-${fact.id}`, sourceId: "SRC-TERM-A" })) };
     const conflictingSource = {
       ...activeThroughYearEnd,
       id: "SRC-TERM-B",

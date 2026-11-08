@@ -16,6 +16,7 @@ import {
   sourceSnapshotHash,
   sourceInjectionWarnings,
 } from "@/lib/onbrand";
+import { extractUploadedFile } from "@/lib/file-extraction";
 
 type View = "review" | "knowledge" | "insights";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
@@ -111,6 +112,8 @@ export default function Home() {
   const [review, setReview] = useState<Review | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<string | null>(null);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionStatus, setExtractionStatus] = useState("");
   const [toast, setToast] = useState("");
   const [comment, setComment] = useState("");
   const [showAudit, setShowAudit] = useState(false);
@@ -192,6 +195,32 @@ export default function Home() {
       return { ...next, hash: computeDraftHash(next) };
     });
     setLastDecision("");
+  }
+
+  async function handleDraftFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    setIsExtracting(true);
+    setExtractionStatus("Preparing file locally…");
+    try {
+      const extractedText = await extractUploadedFile(file, setExtractionStatus);
+      const nextVersion = Math.max(...versions.map((item) => item.version), draft.version) + 1;
+      const nextDraft = createDraft(extractedText, { ...draft, title: file.name, version: nextVersion });
+      setDraft(nextDraft);
+      setVersions((current) => [...current, nextDraft]);
+      setSelectedFinding(null);
+      setLastDecision("");
+      setExtractionStatus(`${file.name} · text extracted on this device. Proofread the extracted text before review.`);
+      announce("File text added as a new draft version. Proofread it, then run review.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "This file could not be read.";
+      setExtractionStatus(message);
+      announce(message);
+    } finally {
+      setIsExtracting(false);
+      input.value = "";
+    }
   }
 
   function saveVersion(): typeof draft {
@@ -509,6 +538,7 @@ export default function Home() {
               <div className="draft-meta"><span className="meta-chip"><span className="tiny-icon">▣</span>{draft.channel}</span><span className="meta-chip"><span className="tiny-icon">◌</span>{draft.product}</span><span className="meta-chip"><span className="tiny-icon">◷</span>{draft.audience}</span></div>
               <label className="sr-only" htmlFor="draft-content">Draft content</label>
               <textarea id="draft-content" className="draft-editor" value={draft.content} onChange={(event) => updateDraftContent(event.target.value)} placeholder="Paste or write draft copy to check it against approved brand knowledge…" />
+              <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload a file"}<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload a text, Word, PDF or image file" /></label><div aria-live="polite">{extractionStatus || "DOCX · PDF · images with OCR · TXT · Markdown · HTML · up to 10 MB"}<small>Files are read in your browser. OCR reads text only; its engine and language files load from jsDelivr, while your file stays here. Proofread imported text. Visual layout and logos are not checked.</small></div></div>
               <div className="editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span><button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>Save version</button><span className="saved-label"><span /> Saved locally</span></div>
               <div className="editor-callout"><span className="callout-symbol">i</span><span>Draft text is treated as untrusted content. Instructions inside a draft cannot change OnBrand’s review rules.</span></div>
               <div className="section-rule" />
@@ -534,11 +564,17 @@ export default function Home() {
               {selected ? <>
                 <div className="detail-claim">{selected.claim_text}</div>
                 <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">✳</span> WHY IT MATTERS</div><p>{selected.explanation}</p></div>
-                {review?.agentNotes?.length ? <div className="agent-panel"><div className="agent-panel-heading"><span className="panel-kicker">MULTI-AGENT ADVISORY</span><span>MODEL NOTES · NOT VERDICTS</span></div>{review.agentNotes.map((note) => <div className="agent-note" key={note.agent}><b>{note.agent}</b><p>{note.summary}</p></div>)}</div> : <div className="model-state-note"><span className="model-state-dot" /> Deterministic review mode · no model provider configured for this demo.</div>}
-                <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">▤</span> APPROVED EVIDENCE <span className="evidence-count">{selected.source_evidence.length}</span></div>
+                {review?.agentNotes?.length ? <div className="agent-panel"><div className="agent-panel-heading"><span className="panel-kicker">MULTI-AGENT ADVISORY</span><span>MODEL NOTES · NOT VERDICTS</span></div>{review.agentNotes.map((note) => <div className="agent-note" key={note.agent}><b>{note.agent}</b><p>{note.summary}</p></div>)}</div> : <div className="model-state-note"><span className="model-state-dot" />{modelDisclosure.startsWith("No model is configured") ? "Deterministic review mode · no model provider configured for this demo." : "Optional advisory panel unavailable · unresolved evidence claims are routed to human review."}</div>}
+                <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">▤</span> RETRIEVED SOURCES <span className="evidence-count">{selected.source_evidence.length}</span></div>
                   {selected.source_evidence.length ? selected.source_evidence.slice(0, 2).map((evidence, index) => {
                     const source = sources.find((s) => s.id === evidence.source_id);
-                    return <div className="evidence-card" key={`${evidence.source_id}-${evidence.source_version}-${index}`}><div className="evidence-source"><span className="source-file-icon">▤</span><span><b>{source?.title ?? evidence.source_id}</b><small>Approved source · v{evidence.source_version} · authority {evidence.authority}</small></span><span className="source-open">↗</span></div><blockquote>“{evidence.quote}”</blockquote></div>;
+                    const relation = evidence.citation_validation?.c5_relation ?? "NOT_RUN";
+                    const verificationLabel = relation === "SUPPORTS" ? "Semantic check agrees · supports claim"
+                      : relation === "PARTIALLY_SUPPORTS" ? "Semantic check agrees · partial support"
+                        : relation === "CONTRADICTS" ? "Semantic check agrees · contradicts claim"
+                          : relation === "DISAGREEMENT" ? "Not verified · independent checks unresolved"
+                            : "Approved source · semantic check not run";
+                    return <div className="evidence-card" key={`${evidence.source_id}-${evidence.source_version}-${index}`}><div className="evidence-source"><span className="source-file-icon">▤</span><span><b>{source?.title ?? evidence.source_id}</b><small>v{evidence.source_version} · authority {evidence.authority} · {verificationLabel}</small></span><span className="source-open">↗</span></div><blockquote>“{evidence.quote}”</blockquote></div>;
                   }) : <div className="no-evidence-card"><span>◌</span><p>No applicable approved evidence was found. Escalate or add an approved source.</p></div>}
                 </div>
                 {selected.suggestion && <div className="suggestion-card"><div className="suggestion-top"><span>✧</span><div><b>Suggested revision</b><small>Candidate · must pass full recheck</small></div></div><p>{selected.suggestion}</p><button className="suggestion-button" onClick={() => acceptSuggestion(selected)} disabled={!hasCurrentReview || selected.suggestion_state === "REJECTED"}><Icon name="check" /> Recheck & apply</button></div>}

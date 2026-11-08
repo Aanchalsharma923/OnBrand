@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has twenty focused checks, including atomic-clause spans, SHA-256 fingerprinting, suggestion grounding, source-import quarantine and route-level model-boundary fault injections:
+Run `npm run test`. The current set has twenty-five focused checks, including atomic-clause spans, SHA-256 fingerprinting, citation validation, two-pass semantic checks, suggestion grounding, API-side source quarantine and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -15,6 +15,9 @@ Run `npm run test`. The current set has twenty focused checks, including atomic-
 | Finding offsets | Each reported span maps back to the exact claim text in the reviewed draft |
 | Compound sentence coverage | Independent factual clauses are reviewed separately; only subject context is inherited, exact clause offsets are retained, and neighboring clause evidence cannot support the claim |
 | Multi-metric coverage gap | With multiple numeric claims plus another factual predicate, the predicate becomes a blocking `NEEDS_HUMAN` finding with its original span |
+| Citation C1–C4 validation | Every retrieved quote is checked against source identity, approved version/effective date, channel and exact source text; failures are excluded and block review |
+| Two-pass C5 verification | Independent differently worded, reordered passes must agree and return exact passage quotations; disagreement, provider failure or fabricated quotes route to human review |
+| Insufficient evidence | When both passes find the passages related but insufficient, no source is shown as proof and the status remains `NO_APPROVED_EVIDENCE` |
 | Suggested revision | Candidate is accepted only after a fresh complete review and cannot pass if it remains blocking |
 | Suggestion grounding gate | A freshly reviewed but unsupported replacement is rejected even when its finding is nonblocking |
 | Unsupported benefit | Mentioning the product name alone does not retrieve an unrelated product fact as evidence |
@@ -25,9 +28,9 @@ Run `npm run test`. The current set has twenty focused checks, including atomic-
 | Version fingerprints | Draft and source snapshots use 64-character SHA-256 hashes; digest matches the standard `abc` test vector |
 | Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
-| Imported prompt injection | A source containing instruction-like text is flagged for quarantine before maintainer approval |
+| Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
 
-**Latest run:** 21/21 automated checks passed on 8 Nov 2026. Twenty focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 26/26 automated checks passed on 8 Nov 2026. Twenty-five focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. Semantic-verifier tests stub the provider and prove output-contract behavior, not model accuracy. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -60,25 +63,26 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields; imported instruction-like text is quarantined | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
 | M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, SHA-256 content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
 | M3 — Claim extraction, spans and coverage | Sentence segmentation, separate numeric-claim extraction, predicate-clause splitting, subject-only retrieval context, original character offsets, and a regression-checked detector that routes an extra factual predicate after multiple numeric claims to human review | **Partial.** Broader linguistic coverage, multilingual text and diverse real-world drafts remain unvalidated. |
-| M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence and explicit conflict outcome | **Partial.** This is in-memory retrieval, not PostgreSQL FTS; the evidence-support decision uses deterministic heuristics, not the planned independent semantic verifier. |
-| M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No full independent C1–C5 citation verification harness or browser-level WCAG validation. |
+| M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence, explicit conflict outcome, C1–C4 checks, and an optional two-pass C5 verifier for free-text claims | **Partial.** Retrieval remains in memory rather than PostgreSQL FTS; the semantic model has not been independently accuracy-tested and is not configured in Vercel production. |
+| M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, C1–C4 mechanical citation checks, optional two-pass C5 relation checks, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No human-labelled citation-entailment benchmark or browser-level WCAG validation. |
 | M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline; it must return `SUPPORTED` with an approved citation; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
-| M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; source injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
+| M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; client-import and API-boundary source-injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 
-The target remains **10 Nov 2026**. OnBrand is deployed to Vercel production with [outcoded.xyz](https://outcoded.xyz) connected and [on-brand-zeta.vercel.app](https://on-brand-zeta.vercel.app) as the stable fallback. The latest production deployment for commit `1558dc8` is Ready. The fallback health endpoint returns HTTP 200. Vercel's assigned apex A record `216.198.79.1` is configured at Gen.xyz; public Google and Cloudflare resolvers previously returned that address, but the custom domain is still not reachable from this development machine, indicating resolver/edge propagation is not complete everywhere. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
+The target remains **10 Nov 2026**. OnBrand is deployed to Vercel production with [outcoded.xyz](https://outcoded.xyz) and [on-brand-zeta.vercel.app](https://on-brand-zeta.vercel.app) as the fallback. Both public health endpoints returned HTTP 200 on 8 Nov 2026, and public Google and Cloudflare DNS resolvers return Vercel's assigned apex A record `216.198.79.1`. The live deployment still needs to be checked against the newest commit after it is pushed. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
 
 ## Manual workflow observations
 
+- Browser import flow was checked with a generated DOCX (paragraphs), selectable-text PDF, and PNG image. DOCX paragraphs and PDF lines appeared as editable draft text; OCR output appeared as editable text and the UI now asks reviewers to proofread imported content before analysis. These are smoke checks of those exact sample files, not broad compatibility testing across office/PDF/image variants.
 - Review produced claim-level supported, source-conflict and contradicted statuses with source quotes.
 - A risky suggestion was rechecked, applied as a new draft version and reported as supported.
 - Review comments could be added and resolved.
 - Approval remained disabled while a blocking conflict remained.
 - Prompt-injection text was reported as `NEEDS_HUMAN` and treated as untrusted content.
 - The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
-- The Vercel production build completed a review of the synthetic draft through its assigned address: eight findings, including supported claims, a source conflict and two contradicted policy claims. Blocking findings remained visible and approval stayed gated. The homepage and `/api/health` returned HTTP 200 when routed directly to that address; ordinary access to the custom domain is still propagating.
+- An earlier Vercel production build completed a review of the synthetic draft through its assigned address: eight findings, including supported claims, a source conflict and two contradicted policy claims. Blocking findings remained visible and approval stayed gated. The homepage and `/api/health` returned HTTP 200 when routed directly to that address; ordinary access to the custom domain is still propagating. This observation predates the current source-quarantine and semantic-verifier changes.
 - A temporary Cloudflare preview is also available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not the production deployment.
-- The temporary preview uses locally hosted Ollama `qwen2.5:3b`: Advocate, Challenger and Policy/Risk run independently, then Judge synthesizes their notes. Live reviews returned all four notes in 15.1 seconds after unloading the model and 9.8 seconds warm. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to a model provider there.
+- The local app is configured to use locally hosted Ollama `qwen2.5:3b` for two semantic-verification passes and the four-role advisory panel. Semantic-pass regression tests stub the provider; real model accuracy and current latency for the expanded path are not yet measured. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to a model provider there.
 
 ## Targets for a larger labelled set
 
