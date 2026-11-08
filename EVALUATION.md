@@ -29,7 +29,23 @@ Run `npm run test`. The current set has sixteen focused checks, including source
 
 `src/lib/dev-set.test.ts` composes 20 synthetic drafts across social, web and email channels, with five labelled findings per draft (100 claim instances total). Its fixture bank covers supported facts, numeric contradictions, unsupported benefits, restricted claims, equal-authority bundle conflicts and injection text. The test checks expected status agreement, exact draft-span mapping, exact source quotation/version membership in the approved fixture, and blocking of expected high-risk findings.
 
-**Latest run:** 100/100 expected statuses; 100/100 exact span and approved source quote/version checks; 0/60 missed blocks on contradicted, conflict and injection instances. The 100 claim instances reuse a small set of controlled templates, so this verifies deterministic behavior against the seeded domain and must not be presented as general accuracy. It does not replace the planned B0 single-model baseline or an independently adjudicated set.
+**Latest run:** 100/100 expected statuses; 100/100 exact span and approved source quote/version checks; 0/60 missed blocks on contradicted, conflict and injection instances. The 100 claim instances reuse a small set of controlled templates, so this verifies deterministic behavior against the seeded domain and must not be presented as general accuracy. The B0 comparison below uses this same development set; it does not replace an independently adjudicated set.
+
+## B0 single-call RAG baseline
+
+`node scripts/run-b0-baseline.mjs` evaluates a plain single-call checker with simple lexical top-4 snippets. It has no structured fact matching, source-precedence resolution, mandatory code findings or separate citation verification. The run used the same local Ollama `qwen2.5:3b` model as the advisory panel. Raw inputs, outputs and measurements are saved in [`evaluation-results/b0-baseline-2026-11-08.json`](evaluation-results/b0-baseline-2026-11-08.json).
+
+| Measure | B0 baseline | OnBrand deterministic regression |
+| --- | ---: | ---: |
+| Claims with expected statuses | 100 | 100 |
+| Status agreement with builder-authored labels | 51/100 (51%) | 100/100 (100%) |
+| Expected blocking claims flagged as blocking | 24/60 (40%) | 60/60 (100%) |
+| Missed expected blocks | 36/60 | 0/60 |
+| Exact quote strings among nonempty quotes | 44/47 (93.6%); no code validation | 100/100 exact approved source quote/version membership |
+| Valid outputs / processed drafts | 20/20 valid JSON responses | 20/20 drafts processed |
+| Median / maximum latency per draft | 6.2 s / 7.7 s locally | Not directly comparable; deterministic engine only |
+
+The B0 set and expected labels are the same builder-authored, repeated-template development set used by the OnBrand regression test. This is a controlled engineering comparison, not an independent benchmark or proof of general accuracy. The latency is local-model-only and not a production service target. The baseline script intentionally allows a model-only review path so its omission and misclassification behavior can be observed; do not use it to approve real content.
 
 ## Round 1 M1–M8 delivery audit (8 Nov 2026)
 
@@ -44,7 +60,7 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No full independent C1–C5 citation verification harness or browser-level WCAG validation. |
 | M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline before application; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
-| M8 — Evaluation and security tests | 20-draft/100-claim synthetic set, injection and omission regressions, provider-outage failure injection | **Partial.** No B0 baseline, independent annotations, tenant-isolation test or persistent-service fault tests. |
+| M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; source injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 
 The target remains **10 Nov 2026**. Work since the Round 1 plan has added a working evidence review loop, versioned brand profile and route-level omission/outage tests. A production deployment with real authentication, tenant-scoped database and `outcoded.xyz` still depends on deployment and DNS access; the current machine is logged out of Vercel and has no PostgreSQL service or `DATABASE_URL` configured.
 
@@ -75,7 +91,7 @@ These are targets for future benchmark data, not current measured results:
 
 Before claiming benchmark accuracy, assemble a domain-labelled set with approved source snapshots, draft claims, expected statuses and adjudicated conflict outcomes; report per-status precision/recall and false-approval rate. Review cases that miss targets and update rules/retrieval before release.
 
-The planned 20-draft synthetic development set is implemented. The B0 single-model baseline, independent labels and tenant-isolation tests are not yet complete. Model omission and provider-outage behavior now have route-level fault-injection coverage, but multi-tenant database isolation cannot be tested until server-side identity and database persistence are connected. These checks verify prototype behavior only. No user-interview or reviewer-study results are claimed.
+The planned 20-draft synthetic development set and a measured B0 single-call baseline are implemented. Independent labels and tenant-isolation tests are not yet complete. Model omission and provider-outage behavior have route-level fault-injection coverage, but multi-tenant database isolation cannot be tested until server-side identity and database persistence are connected. These checks verify prototype behavior only. No user-interview or reviewer-study results are claimed.
 
 ## Boundaries
 
