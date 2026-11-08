@@ -54,7 +54,7 @@ These are targets for future benchmark data, not current measured results:
 
 Before claiming benchmark accuracy, assemble a domain-labelled set with approved source snapshots, draft claims, expected statuses and adjudicated conflict outcomes; report per-status precision/recall and false-approval rate. Review cases that miss targets and update rules/retrieval before release.
 
-The planned 20-draft development set, the B0 single-model baseline, independent labels, tenant-isolation tests and model fault-injection results are not yet complete. The ten checks above verify deterministic prototype behaviors only. No user-interview or reviewer-study results are claimed.
+The planned 20-draft synthetic development set is implemented, but the B0 single-model baseline, independent labels, tenant-isolation tests and model fault-injection results are not yet complete. The 12 focused regression cases and synthetic set verify deterministic prototype behavior only. No user-interview or reviewer-study results are claimed.
 
 ## Boundaries
 
