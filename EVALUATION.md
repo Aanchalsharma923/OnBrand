@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has fifteen focused checks, including route-level model-boundary fault injections:
+Run `npm run test`. The current set has sixteen focused checks, including source-import quarantine and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -21,8 +21,9 @@ Run `npm run test`. The current set has fifteen focused checks, including route-
 | HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
 | Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
+| Imported prompt injection | A source containing instruction-like text is flagged for quarantine before maintainer approval |
 
-**Latest run:** 16/16 automated checks passed on 8 Nov 2026. Fifteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 17/17 automated checks passed on 8 Nov 2026. Sixteen focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -36,7 +37,7 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 
 | Milestone | Current evidence | Status and remaining gap |
 | --- | --- | --- |
-| M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
+| M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields; imported instruction-like text is quarantined | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
 | M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
 | M3 — Claim extraction, spans and coverage | Sentence-level extraction, special splitting for multiple nutrition measures, original character offsets and span assertions | **Partial.** General multi-claim sentence decomposition and a separately validated uncovered-trigger detector are not implemented. |
 | M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence and explicit conflict outcome | **Partial.** This is in-memory retrieval, not PostgreSQL FTS; the evidence-support decision uses deterministic heuristics, not the planned independent semantic verifier. |

@@ -14,6 +14,7 @@ import {
   Source,
   recheckSuggestion,
   sourceSnapshotHash,
+  sourceInjectionWarnings,
 } from "@/lib/onbrand";
 
 type View = "review" | "knowledge" | "insights";
@@ -351,10 +352,14 @@ export default function Home() {
         if (!imported.every(isValidImportedSource)) throw new Error("Each source needs a valid owner, type, authority, effective date, channel and structured facts.");
         const ids = new Set(sources.map((source) => source.id));
         if (imported.some((source) => ids.has(source.id))) throw new Error("A source with the same ID already exists in this workspace.");
-        imported = imported.map((source) => ({ ...source, revokedAt: undefined, approvalState: "PENDING_REVIEW" as const, facts: source.facts.map((fact) => ({ ...fact, sourceId: source.id })) }));
+        imported = imported.map((source) => {
+          const normalized = { ...source, revokedAt: undefined, approvalState: "PENDING_REVIEW" as const, facts: source.facts.map((fact) => ({ ...fact, sourceId: source.id })) };
+          return { ...normalized, ingestionWarnings: sourceInjectionWarnings(normalized) };
+        });
         setSources((current) => [...current, ...imported]);
         setReview(null);
-        announce(`${imported.length} knowledge source${imported.length === 1 ? "" : "s"} imported. New reviews will use the updated knowledge snapshot.`);
+        const quarantined = imported.filter((source) => source.ingestionWarnings?.length).length;
+        announce(`${imported.length} knowledge source${imported.length === 1 ? "" : "s"} imported${quarantined ? `; ${quarantined} quarantined for embedded-instruction review` : ""}.`);
       } catch (error) {
         announce(error instanceof Error ? error.message : "Could not read this import.");
       }
@@ -368,9 +373,21 @@ export default function Home() {
       announce("Only a knowledge maintainer can approve a source.");
       return;
     }
+    if (sources.find((source) => source.id === sourceId)?.ingestionWarnings?.length) {
+      announce("This import is quarantined because it contains a possible embedded instruction. Remove it or resolve the content before approval.");
+      return;
+    }
     setSources((current) => current.map((source) => source.id === sourceId ? { ...source, approvalState: "APPROVED", version: source.version + 1 } : source));
     setReview(null);
     announce("Source approved as a new version. Previous review decisions are invalidated.");
+  }
+
+  function removeImportedSource(sourceId: string) {
+    if (role !== "maintainer") return;
+    setSources((current) => current.filter((source) => source.id !== sourceId));
+    setReview(null);
+    setLastDecision("");
+    announce("Imported source removed from the demo workspace.");
   }
 
   function beginProfileEdit() {
@@ -533,7 +550,7 @@ export default function Home() {
         </> : view === "knowledge" ? <>
           <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> APPROVED ORGANISATIONAL MEMORY</div><h1>Knowledge base</h1><p>Current, owned sources that ground this review.</p></div><label className={`primary-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Import sources<input type="file" accept=".json,.csv" onChange={handleImport} disabled={role !== "maintainer"} /></label></div>
           <div className="knowledge-summary"><div className="knowledge-stat"><span className="stat-mark">▤</span><div><b>{activeSources.length}</b><small>ACTIVE SOURCES</small></div></div><div className="knowledge-stat"><span className="stat-mark">◈</span><div><b>{activeSources.reduce((sum, source) => sum + source.facts.length, 0)}</b><small>APPROVED FACTS</small></div></div><div className="knowledge-stat"><span className="stat-mark">◎</span><div><b>1</b><small>BRAND PROFILE</small></div></div><div className="coverage-card"><div><b>Knowledge coverage</b><small>Seed set benchmark · 40 approved facts</small></div><div className="coverage-bar"><span style={{ width: `${Math.min(coverage, 100)}%` }} /></div><strong>{Math.min(coverage, 100)}%</strong></div></div>
-          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{source.facts.length} structured facts · {source.channels.slice(0, 2).join(", ")}</small></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
+          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); const quarantined = Boolean(source.ingestionWarnings?.length); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{quarantined ? "Possible embedded instruction · quarantined" : `${source.facts.length} structured facts · ${source.channels.slice(0, 2).join(", ")}`}</small></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : quarantined ? "Quarantined" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? quarantined ? <button className="comment-resolve" onClick={() => removeImportedSource(source.id)}>Remove</button> : <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
             <aside className="panel profile-panel"><span className="panel-kicker">SYNTHETIC CLIENT PROFILE</span><h2>Sample Foods</h2><p className="profile-intro">Fictional demo brand used to demonstrate OnBrand’s review workflow.</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Palette colors are stored as guidance; this MVP does not inspect images or design files.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small><div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div></div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
           </section>
           <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">DETERMINISTIC POLICY LAYER</span><h2>Review rules</h2></div><span className="rules-count">{seedRules.length} active rules</span></div><div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · approved by Brand and Legal</small></div></div>)}</div></section>

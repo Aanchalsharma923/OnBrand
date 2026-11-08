@@ -20,6 +20,7 @@ export type Source = {
   channels: string[];
   owner: string;
   approvalState: "APPROVED" | "PENDING_REVIEW" | "REVOKED";
+  ingestionWarnings?: string[];
   facts: Fact[];
 };
 
@@ -261,6 +262,11 @@ function parseQuantities(text: string): Array<{ number: string; unit: string }> 
 
 function detectInjection(text: string): boolean {
   return /ignore (all )?(previous|prior|above) instructions|reveal (the )?(system|hidden) prompt|override (the )?(system|safety|brand) policy|send .*password/i.test(text);
+}
+
+export function sourceInjectionWarnings(source: Source): string[] {
+  const text = [source.title, ...source.facts.flatMap((fact) => [fact.subject, fact.attribute, fact.value, fact.statement])].join("\n");
+  return detectInjection(text) ? ["Possible embedded instruction detected. Keep this source quarantined until a maintainer verifies or removes it."] : [];
 }
 
 function isAbsoluteRisk(text: string): boolean {
