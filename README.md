@@ -8,7 +8,7 @@ OnBrand analyses and recommends. It does **not** publish content or execute exte
 
 ## Three improvements visible in the build
 
-1. **Evidence is inspectable.** Findings show the retrieved approved source, version and quotation. The current prototype uses deterministic lexical/trigram and structured checks; semantic citation entailment has not been independently validated.
+1. **Evidence is inspectable.** Findings show the retrieved approved source, version and quotation. Retrieval combines lexical/trigram ranking with a separate attribute/value topic gate, so a product-name match alone cannot substantiate an unrelated benefit. Semantic citation entailment has not been independently validated.
 2. **Uncertainty stays distinct.** OnBrand separates unsupported claims, contradictions and same-precedence source conflicts; unresolved high-risk items keep approval blocked.
 3. **A suggestion must earn acceptance.** A proposed edit is checked against the complete review pipeline again, saved as a new version, and remains subject to a human decision tied to the reviewed draft and source snapshot.
 
@@ -41,7 +41,7 @@ Browser editor and review workspace
             └─ statuses, quotations and approval gates remain code-controlled
 ```
 
-`src/lib/onbrand.ts` contains the finding contract, demo source/fact model, retrieval, precedence, status assignment, injection detection, accessibility checks, and suggestion recheck. Each finding carries a stable ID, source draft/version/hash, exact character offsets, evidence status, severity, blocking flag, explanation, source IDs/versions/quotes, and optional suggestion state. `src/app/api/reviews/route.ts` validates incoming data and recomputes the draft fingerprint before analysis. `db/0001_initial.sql` and `src/lib/schema.ts` document the planned PostgreSQL schema and row-scope policies; they are **not connected to the demo UI** without a verified authentication layer and database setup.
+`src/lib/onbrand.ts` contains the finding contract, demo source/fact model, retrieval, precedence, status assignment, injection detection, accessibility checks, and suggestion recheck. Retrieval first requires overlap with fact attributes/values after removing product-subject terms, then uses lexical/trigram ranking to order relevant approved sources. Each finding carries a stable ID, source draft/version/hash, exact character offsets, evidence status, severity, blocking flag, explanation, source IDs/versions/quotes, and optional suggestion state. `src/app/api/reviews/route.ts` validates incoming data and recomputes the draft fingerprint before analysis. `db/0001_initial.sql` and `src/lib/schema.ts` document the planned PostgreSQL schema and row-scope policies; they are **not connected to the demo UI** without a verified authentication layer and database setup.
 
 ### Evidence and precedence
 

@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has ten deterministic checks grouped around these expected behaviors:
+Run `npm run test`. The current set has twelve deterministic checks grouped around these expected behaviors:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -14,10 +14,12 @@ Run `npm run test`. The current set has ten deterministic checks grouped around 
 | Finite validity periods | Equal-precedence sources still conflict when both are within their effective dates |
 | Finding offsets | Each reported span maps back to the exact claim text in the reviewed draft |
 | Suggested revision | Candidate is accepted only after a fresh complete review and cannot pass if it remains blocking |
+| Unsupported benefit | Mentioning the product name alone does not retrieve an unrelated product fact as evidence |
+| Evidence topic match | A claim that matches an approved fact's attribute and value still retrieves the supporting quote |
 | Knowledge snapshot change | Changing an approved fact changes the report snapshot and invalidates a prior decision |
 | HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
 
-**Latest run:** 10/10 automated checks passed on the synthetic seed dataset on 8 Nov 2026. These are builder-authored regression checks, not an independently labelled benchmark and not a claim of real-world accuracy.
+**Latest run:** 12/12 automated checks passed on the synthetic seed dataset on 8 Nov 2026. These are builder-authored regression checks, not an independently labelled benchmark and not a claim of real-world accuracy.
 
 ## Manual workflow observations
 

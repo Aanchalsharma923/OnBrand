@@ -309,11 +309,20 @@ function htmlAccessibilityChecks(content: string): Array<{ label: string; start:
 function retrieve(claim: string, sources: Source[], channel: string, date: string) {
   const candidates = sources.filter((s) => eligible(s, channel, date)).flatMap((source) => source.facts.map((fact) => ({ source, fact })));
   const scored = candidates.map((candidate) => {
+    // A product-name match alone is not evidence for an arbitrary benefit. Require
+    // topical overlap with the fact's attribute/value before ranking its citation.
+    const evidenceTopic = words(`${candidate.fact.attribute} ${candidate.fact.value} ${candidate.fact.unit ?? ""}`);
+    const subjectWords = words(candidate.fact.subject);
+    const anchors = [...evidenceTopic].filter((word) => !subjectWords.has(word));
+    const claimWords = words(claim);
+    // A shared subject term (for example, "oat" in the product name) is not an
+    // attribute/value match and cannot substantiate an unrelated benefit.
+    const topicScore = anchors.length ? anchors.filter((word) => claimWords.has(word)).length / anchors.length : 0;
     const lexical = lexicalScore(claim, candidate.fact.statement);
     const trigram = trigramScore(claim, candidate.fact.statement);
     const score = 0.65 * lexical + 0.35 * trigram;
-    return { ...candidate, score };
-  }).filter((candidate) => candidate.score > 0.12);
+    return { ...candidate, score, topicScore };
+  }).filter((candidate) => candidate.score > 0.12 && candidate.topicScore > 0.2);
   const key = (candidate: (typeof scored)[number]) => `${candidate.source.id}\u001f${candidate.fact.id}`;
   const lexicalRanks = new Map(scored.filter((candidate) => candidate.score > 0.12 && lexicalScore(claim, candidate.fact.statement) > 0.12)
     .slice().sort((a, b) => lexicalScore(claim, b.fact.statement) - lexicalScore(claim, a.fact.statement) || b.score - a.score)
