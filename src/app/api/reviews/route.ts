@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createDraft, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash, type Draft, type Source } from "../../../lib/onbrand";
+import { createDraft, initialDraft, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash, type Draft, type Source } from "../../../lib/onbrand";
 import { z } from "zod";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });
@@ -34,12 +34,15 @@ export async function POST(request: Request) {
     const sources = body.sources as Source[] | undefined;
     // Never trust caller-supplied hashes: the server recomputes the content fingerprint.
     const safeDraft = createDraft(draft.content, { ...draft });
-    const submittedSources = sources?.length ? sources : seedSources;
+    // Demo fixtures belong only to the canonical demo workspace. An explicitly
+    // empty source list for a customer workspace means there is no evidence.
+    const isDemoWorkspace = draft.id === initialDraft.id;
+    const submittedSources = sources ?? (isDemoWorkspace ? seedSources : []);
     const quarantinedSources = submittedSources.filter((source) => sourceInjectionWarnings(source).length > 0);
     const quarantinedIds = new Set(quarantinedSources.map((source) => source.id));
     // The API must not trust a browser-supplied APPROVED flag for instruction-bearing content.
     const approvedSources = submittedSources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt && !quarantinedIds.has(source.id));
-    const review = reviewDraft({ draft: safeDraft, sources: approvedSources, includeDemoRules: body.includeDemoRules ?? true });
+    const review = reviewDraft({ draft: safeDraft, sources: approvedSources, includeDemoRules: isDemoWorkspace && (body.includeDemoRules ?? true) });
     for (const source of quarantinedSources) {
       review.findings.push({
         finding_id: `F-SOURCE-QUARANTINE-${stableHash(source.id).slice(0, 8)}`, review_id: review.id, draft_id: safeDraft.id,

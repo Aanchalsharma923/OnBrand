@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../../app/api/reviews/route";
-import { initialDraft, reviewDraft, seedSources } from "../onbrand";
+import { createDraft, initialDraft, reviewDraft, seedSources, sourceSnapshotHash } from "../onbrand";
 
 const completion = (summary: string) => new Response(JSON.stringify({
   id: "mock-completion",
@@ -65,5 +65,20 @@ describe("public deterministic review boundary", () => {
     expect(quarantine.explanation).toContain("excluded it from this review");
     expect(body.review.findings.flatMap((finding: { source_evidence: Array<{ source_id: string }> }) => finding.source_evidence)
       .some((evidence: { source_id: string }) => evidence.source_id === injectedSource.id)).toBe(false);
+  });
+
+  it("keeps demo sources and rules out of an own-brand review even if the caller requests them", async () => {
+    const draft = createDraft("Northstar is sugar free.", { ...initialDraft, id: "OWN-NORTHSTAR-1", product: "Northstar" });
+    const response = await POST(new Request("http://localhost/api/reviews", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ draft, sources: [], includeDemoRules: true, useAdvisoryModel: true }),
+    }));
+    const body = await response.json();
+    const evidence = body.review.findings.flatMap((finding: { source_evidence: Array<{ source_id: string }> }) => finding.source_evidence);
+
+    expect(response.status).toBe(200);
+    expect(body.review.sourceSnapshotHash).toBe(sourceSnapshotHash([]));
+    expect(evidence).toHaveLength(0);
+    expect(body.review.findings.some((finding: { evidence_status: string }) => finding.evidence_status === "CONTRADICTED")).toBe(false);
   });
 });

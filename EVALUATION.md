@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has thirty-four focused checks, including atomic-clause spans, SHA-256 fingerprinting, citation validation, two-pass semantic checks, suggestion grounding, API-side source quarantine, text-file import limits and route-level model-boundary fault injections:
+Run `npm run test`. The current set has thirty-three checks, including atomic-clause spans, SHA-256 fingerprinting, citation validation, two-pass semantic checks, suggestion grounding, API-side source quarantine, text-file import limits and route-level model-boundary fault injections:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -31,7 +31,7 @@ Run `npm run test`. The current set has thirty-four focused checks, including at
 | Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
 | Browser file imports | TXT, Markdown and HTML content is retained as editable draft text; unsupported, oversized text and video files are rejected before parsing |
 
-**Latest run:** 32/32 automated checks passed on 8 Nov 2026. Thirty-one focused checks and one 20-draft synthetic development-set test ran. An API regression verifies that public reviews stay deterministic even when a provider is configured and a browser requests model use. The video test verifies the 50 MB limit before decode; it does not prove real MP4/WebM frame OCR. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 33/33 automated checks passed on 8 Nov 2026. Thirty-two focused checks and one 20-draft synthetic development-set test ran. API regressions verify that public reviews stay deterministic even when a provider is configured and a browser requests model use, and that own-brand requests cannot inherit demo rules or evidence. The video test verifies the 50 MB limit before decode; it does not prove real MP4/WebM frame OCR. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
