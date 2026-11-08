@@ -65,7 +65,7 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
 | M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; source injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 
-The target remains **10 Nov 2026**. Work since the Round 1 plan has added a working evidence review loop, versioned brand profile and route-level omission/outage tests. A production deployment with real authentication, tenant-scoped database and `outcoded.xyz` still depends on deployment and DNS access; the current machine is logged out of Vercel and has no PostgreSQL service or `DATABASE_URL` configured.
+The target remains **10 Nov 2026**. OnBrand is deployed to Vercel production at [outcoded.xyz](https://outcoded.xyz), with [on-brand-zeta.vercel.app](https://on-brand-zeta.vercel.app) as the stable fallback. Vercel reports the production deployment Ready; its health endpoint and homepage returned HTTP 200 when routed to Vercel's assigned address. Gen.xyz's apex A record is configured to `216.198.79.1`, and public Google and Cloudflare resolvers returned that address. Some local recursive resolvers still returned the former parking address during propagation. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
 
 ## Manual workflow observations
 
@@ -75,9 +75,9 @@ The target remains **10 Nov 2026**. Work since the Round 1 plan has added a work
 - Approval remained disabled while a blocking conflict remained.
 - Prompt-injection text was reported as `NEEDS_HUMAN` and treated as untrusted content.
 - The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
-- The deployed preview returned a seven-claim report: five supported claims, one same-authority source conflict and one contradicted policy claim. The two high-severity findings remain unresolved and block approval.
-- A temporary public preview is available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not a production deployment.
-- The public preview uses locally hosted Ollama `qwen2.5:3b`: Advocate, Challenger and Policy/Risk run independently, then Judge synthesizes their notes. Live reviews returned all four notes in 15.1 seconds after unloading the model and 9.8 seconds warm. The model notes did not alter deterministic statuses or approval gates. Failure injection for the provider path is still outstanding.
+- The live Vercel build at [outcoded.xyz](https://outcoded.xyz) completed a production review of the synthetic draft: eight findings, including supported claims, a source conflict and two contradicted policy claims. Blocking findings remained visible and approval stayed gated. The homepage and `/api/health` both returned HTTP 200.
+- A temporary Cloudflare preview is also available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not the production deployment.
+- The temporary preview uses locally hosted Ollama `qwen2.5:3b`: Advocate, Challenger and Policy/Risk run independently, then Judge synthesizes their notes. Live reviews returned all four notes in 15.1 seconds after unloading the model and 9.8 seconds warm. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to a model provider there.
 
 ## Targets for a larger labelled set
 
