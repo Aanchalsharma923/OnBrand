@@ -462,9 +462,37 @@ export function reviewDraft(input: {
         ...segment,
         context: raw,
         retrievalText: index > 0 && subjectContext ? `${subjectContext} ${segment.text}` : segment.text,
+        coverageGap: false as const,
       }));
     }
-    return metrics.map((metric) => ({ text: metric[0].trim(), start: base + (metric.index ?? 0), end: base + (metric.index ?? 0) + metric[0].length, context: raw, retrievalText: metric[0].trim() }));
+    const metricClaims = metrics.map((metric) => ({ text: metric[0].trim(), start: base + (metric.index ?? 0), end: base + (metric.index ?? 0) + metric[0].length, context: raw, retrievalText: metric[0].trim(), coverageGap: false as const }));
+    const segments: Array<{ text: string; start: number; end: number }> = [];
+    const addSegment = (from: number, to: number) => {
+      const segment = raw.slice(from, to);
+      const text = segment.trim();
+      if (!text) return;
+      const leading = segment.length - segment.trimStart().length;
+      segments.push({ text, start: base + from + leading, end: base + from + leading + text.length });
+    };
+    const predicateBoundary = /\b(?:and|but|while)\s+(?=(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b)/gi;
+    let segmentStart = 0;
+    for (const boundary of raw.matchAll(predicateBoundary)) {
+      const boundaryStart = boundary.index ?? segmentStart;
+      addSegment(segmentStart, boundaryStart);
+      segmentStart = boundaryStart + boundary[0].length;
+    }
+    addSegment(segmentStart, raw.length);
+    const uncoveredFacts = segments.filter((segment) => {
+      const hasFactualPredicate = /\b(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b/i.test(segment.text);
+      const overlapsMetric = metricClaims.some((metric) => segment.start < metric.end && segment.end > metric.start);
+      return hasFactualPredicate && !overlapsMetric;
+    }).map((segment) => ({
+      ...segment,
+      context: raw,
+      retrievalText: segment.text,
+      coverageGap: true as const,
+    }));
+    return [...metricClaims, ...uncoveredFacts];
   });
   const findings: Finding[] = claims.map((claim, index) => {
     const claimText = claim.text;
@@ -490,7 +518,10 @@ export function reviewDraft(input: {
     let status: EvidenceStatus;
     let explanation: string;
     let severity: Severity = "LOW";
-    if (injection) {
+    if (claim.coverageGap) {
+      status = "NEEDS_HUMAN"; severity = "REVIEW";
+      explanation = "A factual predicate appears outside the atomic claims extracted from this sentence. Review it manually before approval.";
+    } else if (injection) {
       status = "NEEDS_HUMAN"; severity = "REVIEW";
       explanation = "This text resembles an instruction embedded in submitted content. It is treated as untrusted data and cannot change review rules.";
     } else if (conflict) {

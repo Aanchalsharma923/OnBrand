@@ -157,6 +157,18 @@ describe("OnBrand evidence review evaluation", () => {
     expect(findings[1].source_evidence.some((evidence) => evidence.quote.includes("contains oats"))).toBe(false);
   });
 
+  it("flags a factual clause omitted after multiple numeric claims", () => {
+    const content = "Each serving has 6 g protein and 4 g added sugar and improves focus.";
+    const draft = createDraft(content);
+    const findings = reviewDraft({ draft }).findings;
+    const omittedBenefit = findings.find((finding) => finding.claim_text === "improves focus.");
+    expect(omittedBenefit).toBeDefined();
+    expect(content.slice(omittedBenefit!.start, omittedBenefit!.end)).toBe(omittedBenefit!.claim_text);
+    expect(omittedBenefit!.evidence_status).toBe("NEEDS_HUMAN");
+    expect(omittedBenefit!.blocking_for_review).toBe(true);
+    expect(omittedBenefit!.explanation).toContain("outside the atomic claims");
+  });
+
   it("accepts a suggested revision only after a full fresh review", () => {
     const draft = initialDraft;
     const report = reviewDraft({ draft });
