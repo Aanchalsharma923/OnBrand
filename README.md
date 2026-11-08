@@ -17,7 +17,7 @@ OnBrand analyses and recommends. It does **not** publish content or execute exte
 1. Open the demo and inspect the draft, channel and review findings.
 2. Select a finding to see its precise draft span, status, explanation and approved source quote.
 3. Edit the draft or select **Recheck & apply** on an eligible suggestion. OnBrand creates a new content version and runs a fresh review.
-4. Add or resolve a human review comment. Switch to the demo maintainer role to import a JSON or CSV knowledge source; imported material stays pending until approved.
+4. Add or resolve a human review comment. Switch to the demo maintainer role to import a JSON or CSV knowledge source; imported material stays pending until approved. In the Knowledge base, maintainers can also edit the synthetic brand voice, audience, avoided wording and palette. Saving creates an approved knowledge version, archives the previous one and invalidates existing review decisions; profile-specific avoided wording is checked in new reviews.
 5. Review the current version as a reviewer. Approval stays disabled while the report is stale or blocking findings remain.
 6. Use **Reset demo** to return to the initial workspace.
 

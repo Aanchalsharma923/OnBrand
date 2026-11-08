@@ -2,7 +2,7 @@
 
 ## Automated deterministic regression set
 
-Run `npm run test`. The current set has twelve deterministic checks grouped around these expected behaviors:
+Run `npm run test`. The current set has thirteen focused deterministic checks grouped around these expected behaviors:
 
 | Evaluation case | Expected result |
 | --- | --- |
@@ -16,10 +16,11 @@ Run `npm run test`. The current set has twelve deterministic checks grouped arou
 | Suggested revision | Candidate is accepted only after a fresh complete review and cannot pass if it remains blocking |
 | Unsupported benefit | Mentioning the product name alone does not retrieve an unrelated product fact as evidence |
 | Evidence topic match | A claim that matches an approved fact's attribute and value still retrieves the supporting quote |
+| Brand profile rule | An approved profile's avoided terms are checked in new reviews |
 | Knowledge snapshot change | Changing an approved fact changes the report snapshot and invalidates a prior decision |
 | HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
 
-**Latest run:** 13/13 automated checks passed on 8 Nov 2026, including the 20-draft synthetic development set described below. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 14/14 automated checks passed on 8 Nov 2026, including the 20-draft synthetic development set described below. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -37,7 +38,7 @@ Run `npm run test`. The current set has twelve deterministic checks grouped arou
 - The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
 - The deployed preview returned a seven-claim report: five supported claims, one same-authority source conflict and one contradicted policy claim. The two high-severity findings remain unresolved and block approval.
 - A temporary public preview is available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not a production deployment.
-- The public preview uses locally hosted Ollama `qwen2.5:3b`: Advocate, Challenger and Policy/Risk run independently, then Judge synthesizes their notes. A cold-start live review returned all four notes in 15.1 seconds; a warm one-claim review returned in 9.8 seconds. The model notes did not alter deterministic statuses or approval gates. Failure injection for the provider path is still outstanding.
+- The public preview uses locally hosted Ollama `qwen2.5:3b`: Advocate, Challenger and Policy/Risk run independently, then Judge synthesizes their notes. Live reviews returned all four notes in 15.1 seconds after unloading the model and 9.8 seconds warm. The model notes did not alter deterministic statuses or approval gates. Failure injection for the provider path is still outstanding.
 
 ## Targets for a larger labelled set
 

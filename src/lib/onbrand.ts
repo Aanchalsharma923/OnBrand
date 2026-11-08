@@ -153,7 +153,7 @@ export const seedSources: Source[] = [
     ["Sample Foods", "preferred wording", "snack", ""],
     ["Sample Foods", "avoid wording", "miracle, guilt-free, guaranteed", ""],
     ["Sample Foods", "tone", "clear and encouraging; never medical or absolute", ""],
-    ["Sample Foods", "visual palette", "deep forest green, oat cream and cocoa", ""],
+    ["Sample Foods", "visual palette", "#183f35, #f2ead9, #6b4434", ""],
     ["Social", "format", "short, direct copy with a clear call to action", ""],
     ["Web", "format", "include product detail and serving context", ""],
     ["Email", "format", "state the offer and eligibility clearly", ""],
@@ -347,7 +347,7 @@ function retrieve(claim: string, sources: Source[], channel: string, date: strin
   return ranked.slice(0, 5);
 }
 
-function ruleFinding(claim: string, context: string): { label: string; severity: Severity } | undefined {
+function ruleFinding(claim: string, context: string, sources: Source[], channel: string, date: string): { label: string; severity: Severity } | undefined {
   const normalizedClaim = normalize(claim);
   for (const rule of seedRules) {
     if (rule.id === "R-09" && /sample foods oat bites/i.test(context)) continue;
@@ -358,6 +358,12 @@ function ruleFinding(claim: string, context: string): { label: string; severity:
       return { label: rule.label, severity: /R-01|R-02|R-05|R-06|R-07|R-13/.test(rule.id) ? "HIGH" : "MEDIUM" };
     }
   }
+  const avoidedTerms = sources.filter((source) => eligible(source, channel, date))
+    .flatMap((source) => source.facts.filter((fact) => normalize(fact.attribute) === "avoid wording")
+      .flatMap((fact) => fact.value.split(/[,;|]/).map((term) => normalize(term.trim())).filter(Boolean)));
+  const normalizedWithBoundaries = ` ${normalizedClaim} `;
+  const matchedAvoidance = avoidedTerms.find((term) => normalizedWithBoundaries.includes(` ${term} `));
+  if (matchedAvoidance) return { label: `Avoid brand wording: “${matchedAvoidance}”`, severity: "MEDIUM" };
   return undefined;
 }
 
@@ -399,7 +405,7 @@ export function reviewDraft(input: {
     const conflict = Boolean(firstRelevant && !multiValueAttributes.has(normalize(firstRelevant.fact.attribute)) && differingValues.size > 1);
     const best = sortedByAuthority[0] ?? firstRelevant;
     const injection = detectInjection(claimText);
-    const rule = ruleFinding(claimText, claim.context);
+    const rule = ruleFinding(claimText, claim.context, sources, draft.channel, draft.publicationDate);
     const claimQuantities = parseQuantities(claimText);
     const evidenceQuantity = best ? parseQuantities(best.fact.statement)[0] : undefined;
     const quantityMatches = Boolean(evidenceQuantity && claimQuantities.some((q) => q.number === evidenceQuantity.number && q.unit[0] === evidenceQuantity.unit[0]));

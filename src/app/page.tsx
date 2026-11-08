@@ -17,6 +17,7 @@ import {
 } from "@/lib/onbrand";
 
 type View = "review" | "knowledge" | "insights";
+type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
 const storageKey = "onbrand-demo-v1";
 const statusLabel: Record<Finding["evidence_status"], string> = {
   SUPPORTED: "Supported",
@@ -115,6 +116,8 @@ export default function Home() {
   const [lastDecision, setLastDecision] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [modelDisclosure, setModelDisclosure] = useState("OnBrand's evidence statuses, citations and approval gates are code-generated. A configured model may add advisory notes; people make the decision.");
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
 
   useEffect(() => {
     let restored: { draft?: typeof draft; versions?: typeof versions; sources?: Source[]; review?: Review; role?: Role; lastDecision?: string } | undefined;
@@ -149,6 +152,13 @@ export default function Home() {
     conflicts: findings.filter((f) => f.evidence_status === "CONFLICT").length,
     unsupported: findings.filter((f) => f.evidence_status === "NO_APPROVED_EVIDENCE").length,
   }), [findings]);
+  const currentProfileSource = sources.find((source) => source.id === "SRC-VOICE" && !source.revokedAt);
+  const profileValue = (attribute: string, fallback: string) => currentProfileSource?.facts.find((fact) => fact.attribute === attribute)?.value ?? fallback;
+  const profileVoice = profileValue("voice", "warm, practical and curious");
+  const profileAudience = profileValue("audience", "busy adults looking for convenient snacks");
+  const profileAvoidTerms = profileValue("avoid wording", "miracle, guilt-free, guaranteed").split(/[,;|]/).map((term) => term.trim()).filter(Boolean);
+  const parsedProfilePalette = profileValue("visual palette", "#183f35, #f2ead9, #6b4434").split(/[,;|]/).map((color) => color.trim()).filter((color) => /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(color));
+  const profilePalette = parsedProfilePalette.length >= 3 ? parsedProfilePalette : ["#183f35", "#f2ead9", "#6b4434"];
 
   function announce(message: string) {
     setToast(message);
@@ -363,6 +373,79 @@ export default function Home() {
     announce("Source approved as a new version. Previous review decisions are invalidated.");
   }
 
+  function beginProfileEdit() {
+    if (role !== "maintainer") {
+      announce("Switch the demo role to Maintainer to edit the brand profile.");
+      return;
+    }
+    setProfileForm({
+      voice: profileVoice,
+      audience: profileAudience,
+      avoidWording: profileAvoidTerms.join(", "),
+      palette: profilePalette.join(", "),
+    });
+    setProfileEditing(true);
+  }
+
+  function saveBrandProfile() {
+    if (role !== "maintainer" || !currentProfileSource) {
+      announce("A maintainer role and current profile source are required.");
+      return;
+    }
+    const voice = profileForm.voice.trim();
+    const audience = profileForm.audience.trim();
+    const avoidWording = profileForm.avoidWording.split(/[,;|]/).map((term) => term.trim()).filter(Boolean);
+    const palette = profileForm.palette.split(/[,;|]/).map((color) => color.trim());
+    if (!voice || voice.length > 200 || !audience || audience.length > 200 || avoidWording.length > 12 || avoidWording.some((term) => term.length > 60)) {
+      announce("Add a voice and audience (200 characters max); list up to 12 avoided terms.");
+      return;
+    }
+    if (palette.length < 3 || palette.length > 6 || palette.some((color) => !/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(color))) {
+      announce("Enter 3 to 6 brand colors as hex codes, separated by commas.");
+      return;
+    }
+    const values = new Map<string, string>([
+      ["voice", voice],
+      ["audience", audience],
+      ["avoid wording", avoidWording.join(", ")],
+      ["visual palette", palette.join(", ")],
+    ]);
+    const previous = currentProfileSource;
+    const version = previous.version + 1;
+    const now = new Date().toISOString();
+    const archiveId = `${previous.id}-ARCHIVE-V${previous.version}`;
+    const archived: Source = {
+      ...previous,
+      id: archiveId,
+      title: `${previous.title} · archived v${previous.version}`,
+      approvalState: "REVOKED",
+      revokedAt: now,
+      facts: previous.facts.map((fact, index) => ({ ...fact, id: `${archiveId}-F${index + 1}`, sourceId: archiveId })),
+    };
+    const nextSource: Source = {
+      ...previous,
+      version,
+      effectiveFrom: now.slice(0, 10),
+      approvalState: "APPROVED",
+      revokedAt: undefined,
+      facts: previous.facts.map((fact, index) => {
+        const value = values.get(fact.attribute) ?? fact.value;
+        return {
+          ...fact,
+          id: `${previous.id}-V${version}-F${index + 1}`,
+          sourceId: previous.id,
+          value,
+          statement: `${fact.subject}: ${fact.attribute} — ${value}.`,
+        };
+      }),
+    };
+    setSources((current) => [...current.map((source) => source.id === previous.id ? nextSource : source), archived]);
+    setReview(null);
+    setLastDecision("");
+    setProfileEditing(false);
+    announce(`Brand profile saved as approved version v${version}. Earlier reviews need a fresh check.`);
+  }
+
   const activeSources = sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt);
   const coverage = Math.round((activeSources.reduce((sum, source) => sum + source.facts.length, 0) / 40) * 100);
 
@@ -381,7 +464,6 @@ export default function Home() {
         </nav>
         <div className="sidebar-spacer" />
         <div className="safe-note"><div className="safe-icon"><span /></div><div><b>Human in control</b><small>OnBrand reviews and recommends. Your team makes the decision.</small></div></div>
-        <button className="nav-item settings-link" onClick={() => announce("Workspace settings are planned for the next build milestone.")}><Icon name="settings" /> Settings <span className="soon-tag">SOON</span></button>
         <div className="profile-row"><div className="person-avatar">AS</div><div className="profile-copy"><b>{role === "creator" ? "Siddhesh Songare" : role === "maintainer" ? "Knowledge maintainer" : "Aanchal Sharma"}</b><small>{role === "creator" ? "Creator" : role === "maintainer" ? "Maintainer" : "Reviewer"}</small></div><button className="more-button" aria-label="Profile options">···</button></div>
       </aside>
 
@@ -451,8 +533,8 @@ export default function Home() {
         </> : view === "knowledge" ? <>
           <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> APPROVED ORGANISATIONAL MEMORY</div><h1>Knowledge base</h1><p>Current, owned sources that ground this review.</p></div><label className={`primary-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Import sources<input type="file" accept=".json,.csv" onChange={handleImport} disabled={role !== "maintainer"} /></label></div>
           <div className="knowledge-summary"><div className="knowledge-stat"><span className="stat-mark">▤</span><div><b>{activeSources.length}</b><small>ACTIVE SOURCES</small></div></div><div className="knowledge-stat"><span className="stat-mark">◈</span><div><b>{activeSources.reduce((sum, source) => sum + source.facts.length, 0)}</b><small>APPROVED FACTS</small></div></div><div className="knowledge-stat"><span className="stat-mark">◎</span><div><b>1</b><small>BRAND PROFILE</small></div></div><div className="coverage-card"><div><b>Knowledge coverage</b><small>Seed set benchmark · 40 approved facts</small></div><div className="coverage-bar"><span style={{ width: `${Math.min(coverage, 100)}%` }} /></div><strong>{Math.min(coverage, 100)}%</strong></div></div>
-          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{source.facts.length} structured facts · {source.channels.slice(0, 2).join(", ")}</small></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={source.approvalState === "APPROVED" ? "validity-active" : "validity-revoked"}><i />{source.approvalState === "APPROVED" ? "Approved" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>)}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
-            <aside className="panel profile-panel"><span className="panel-kicker">SYNTHETIC CLIENT PROFILE</span><h2>Sample Foods</h2><p className="profile-intro">Fictional demo brand used to demonstrate OnBrand’s review workflow.</p><div className="profile-field"><small>VOICE</small><b>Warm · practical · curious</b></div><div className="profile-field"><small>AUDIENCE</small><b>Busy adults seeking convenient snacks</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags"><span>miracle</span><span>guilt-free</span><span>guaranteed</span></div></div><div className="profile-field"><small>APPROVED PALETTE</small><div className="palette-row"><span style={{ background: "#183f35" }} /><span style={{ background: "#f2ead9" }} /><span style={{ background: "#6b4434" }} /><span style={{ background: "#dc6b48" }} /></div></div><button className="small-ghost full-width" onClick={() => announce("Profile editing is restricted to maintainers in the full build.")}>Edit profile <Icon name="arrow" /></button></aside>
+          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{source.facts.length} structured facts · {source.channels.slice(0, 2).join(", ")}</small></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
+            <aside className="panel profile-panel"><span className="panel-kicker">SYNTHETIC CLIENT PROFILE</span><h2>Sample Foods</h2><p className="profile-intro">Fictional demo brand used to demonstrate OnBrand’s review workflow.</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Palette colors are stored as guidance; this MVP does not inspect images or design files.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small><div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div></div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
           </section>
           <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">DETERMINISTIC POLICY LAYER</span><h2>Review rules</h2></div><span className="rules-count">{seedRules.length} active rules</span></div><div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · approved by Brand and Legal</small></div></div>)}</div></section>
         </> : <>
