@@ -29,8 +29,9 @@ OnBrand analyses and recommends. It does **not** publish content or execute exte
 | Word DOCX | Paragraph and table text from the document body | 10 MB file; formatting and embedded images are not analyzed |
 | PDF | Selectable text; scanned pages without a text layer use browser OCR | 10 MB and 20 pages per file |
 | PNG, JPG, WebP, BMP and TIFF | Visible text through English OCR, processed in the browser | 10 MB; OCR quality depends on image clarity |
+| MP4 and WebM reels | Visible text from up to six sampled video frames through English OCR; the frame text becomes editable draft text | 50 MB and 3 minutes per file; spoken audio, colors, logos, layout and visual consistency are not analysed |
 
-Files are parsed in the browser; the original file is not uploaded. Only extracted text becomes a draft and is saved in this browser's demo storage. **Proofread imported text before review**, especially OCR output, because characters can be missed or misread. A configured external model may receive the draft text during review, as described in the AI disclosure below. OCR does not check image layout, palette, logo use or visual consistency. PDF/DOCX files with complex layouts, handwriting and non-English OCR are not claimed as supported.
+Files are parsed in the browser; the original file is not uploaded. Only extracted text becomes a draft and is saved in this browser's demo storage. **Proofread imported text before review**, especially OCR output, because characters can be missed or misread. A configured external model may receive the draft text during review, as described in the AI disclosure below. OCR does not check image layout, palette, logo use or visual consistency. Video speech is not transcribed. PDF/DOCX files with complex layouts, handwriting and non-English OCR are not claimed as supported.
 
 The demo fixture includes supported claims, an unsupported claim, a contradictory claim, a same-authority source conflict, an omission check, and an instruction-injection example. The product identity is **OnBrand** throughout; “Sample Foods” and its oat-bites product are synthetic client data used only to demonstrate the workflow.
 
@@ -40,7 +41,7 @@ For a ready-to-import CSV example, use [`examples/source-import-template.csv`](e
 
 ```text
 Browser editor and review workspace
-  ├─ local file extraction: TXT/MD/HTML, DOCX/PDF text and image/scanned-page OCR
+  ├─ local file extraction: TXT/MD/HTML, DOCX/PDF text, image OCR and sampled MP4/WebM frame OCR
   ├─ draft versions, comments, demo role, source register (localStorage)
   └─ POST /api/reviews
        ├─ validate bounded request with Zod
@@ -98,7 +99,7 @@ The work is intentionally split across technical and product responsibilities; b
 
 ## Round 2 scope and next steps
 
-The functional slice prioritizes the complete review loop: write or import a draft → retrieve approved evidence → inspect claim-level findings → revise and recheck → human review decision. Round 2 accepts text, Markdown, HTML, DOCX, text/scanned PDFs and common image files through local extraction. Remaining production steps are verified sign-in and server-enforced membership, connected PostgreSQL persistence with tenant isolation, broader semantic retrieval, complete visual-consistency analysis, stronger accessibility validation, and hosted model configuration. No external credentials are included in this repository.
+The functional slice prioritizes the complete review loop: write or import a draft → retrieve approved evidence → inspect claim-level findings → revise and recheck → human review decision. Round 2 accepts text, Markdown, HTML, DOCX, text/scanned PDFs, common image files and MP4/WebM reels through local extraction. Reel extraction reads sampled frames only; it does not transcribe speech or inspect visual design. Remaining production steps are verified sign-in and server-enforced membership, connected PostgreSQL persistence with tenant isolation, broader semantic retrieval, complete visual-consistency analysis, stronger accessibility validation, and hosted model configuration. No external credentials are included in this repository.
 
 ## AI and third-party disclosure
 

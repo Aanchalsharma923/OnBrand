@@ -29,9 +29,9 @@ Run `npm run test`. The current set has thirty-four focused checks, including at
 | Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 | Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
-| Browser text imports | TXT, Markdown and HTML content is retained as editable draft text; empty, unsupported, oversized and overlong files are rejected |
+| Browser file imports | TXT, Markdown and HTML content is retained as editable draft text; unsupported, oversized text and video files are rejected before parsing |
 
-**Latest run:** 35/35 automated checks passed on 8 Nov 2026. Thirty-four focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. Semantic-verifier tests stub the provider and prove output-contract behavior, not model accuracy. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+**Latest run:** 37/37 automated checks passed on 8 Nov 2026. Thirty-six focused checks cover the behaviors above; one additional test evaluates the 20-draft synthetic development set. The video test verifies the 50 MB limit before decode; it does not prove that a real MP4/WebM reel is decoded or that frame OCR is accurate. Semantic-verifier tests stub the provider and prove output-contract behavior, not model accuracy. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
 ## 20-draft synthetic development set
 
@@ -70,7 +70,7 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
 | M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; client-import and API-boundary source-injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 
-The target remains **10 Nov 2026**. The latest code commit deployed successfully to Vercel production on 8 Nov 2026. Both [outcoded.xyz](https://outcoded.xyz) and the [Vercel fallback](https://on-brand-zeta.vercel.app) return HTTP 200 for the homepage, health endpoint and PDF worker; the homepage includes the latest OCR disclosure. Public Google and Cloudflare DNS resolvers return Vercel's assigned apex A record `216.198.79.1`. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
+The target remains **10 Nov 2026**. The latest UI commit `67987a8` deployed successfully to Vercel production on 8 Nov 2026. Both [outcoded.xyz](https://outcoded.xyz) and the [Vercel fallback](https://on-brand-zeta.vercel.app) return HTTP 200 for the homepage, health endpoint and PDF worker. The live first-run workspace choice and upload guidance were checked in the browser. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
 
 ## Manual workflow observations
 
@@ -81,6 +81,7 @@ The target remains **10 Nov 2026**. The latest code commit deployed successfully
 - Approval remained disabled while a blocking conflict remained.
 - Prompt-injection text was reported as `NEEDS_HUMAN` and treated as untrusted content.
 - The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
+- The live start screen offers the Sample Foods demo or a new own-brand workspace and explains the knowledge → upload → review flow. Poster/image and MP4/WebM upload controls are present. Real MP4/WebM extraction and frame OCR have not yet received a manual smoke test.
 - The local build completed one two-claim review through the configured model and returned all four advisory roles; this is a single smoke run, not evidence of model accuracy or dependable latency.
 - A temporary Cloudflare preview is also available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not the production deployment.
 - The local app is configured to use locally hosted Ollama `qwen2.5:3b` for two semantic-verification passes and the four-role advisory panel. Semantic-pass regression tests stub the provider; model accuracy is not independently measured, and the one smoke run is not a latency benchmark. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to an external model provider there.

@@ -31,6 +31,11 @@ describe("browser draft text extraction", () => {
     await expect(extractUploadedFile(file)).rejects.toThrow("Files must be 10 MB or smaller");
   });
 
+  it("enforces the separate 50 MB limit for video uploads before decoding", async () => {
+    const file = new File([new Uint8Array(50 * 1024 * 1024 + 1)], "large-reel.mp4", { type: "video/mp4" });
+    await expect(extractUploadedFile(file)).rejects.toThrow("Videos must be 50 MB or smaller");
+  });
+
   it("enforces the extracted-text limit", async () => {
     const file = new File(["x".repeat(20_001)], "long.txt");
     await expect(extractUploadedFile(file)).rejects.toThrow("more than 20,000 characters");
