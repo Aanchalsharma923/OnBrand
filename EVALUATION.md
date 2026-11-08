@@ -69,7 +69,7 @@ The statuses below describe the actual prototype against the submitted Round 1 m
 | M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
 | M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; client-import and API-boundary source-injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
 
-The target remains **10 Nov 2026**. OnBrand is deployed to Vercel production with [outcoded.xyz](https://outcoded.xyz) and [on-brand-zeta.vercel.app](https://on-brand-zeta.vercel.app) as the fallback. Both public health endpoints returned HTTP 200 on 8 Nov 2026, and public Google and Cloudflare DNS resolvers return Vercel's assigned apex A record `216.198.79.1`. The live deployment still needs to be checked against the newest commit after it is pushed. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
+The target remains **10 Nov 2026**. Commit `0b232ba` deployed successfully to Vercel production on 8 Nov 2026. Both [outcoded.xyz](https://outcoded.xyz) and the [Vercel fallback](https://on-brand-zeta.vercel.app) return HTTP 200 for the homepage, health endpoint and PDF worker; the homepage includes the latest OCR disclosure. Public Google and Cloudflare DNS resolvers return Vercel's assigned apex A record `216.198.79.1`. Production currently uses browser-local demo storage and deterministic review mode; verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
 
 ## Manual workflow observations
 
@@ -80,9 +80,9 @@ The target remains **10 Nov 2026**. OnBrand is deployed to Vercel production wit
 - Approval remained disabled while a blocking conflict remained.
 - Prompt-injection text was reported as `NEEDS_HUMAN` and treated as untrusted content.
 - The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
-- An earlier Vercel production build completed a review of the synthetic draft through its assigned address: eight findings, including supported claims, a source conflict and two contradicted policy claims. Blocking findings remained visible and approval stayed gated. The homepage and `/api/health` returned HTTP 200 when routed directly to that address; ordinary access to the custom domain is still propagating. This observation predates the current source-quarantine and semantic-verifier changes.
+- The local build completed one two-claim review through the configured model and returned all four advisory roles; this is a single smoke run, not evidence of model accuracy or dependable latency.
 - A temporary Cloudflare preview is also available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not the production deployment.
-- The local app is configured to use locally hosted Ollama `qwen2.5:3b` for two semantic-verification passes and the four-role advisory panel. Semantic-pass regression tests stub the provider; real model accuracy and current latency for the expanded path are not yet measured. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to a model provider there.
+- The local app is configured to use locally hosted Ollama `qwen2.5:3b` for two semantic-verification passes and the four-role advisory panel. Semantic-pass regression tests stub the provider; model accuracy is not independently measured, and the one smoke run is not a latency benchmark. The Vercel production deployment uses deterministic mode because it has no hosted model credentials; draft text is not sent to an external model provider there.
 
 ## Targets for a larger labelled set
 
