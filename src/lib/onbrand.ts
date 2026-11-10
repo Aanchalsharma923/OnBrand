@@ -68,6 +68,15 @@ export type Finding = {
   created_at: string;
 };
 
+export type FindingFilter = "all" | "attention" | "blocking" | "supported";
+
+export function filterFindings<T extends Pick<Finding, "evidence_status" | "blocking_for_review">>(findings: T[], filter: FindingFilter): T[] {
+  if (filter === "attention") return findings.filter((finding) => finding.evidence_status !== "SUPPORTED");
+  if (filter === "blocking") return findings.filter((finding) => finding.blocking_for_review);
+  if (filter === "supported") return findings.filter((finding) => finding.evidence_status === "SUPPORTED");
+  return findings;
+}
+
 export type Draft = {
   id: string;
   title: string;

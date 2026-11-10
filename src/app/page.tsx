@@ -7,6 +7,8 @@ import {
   codePointToUtf16Offset,
   Finding,
   initialDraft,
+  filterFindings,
+  FindingFilter,
   Review,
   reviewDraft,
   Role,
@@ -117,6 +119,7 @@ export default function Home() {
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [review, setReview] = useState<Review | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<string | null>(null);
+  const [findingFilter, setFindingFilter] = useState<FindingFilter>("all");
   const [isReviewing, setIsReviewing] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionStatus, setExtractionStatus] = useState("");
@@ -160,7 +163,8 @@ export default function Home() {
   }, [draft, versions, sources, review, role, lastDecision, workspaceMode, loaded, showWelcome]);
 
   const findings = useMemo(() => review?.findings ?? [], [review]);
-  const selected = findings.find((finding) => finding.finding_id === selectedFinding) ?? findings[0];
+  const visibleFindings = useMemo(() => filterFindings(findings, findingFilter), [findings, findingFilter]);
+  const selected = visibleFindings.find((finding) => finding.finding_id === selectedFinding) ?? visibleFindings[0];
   const hasCurrentReview = Boolean(review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
   const counts = useMemo(() => ({
     blocking: findings.filter((f) => f.blocking_for_review).length,
@@ -693,12 +697,12 @@ export default function Home() {
             </div>
 
             <div className="findings-column">
-              <div className="findings-header"><div><span className="panel-kicker">EVIDENCE REPORT</span><h2>What we found <span className="count-pill">{findings.length}</span></h2></div><button className="filter-button" onClick={() => announce("Showing all finding types.")}>All findings <span>⌄</span></button></div>
-              {findings.length ? <div className="finding-list">{findings.map((finding) => <button key={finding.finding_id} className={`finding-card ${selected?.finding_id === finding.finding_id ? "selected" : ""}`} onClick={() => selectFinding(finding)}>
+              <div className="findings-header"><div><span className="panel-kicker">EVIDENCE REPORT</span><h2>What we found <span className="count-pill">{visibleFindings.length}{findingFilter === "all" ? "" : ` / ${findings.length}`}</span></h2></div><label className="sr-only" htmlFor="finding-filter">Filter findings</label><select id="finding-filter" className="filter-button" value={findingFilter} onChange={(event) => setFindingFilter(event.target.value as typeof findingFilter)}><option value="all">All findings</option><option value="attention">Needs attention</option><option value="blocking">Blocking review</option><option value="supported">Evidence aligned</option></select></div>
+              {visibleFindings.length ? <div className="finding-list">{visibleFindings.map((finding) => <button key={finding.finding_id} className={`finding-card ${selected?.finding_id === finding.finding_id ? "selected" : ""}`} onClick={() => selectFinding(finding)}>
                 <div className="finding-card-top"><span className={`status-dot ${statusClass[finding.evidence_status]}`} /><span className={`status-text ${statusClass[finding.evidence_status]}`}>{statusLabel[finding.evidence_status]}</span><span className={`severity-tag ${finding.severity.toLowerCase()}`}>{finding.severity}</span><span className="finding-menu">···</span></div>
                 <div className="claim-quote">“{finding.claim_text}”</div>
                 <div className="finding-card-bottom"><span className="finding-category">{finding.category.replaceAll("_", " ")}</span><span className="finding-source-count">{finding.source_evidence.length ? `${finding.source_evidence.length} source${finding.source_evidence.length > 1 ? "s" : ""}` : "No source"}</span></div>
-              </button>)}</div> : <div className="empty-findings"><div className="empty-icon">✳</div><b>Your evidence report will appear here</b><p>Run a review to check each claim against this workspace’s approved knowledge.</p><button className="inline-action" onClick={runReview}>Run first review <Icon name="arrow" /></button></div>}
+              </button>)}</div> : <div className="empty-findings"><div className="empty-icon">✳</div><b>{findings.length ? "No findings match this filter" : "Your evidence report will appear here"}</b><p>{findings.length ? "Choose another filter to see the rest of the review." : "Run a review to check each claim against this workspace’s approved knowledge."}</p>{findings.length === 0 && <button className="inline-action" onClick={runReview}>Run first review <Icon name="arrow" /></button>}</div>}
               {findings.length > 0 && <div className="report-footnote"><span>i</span> Missing evidence means unverified. It does not mean a claim is false.</div>}
             </div>
 

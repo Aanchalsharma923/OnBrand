@@ -9,7 +9,7 @@ Scope: public judge build, current GitHub heads, local checkout, primary review 
 - Fork and upstream `master` both resolved to `2c4601754b9cbf547804081a28b9482c3bf191c3` during this audit.
 - The supplied checkout at `C:\Users\aanch\OneDrive\Desktop\Documents\We Code Coders hackathon\OnBrand` is on `master` at `e041c9a`. It is six commits ahead and 34 behind the current fork/upstream head. Its app is a separate authentication/PostgreSQL implementation; it is not the judge app currently shown at the public domain.
 - The supplied checkout had four pre-existing uncommitted changes. They were left untouched. The actual fork-head app and fixes are in the isolated `codex/round2-review` worktree at `C:\Users\aanch\OneDrive\Desktop\Documents\We Code Coders hackathon\OnBrand-round2`.
-- The local Git config has no `origin` or `upstream` entries. The two remotes were read by URL and matched. The isolated review branch was pushed to the fork at `62bac8b2c5693f7fd31005e81e0c80386a1f2b9b` (`codex/round2-review`). Fork/upstream `master` and production were not changed; this is for review before merge/deployment.
+- The local Git config has no `origin` or `upstream` entries. The two remotes were read by URL and matched. The isolated review branch was pushed to the fork at `b7a90fe56bc1d6448402f4b85f4d7356013e182a` (`codex/round2-review`). Fork/upstream `master` and production were not changed; this is for review before merge/deployment.
 
 ## Test results
 
@@ -23,7 +23,8 @@ Scope: public judge build, current GitHub heads, local checkout, primary review 
 | Local document extraction | PASS, refreshed 10 Nov 2026 | A generated DOCX paragraph and table cell, and a generated selectable-text PDF, were uploaded through Brave's file picker. Both originals persisted in IndexedDB. DOCX paragraph and table highlights linked to the finding detail; clicking the table-cell highlight selected its corresponding finding. PDF rendered its page with page navigation/zoom controls; selecting the child-development finding navigated to page 1 and highlighted the source text. |
 | PDF/DOCX review loop after viewer changes | PASS, synthetic fixtures | Re-ran review against the uploaded PDF and confirmed the contradicted phrase was highlighted at its source location. Manually changed the draft to an approved product statement; the previous review became stale, and a fresh review reported 1/1 evidence-aligned with zero items needing attention. Recorded a human approval and confirmed it appeared in the decision audit. The original PDF remained visible after the text edit. |
 | Local identity migration and finding details | PASS | Reopened stored demo state after the patch; the rendered page contained no team names. The child-development finding showed its exact approved policy source and selected the exact draft span. |
-| Isolated fork-head unit tests | PASS | 41 tests across 6 files. Includes role-only identity, source quotations, draft original-reference retention, and repeated/Unicode location mapping. |
+| Local findings filters | PASS | On the production build in a clean browser session, `Blocking review` showed 3 of 8 findings (all three blocking findings); `Evidence aligned` showed 5 of 8 findings (all five supported findings). |
+| Isolated fork-head unit tests | PASS | 43 tests across 7 files. Includes role-only identity, source quotations, draft original-reference retention, repeated/Unicode location mapping, and finding-filter behavior. |
 | Isolated fork-head lint | PASS | `npm.cmd run lint`. |
 | Isolated fork-head TypeScript | PASS | `npx.cmd tsc --noEmit`. |
 | Isolated fork-head production build | PASS | `npm.cmd run build`; Next.js emitted `/`, `/api/health`, and `/api/reviews`. |
@@ -72,6 +73,12 @@ The review branch stores uploaded originals in browser IndexedDB and associates 
 
 `/api/health` reports `browser-demo-storage` and database integration is not configured. The demo role switch is simulated, so comments, assignments and decisions are not shared or server-enforced. The account-free judge flow works, but this build is not suitable for confidential content or durable multi-user approvals. The README discloses this boundary.
 
+### D-09 — Findings filter control did not filter the report (P2, fixed)
+
+**Reproduction:** run the sample review and activate the `All findings` control. Before the fix, it only displayed a toast and left all findings visible.
+
+**Fix and verification:** replaced it with an accessible native filter for all, needs attention, blockers and evidence-aligned findings. On the production build, selecting blockers showed 3 of 8 and all three cards were blocking; selecting evidence-aligned showed 5 of 8 and every card was supported. Unit regressions cover all, attention, blocking and supported filters.
+
 ## Suspected issues and untested cases
 
 - Full PDF, DOCX, scanned-PDF and image test matrices were not repeated in this audit. The supplied brief's corruption, password-protection, MIME spoofing, large-file, Unicode, page-break and multilingual cases remain unverified here. The DOCX table test covered one generated sample only.
@@ -82,4 +89,4 @@ The review branch stores uploaded originals in browser IndexedDB and associates 
 
 ## Delivery notes
 
-Review the changes in the isolated `codex/round2-review` branch/worktree before merging or deploying. The branch was pushed to the fork and verified at `62bac8b2c5693f7fd31005e81e0c80386a1f2b9b`; fork/upstream `master` remains `2c4601754b9cbf547804081a28b9482c3bf191c3`, and production was not deployed. The supplied local `master` checkout and its pre-existing changes remain intact. D-03 is verified for selectable-text PDF and basic DOCX body/table content; D-04 remains an open prototype limitation.
+Review the changes in the isolated `codex/round2-review` branch/worktree before merging or deploying. The branch was pushed to the fork and verified at `b7a90fe56bc1d6448402f4b85f4d7356013e182a`; fork/upstream `master` remains `2c4601754b9cbf547804081a28b9482c3bf191c3`, and production was not deployed. The supplied local `master` checkout and its pre-existing changes remain intact. D-03 is verified for selectable-text PDF and basic DOCX body/table content; D-04 remains an open prototype limitation.
