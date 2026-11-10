@@ -16,13 +16,14 @@ Scope: public judge build, current GitHub heads, local checkout, primary review 
 | Check | Result | Evidence and boundary |
 |---|---|---|
 | Public homepage | PASS | `https://outcoded.xyz/` returned HTTP 200. Browser showed the account-free start screen and review workspace. |
-| Public health endpoint | PASS | `GET /api/health` returned ready, `browser-demo-storage`, database not configured, and deterministic demo mode. |
+| Public health endpoint | PASS, rechecked 10 Nov | `GET /api/health` returned ready, `browser-demo-storage`, database not configured, and deterministic demo mode. |
 | Public review API | PASS, partial workflow | A synthetic Sample Foods review returned HTTP 200, 8 findings, 5 supported items and 3 blocking findings (one source conflict and two policy contradictions). The API disclosed that it made no model call. This did not modify server-side content. |
 | Public browser workflow | PARTIAL | The live page was inspected. The current browser profile already had OnBrand state; its first-run notice says switching replaces that browser's saved workspace. The existing public-domain workspace was not reset or edited. |
 | Local production-browser flow | PASS | On the isolated fork-head build, opened the sample workspace without sign-in, ran review, selected a finding and verified the textarea selection exactly matched `helps children grow smarter.`, manually edited the draft, saved immutable version 2, re-reviewed (5 findings, zero blockers), and recorded human approval. This changed only the isolated `127.0.0.1:3001` demo storage. |
-| Local document extraction | PASS, extraction; original viewer added after this browser run | A generated DOCX paragraph and table cell, and selectable-text PDF, were extracted into the draft and reviewed. The current review branch now persists uploaded originals in IndexedDB and previews PDF/image/video inline, with download for other file formats. Browser verification of the new persistence/preview code remains outstanding. No PDF page coordinates or DOCX paragraph mapping are retained. |
+| Local document extraction | PASS, refreshed 10 Nov 2026 | A generated DOCX paragraph and table cell, and a generated selectable-text PDF, were uploaded through Brave's file picker. Both originals persisted in IndexedDB. DOCX paragraph and table highlights linked to the finding detail; clicking the table-cell highlight selected its corresponding finding. PDF rendered its page with page navigation/zoom controls; selecting the child-development finding navigated to page 1 and highlighted the source text. |
+| PDF/DOCX review loop after viewer changes | PASS, synthetic fixtures | Re-ran review against the uploaded PDF and confirmed the contradicted phrase was highlighted at its source location. Manually changed the draft to an approved product statement; the previous review became stale, and a fresh review reported 1/1 evidence-aligned with zero items needing attention. Recorded a human approval and confirmed it appeared in the decision audit. The original PDF remained visible after the text edit. |
 | Local identity migration and finding details | PASS | Reopened stored demo state after the patch; the rendered page contained no team names. The child-development finding showed its exact approved policy source and selected the exact draft span. |
-| Isolated fork-head unit tests | PASS | 38 tests across 5 files. Includes regressions for role-only public identity and the approved policy quotation. |
+| Isolated fork-head unit tests | PASS | 41 tests across 6 files. Includes role-only identity, source quotations, draft original-reference retention, and repeated/Unicode location mapping. |
 | Isolated fork-head lint | PASS | `npm.cmd run lint`. |
 | Isolated fork-head TypeScript | PASS | `npx.cmd tsc --noEmit`. |
 | Isolated fork-head production build | PASS | `npm.cmd run build`; Next.js emitted `/`, `/api/health`, and `/api/reviews`. |
@@ -63,9 +64,9 @@ The fork-head package requires Node 24, while the available environment is Node 
 
 **Verification:** regressions check exact quotes and C1–C4 citation checks for policy restrictions and approved avoided wording; local browser displayed the child-development quote beside the finding.
 
-### D-03 — Original files lack source-location navigation (P1, partially mitigated)
+### D-03 — Source locations are unavailable for OCR-only or layout-dependent text (P1, core PDF/DOCX path fixed)
 
-The app extracts text into an editable draft. The review branch now also stores each uploaded original in browser IndexedDB and associates it with its draft version. PDFs use the browser's PDF viewer; images and videos preview inline; other formats, including DOCX, can be downloaded. The UI states that selected findings point to extracted draft text and have no original page coordinates. DOCX has no in-app renderer, and no format has native finding-to-page/paragraph mapping, so D-03 remains open. The new browser storage and preview change still needs a local end-to-end check.
+The review branch stores uploaded originals in browser IndexedDB and associates each with its draft versions. Selectable-text PDF pages render locally with navigation and zoom; exact extracted-text matches map findings to the page and text-layer highlight. DOCX opens in a locally parsed reading view that preserves paragraph and table-cell order; matching findings scroll to and highlight their paragraph or cell. Both were verified in a production build using synthetic files. Manual editing invalidated the earlier report; full re-review returned 1/1 supported, and a human approval was recorded. The original PDF remained available after editing. Scanned/OCR-only PDF text has no dependable coordinates, and DOCX pagination, typography, embedded images and complex layout are not reproduced. These limits are shown in the UI and README.
 
 ### D-04 — Demo persistence and permissions are browser-local (P1 limitation, disclosed)
 
@@ -81,4 +82,4 @@ The app extracts text into an editable draft. The review branch now also stores 
 
 ## Delivery notes
 
-Review the changes in the isolated `codex/round2-review` worktree before merging or deploying. The local `master` checkout and its pre-existing changes remain intact. Do not treat D-03 or D-04 as fixed.
+Review the changes in the isolated `codex/round2-review` worktree before merging or deploying. The local `master` checkout and its pre-existing changes remain intact. D-03 is verified for selectable-text PDF and basic DOCX body/table content; D-04 remains an open prototype limitation. No push or deployment has occurred.

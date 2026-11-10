@@ -729,6 +729,9 @@ export function createDraft(content: string, patch: Partial<Draft> = {}): Draft 
     updatedAt: now,
     version: patch.version ?? 1,
     hash: "",
+    originalDocumentKey: patch.originalDocumentKey,
+    originalDocumentName: patch.originalDocumentName,
+    originalDocumentType: patch.originalDocumentType,
   };
   draft.hash = computeDraftHash(draft);
   return draft;

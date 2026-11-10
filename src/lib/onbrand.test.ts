@@ -240,6 +240,16 @@ describe("OnBrand evidence review evaluation", () => {
     expect(sourceSnapshotHash(changed)).not.toBe(original);
   });
 
+  it("retains the uploaded original reference when creating a draft version", () => {
+    const draft = createDraft("Original paragraph.", {
+      originalDocumentKey: "file-key",
+      originalDocumentName: "source.docx",
+      originalDocumentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    const revised = createDraft("Edited paragraph.", { ...draft, version: 2 });
+    expect(revised).toMatchObject({ originalDocumentKey: "file-key", originalDocumentName: "source.docx" });
+  });
+
   it("flags all five supported accessibility checks in an HTML draft", () => {
     const html = '<html><body><img src="snack.jpg"><h1>Title</h1><h4>Section</h4><a href="/">Click here</a><span style="color:#777;background:#fff">Text</span></body></html>';
     const report = reviewDraft({ draft: createDraft(html) });
