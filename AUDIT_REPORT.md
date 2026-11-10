@@ -20,7 +20,7 @@ Scope: public judge build, current GitHub heads, local checkout, primary review 
 | Public review API | PASS, partial workflow | A synthetic Sample Foods review returned HTTP 200, 8 findings, 5 supported items and 3 blocking findings (one source conflict and two policy contradictions). The API disclosed that it made no model call. This did not modify server-side content. |
 | Public browser workflow | PARTIAL | The live page was inspected. The current browser profile already had OnBrand state; its first-run notice says switching replaces that browser's saved workspace. The existing public-domain workspace was not reset or edited. |
 | Local production-browser flow | PASS | On the isolated fork-head build, opened the sample workspace without sign-in, ran review, selected a finding and verified the textarea selection exactly matched `helps children grow smarter.`, manually edited the draft, saved immutable version 2, re-reviewed (5 findings, zero blockers), and recorded human approval. This changed only the isolated `127.0.0.1:3001` demo storage. |
-| Local document extraction | PASS, text-only | Uploaded a generated DOCX with a paragraph and table cell; both appeared in the editable draft. Uploaded a generated selectable-text PDF; its text appeared and a review ran. Original bytes, PDF page layout, DOCX formatting and page-accurate finding coordinates were not retained. |
+| Local document extraction | PASS, extraction; original viewer added after this browser run | A generated DOCX paragraph and table cell, and selectable-text PDF, were extracted into the draft and reviewed. The current review branch now persists uploaded originals in IndexedDB and previews PDF/image/video inline, with download for other file formats. Browser verification of the new persistence/preview code remains outstanding. No PDF page coordinates or DOCX paragraph mapping are retained. |
 | Local identity migration and finding details | PASS | Reopened stored demo state after the patch; the rendered page contained no team names. The child-development finding showed its exact approved policy source and selected the exact draft span. |
 | Isolated fork-head unit tests | PASS | 38 tests across 5 files. Includes regressions for role-only public identity and the approved policy quotation. |
 | Isolated fork-head lint | PASS | `npm.cmd run lint`. |
@@ -63,9 +63,9 @@ The fork-head package requires Node 24, while the available environment is Node 
 
 **Verification:** regressions check exact quotes and C1–C4 citation checks for policy restrictions and approved avoided wording; local browser displayed the child-development quote beside the finding.
 
-### D-03 — Uploaded originals are not preserved in a document viewer (P1, open)
+### D-03 — Original files lack source-location navigation (P1, partially mitigated)
 
-The public app extracts text into an editable draft. Its own upload guidance says files are read in the browser and extracted text becomes the draft; the README says the original file is not uploaded or retained. The review editor can select an exact text span, but there is no original PDF/DOCX page viewer, page navigation, or source-page coordinates. This does not meet the requested original-document review experience. No viewer implementation was added because a plain-text or generic preview would misrepresent location accuracy.
+The app extracts text into an editable draft. The review branch now also stores each uploaded original in browser IndexedDB and associates it with its draft version. PDFs use the browser's PDF viewer; images and videos preview inline; other formats, including DOCX, can be downloaded. The UI states that selected findings point to extracted draft text and have no original page coordinates. DOCX has no in-app renderer, and no format has native finding-to-page/paragraph mapping, so D-03 remains open. The new browser storage and preview change still needs a local end-to-end check.
 
 ### D-04 — Demo persistence and permissions are browser-local (P1 limitation, disclosed)
 

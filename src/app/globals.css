@@ -93,6 +93,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .profile-editor-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .profile-editor-actions .table-approve { padding: 7px 10px; }
 .draft-upload-row { display: flex; align-items: flex-start; gap: 9px; margin-top: 8px; }
+.original-preview { margin-top: 14px; padding: 12px; border: 1px solid #dce4dc; border-radius: 10px; background: #fbfcfa; }
+.original-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: #33483a; font-size: 12px; }
+.original-preview-heading small { display: block; margin-top: 3px; color: #68776a; font-size: 10px; font-weight: 400; }
+.original-preview-message { margin: 8px 0 0; color: #68776a; font-size: 11px; line-height: 1.5; }
+.original-pdf { width: 100%; height: min(68vh, 680px); border: 1px solid #e4e8e3; border-radius: 6px; background: white; }
+.original-image, .original-video { display: block; max-width: 100%; max-height: 560px; margin: 0 auto; object-fit: contain; border-radius: 6px; }
 .draft-upload-button { min-height: 36px; flex: 0 0 auto; padding: 0 11px; font-size: 11px; }
 .draft-upload-button .icon { width: 12px; height: 12px; }
 .draft-upload-row > div { min-width: 0; color: #526457; font-size: 11px; line-height: 1.5; }

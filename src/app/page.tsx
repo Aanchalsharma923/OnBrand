@@ -19,6 +19,8 @@ import {
 } from "@/lib/onbrand";
 import { extractUploadedFile } from "@/lib/file-extraction";
 import { roleInitials, roleLabel, sanitizeReviewAttribution } from "@/lib/identity";
+import { saveOriginalDocument } from "@/lib/document-store";
+import { OriginalDocument } from "./original-document";
 
 type View = "review" | "knowledge" | "insights";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
@@ -280,13 +282,24 @@ export default function Home() {
     setExtractionStatus("Preparing file locally…");
     try {
       const extractedText = await extractUploadedFile(file, setExtractionStatus);
+      const originalDocumentKey = crypto.randomUUID();
+      let originalSaved = false;
+      try {
+        await saveOriginalDocument(originalDocumentKey, file);
+        originalSaved = true;
+      } catch {
+        // Keep the extracted draft usable, but make the failed original retention visible.
+      }
       const nextVersion = Math.max(...versions.map((item) => item.version), draft.version) + 1;
-      const nextDraft = createDraft(extractedText, { ...draft, title: file.name, version: nextVersion });
+      const nextDraft = createDraft(extractedText, { ...draft, title: file.name, version: nextVersion,
+        originalDocumentKey: originalSaved ? originalDocumentKey : undefined,
+        originalDocumentName: originalSaved ? file.name : undefined,
+        originalDocumentType: originalSaved ? file.type : undefined });
       setDraft(nextDraft);
       setVersions((current) => [...current, nextDraft]);
       setSelectedFinding(null);
       setLastDecision("");
-      setExtractionStatus(`${file.name} · text extracted on this device. Proofread the extracted text before review.`);
+      setExtractionStatus(`${file.name} · text extracted on this device${originalSaved ? " and original preserved in this browser" : "; original could not be preserved"}. Proofread the extracted text before review.`);
       announce("File text added as a new draft version. Proofread it, then run review.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "This file could not be read.";
@@ -669,6 +682,7 @@ export default function Home() {
               <label className="sr-only" htmlFor="draft-content">Draft content</label>
               <textarea ref={draftEditorRef} id="draft-content" className="draft-editor" value={draft.content} onChange={(event) => updateDraftContent(event.target.value)} placeholder="Paste or write draft copy to check it against approved brand knowledge…" />
               <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload poster, reel or file"}<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.mp4,.webm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload a poster, reel, document or text file" /></label><div aria-live="polite">{extractionStatus || "Choose a poster/image, MP4/WebM reel, DOCX, PDF or text file."}<small>Poster: checks readable text. Reel: checks text in 3 to 6 evenly sampled frames (max 3 minutes/50 MB); spoken audio is not transcribed. Colors, logos and layout are not checked. Files are read on this device; extracted text is sent for review only when you run it. Please proofread OCR text.</small></div></div>
+              {draft.originalDocumentKey && draft.originalDocumentName && <OriginalDocument fileKey={draft.originalDocumentKey} name={draft.originalDocumentName} type={draft.originalDocumentType ?? ""} />}
               <div className="editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span><button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>Save version</button><span className="saved-label"><span /> Saved locally</span></div>
               <div className="editor-callout"><span className="callout-symbol">i</span><span>Draft text is treated as untrusted content. Instructions inside a draft cannot change OnBrand’s review rules.</span></div>
               <div className="section-rule" />

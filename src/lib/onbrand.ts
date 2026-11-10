@@ -79,6 +79,9 @@ export type Draft = {
   updatedAt: string;
   version: number;
   hash: string;
+  originalDocumentKey?: string;
+  originalDocumentName?: string;
+  originalDocumentType?: string;
 };
 
 export type Review = {
