@@ -9,7 +9,7 @@ Scope: public judge build, current GitHub heads, local checkout, primary review 
 - Fork and upstream `master` both resolved to `2c4601754b9cbf547804081a28b9482c3bf191c3` during this audit.
 - The supplied checkout at `C:\Users\aanch\OneDrive\Desktop\Documents\We Code Coders hackathon\OnBrand` is on `master` at `e041c9a`. It is six commits ahead and 34 behind the current fork/upstream head. Its app is a separate authentication/PostgreSQL implementation; it is not the judge app currently shown at the public domain.
 - The supplied checkout had four pre-existing uncommitted changes. They were left untouched. The actual fork-head app and fixes are in the isolated `codex/round2-review` worktree at `C:\Users\aanch\OneDrive\Desktop\Documents\We Code Coders hackathon\OnBrand-round2`.
-- The local Git config has no `origin` or `upstream` entries. The two remotes were read by URL and matched. The isolated review branch was pushed to the fork at `723a2313cc336c901a78b0949c8ced30a0dd47a8` (`codex/round2-review`). Fork/upstream `master` and production were not changed; this is for review before merge/deployment.
+- The local Git config has no `origin` or `upstream` entries. The two remotes were read by URL and matched. The isolated review branch was pushed to the fork at `62bac8b2c5693f7fd31005e81e0c80386a1f2b9b` (`codex/round2-review`). Fork/upstream `master` and production were not changed; this is for review before merge/deployment.
 
 ## Test results
 
@@ -82,4 +82,4 @@ The review branch stores uploaded originals in browser IndexedDB and associates 
 
 ## Delivery notes
 
-Review the changes in the isolated `codex/round2-review` branch/worktree before merging or deploying. The branch was pushed to the fork and verified at `723a2313cc336c901a78b0949c8ced30a0dd47a8`; fork/upstream `master` remains `2c4601754b9cbf547804081a28b9482c3bf191c3`, and production was not deployed. The supplied local `master` checkout and its pre-existing changes remain intact. D-03 is verified for selectable-text PDF and basic DOCX body/table content; D-04 remains an open prototype limitation.
+Review the changes in the isolated `codex/round2-review` branch/worktree before merging or deploying. The branch was pushed to the fork and verified at `62bac8b2c5693f7fd31005e81e0c80386a1f2b9b`; fork/upstream `master` remains `2c4601754b9cbf547804081a28b9482c3bf191c3`, and production was not deployed. The supplied local `master` checkout and its pre-existing changes remain intact. D-03 is verified for selectable-text PDF and basic DOCX body/table content; D-04 remains an open prototype limitation.
