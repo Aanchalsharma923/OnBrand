@@ -20,6 +20,7 @@ Scope: public judge build, current GitHub heads, local checkout, primary review 
 | Public review API | PASS, partial workflow | A synthetic Sample Foods review returned HTTP 200, 8 findings, 5 supported items and 3 blocking findings (one source conflict and two policy contradictions). The API disclosed that it made no model call. This did not modify server-side content. |
 | Public browser workflow | PARTIAL | The live page was inspected. The current browser profile already had OnBrand state; its first-run notice says switching replaces that browser's saved workspace. The existing public-domain workspace was not reset or edited. |
 | Local production-browser flow | PASS | On the isolated fork-head build, opened the sample workspace without sign-in, ran review, selected a finding and verified the textarea selection exactly matched `helps children grow smarter.`, manually edited the draft, saved immutable version 2, re-reviewed (5 findings, zero blockers), and recorded human approval. This changed only the isolated `127.0.0.1:3001` demo storage. |
+| Local document extraction | PASS, text-only | Uploaded a generated DOCX with a paragraph and table cell; both appeared in the editable draft. Uploaded a generated selectable-text PDF; its text appeared and a review ran. Original bytes, PDF page layout, DOCX formatting and page-accurate finding coordinates were not retained. |
 | Local identity migration and finding details | PASS | Reopened stored demo state after the patch; the rendered page contained no team names. The child-development finding showed its exact approved policy source and selected the exact draft span. |
 | Isolated fork-head unit tests | PASS | 38 tests across 5 files. Includes regressions for role-only public identity and the approved policy quotation. |
 | Isolated fork-head lint | PASS | `npm.cmd run lint`. |
@@ -56,11 +57,11 @@ The fork-head package requires Node 24, while the available environment is Node 
 
 **Actual before fix:** “Do not make child-development promises” with no retrieved source quote.
 
-**Root cause:** deterministic seeded rules returned a label/severity but did not attach the matching approved source fact.
+**Root cause:** deterministic seeded rules and approved avoided-wording matches returned a label/severity but did not attach the matching approved source fact.
 
-**Fix in review branch:** attach an eligible, exact `claim restriction` fact when it matches the rule; show an explicit missing-quote explanation when it does not.
+**Fix in review branch:** attach an eligible, exact approved source fact when it matches a policy rule or avoided term; show an explicit missing-quote explanation when no policy quote is available.
 
-**Verification:** added a regression checking the exact quote and C1–C4 citation checks; local browser displayed the quote beside the finding.
+**Verification:** regressions check exact quotes and C1–C4 citation checks for policy restrictions and approved avoided wording; local browser displayed the child-development quote beside the finding.
 
 ### D-03 — Uploaded originals are not preserved in a document viewer (P1, open)
 
@@ -72,7 +73,7 @@ The public app extracts text into an editable draft. Its own upload guidance say
 
 ## Suspected issues and untested cases
 
-- Full PDF, DOCX, scanned-PDF and image test matrices were not repeated in this audit. The supplied brief's corruption, password-protection, MIME spoofing, large-file, Unicode, table, page-break and multilingual cases remain unverified here.
+- Full PDF, DOCX, scanned-PDF and image test matrices were not repeated in this audit. The supplied brief's corruption, password-protection, MIME spoofing, large-file, Unicode, page-break and multilingual cases remain unverified here. The DOCX table test covered one generated sample only.
 - MP4/WebM frame extraction and OCR quality were not manually re-tested. Product copy explicitly says speech, layout, colors and logos are not analysed.
 - Keyboard/screen-reader review, tablet breakpoints, and cross-browser behavior remain untested.
 - The production deployment's exact Vercel commit and project settings were not available through the connected tools. The homepage, health endpoint and review API were reachable; no deployment change was made.

@@ -450,10 +450,32 @@ function ruleFinding(claim: string, context: string, sources: Source[], channel:
   }
   const avoidedTerms = sources.filter((source) => eligible(source, channel, date))
     .flatMap((source) => source.facts.filter((fact) => normalize(fact.attribute) === "avoid wording")
-      .flatMap((fact) => fact.value.split(/[,;|]/).map((term) => normalize(term.trim())).filter((term) => term && !["not provided", "none", "—", "n/a"].includes(term))));
+      .flatMap((fact) => fact.value.split(/[,;|]/)
+        .map((term) => ({ term: normalize(term.trim()), source, fact }))
+        .filter(({ term }) => term && !["not provided", "none", "—", "n/a"].includes(term))));
   const normalizedWithBoundaries = ` ${normalizedClaim} `;
-  const matchedAvoidance = avoidedTerms.find((term) => normalizedWithBoundaries.includes(` ${term} `));
-  if (matchedAvoidance) return { label: `Avoid brand wording: “${matchedAvoidance}”`, severity: "MEDIUM" };
+  const matchedAvoidance = avoidedTerms.find(({ term }) => normalizedWithBoundaries.includes(` ${term} `));
+  if (matchedAvoidance) {
+    const { source, fact, term } = matchedAvoidance;
+    return {
+      label: `Avoid brand wording: “${term}”`,
+      severity: "MEDIUM",
+      evidence: [{
+        source_id: source.id,
+        source_version: source.version,
+        quote: fact.statement,
+        authority: source.authority,
+        score: 1,
+        citation_validation: {
+          c1_source_exists: true,
+          c2_version_valid: true,
+          c3_scope_eligible: true,
+          c4_quote_valid: source.facts.some((candidate) => candidate.sourceId === source.id && candidate.statement === fact.statement),
+          c5_relation: "NOT_RUN",
+        },
+      }],
+    };
+  }
   return undefined;
 }
 

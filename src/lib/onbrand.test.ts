@@ -51,6 +51,13 @@ describe("OnBrand evidence review evaluation", () => {
     const [finding] = reviewDraft({ draft: createDraft("Sample Foods Oat Bites are a superfood."), sources: [...seedSources.filter((source) => source.id !== profile.id), editedProfile] }).findings;
     expect(finding.evidence_status).toBe("PARTIALLY_SUPPORTED");
     expect(finding.explanation).toContain("Avoid brand wording");
+    expect(finding.source_evidence[0].quote).toBe("Sample Foods: avoid wording — superfood.");
+    expect(finding.source_evidence[0].citation_validation).toMatchObject({
+      c1_source_exists: true,
+      c2_version_valid: true,
+      c3_scope_eligible: true,
+      c4_quote_valid: true,
+    });
   });
 
   it("quarantines imported source text containing prompt-injection instructions", () => {
