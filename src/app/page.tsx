@@ -18,6 +18,7 @@ import {
   sourceInjectionWarnings,
 } from "@/lib/onbrand";
 import { extractUploadedFile } from "@/lib/file-extraction";
+import { roleInitials, roleLabel, sanitizeReviewAttribution } from "@/lib/identity";
 
 type View = "review" | "knowledge" | "insights";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
@@ -144,9 +145,9 @@ export default function Home() {
       if (restored?.draft) setDraft(restored.draft);
       if (restored?.versions?.length) setVersions(restored.versions);
       if (restored?.sources?.length) setSources(restored.sources);
-      if (restored?.review) setReview(restored.review);
+      if (restored?.review) setReview(sanitizeReviewAttribution(restored.review));
       if (restored?.role) setRole(restored.role);
-      if (restored?.lastDecision) setLastDecision(restored.lastDecision);
+      if (restored?.lastDecision) setLastDecision(restored.lastDecision.split(" · ")[0]);
       setLoaded(true);
     });
   }, []);
@@ -322,7 +323,7 @@ export default function Home() {
       const nextReview = payload.review as Review;
       nextReview.engineMode = payload.engine === "model-assisted" ? "model-assisted" : "deterministic-preview";
       nextReview.agentNotes = nextReview.agentNotes ?? payload.agentNotes ?? [];
-      nextReview.assignedTo = review?.assignedTo ?? nextReview.assignedTo ?? "Aanchal Sharma";
+      nextReview.assignedTo = review?.assignedTo ?? nextReview.assignedTo ?? "Workspace reviewer";
       nextReview.comments = review?.comments ?? [];
       nextReview.decisionHistory = review?.decisionHistory ?? [];
       setReview(nextReview);
@@ -368,10 +369,10 @@ export default function Home() {
       return;
     }
     const at = new Date().toISOString();
-    const by = "Aanchal Sharma · Reviewer";
+    const by = "Workspace reviewer";
     const decision = { state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash };
     setReview({ ...review, decision, decisionHistory: [...(review.decisionHistory ?? []), { action: "DECISION_RECORDED", state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash }] });
-    setLastDecision(`${state.replaceAll("_", " ")} · ${decision.by}`);
+    setLastDecision(state.replaceAll("_", " "));
     announce(`Decision recorded for ${draft.hash.slice(0, 8)}. Nothing has been published.`);
   }
 
@@ -395,7 +396,7 @@ export default function Home() {
       decision: undefined,
       decisionHistory: [...(review.decisionHistory ?? []), {
         action: "DECISION_REOPENED",
-        by: "Aanchal Sharma · Reviewer",
+        by: "Workspace reviewer",
         at,
         draftHash: review.draftHash,
         sourceSnapshotHash: review.sourceSnapshotHash,
@@ -407,7 +408,7 @@ export default function Home() {
 
   function addComment() {
     if (!review || !comment.trim()) return;
-    const newComment = { id: `C-${Date.now()}`, author: role === "creator" ? "Siddhesh Songare · Creator" : role === "maintainer" ? "Knowledge maintainer" : "Aanchal Sharma · Reviewer", text: comment.trim(), resolved: false, at: new Date().toISOString(), draftHash: draft.hash, draftVersionId: `${draft.id}-v${draft.version}` };
+    const newComment = { id: `C-${Date.now()}`, author: roleLabel(role), text: comment.trim(), resolved: false, at: new Date().toISOString(), draftHash: draft.hash, draftVersionId: `${draft.id}-v${draft.version}` };
     setReview({ ...review, comments: [...review.comments, newComment] });
     setComment("");
     announce("Comment added to the review thread.");
@@ -638,13 +639,13 @@ export default function Home() {
         </nav>
         <div className="sidebar-spacer" />
         <div className="safe-note"><div className="safe-icon"><span /></div><div><b>Human in control</b><small>OnBrand reviews and recommends. Your team makes the decision.</small></div></div>
-        <div className="profile-row"><div className="person-avatar">AS</div><div className="profile-copy"><b>{role === "creator" ? "Siddhesh Songare" : role === "maintainer" ? "Knowledge maintainer" : "Aanchal Sharma"}</b><small>{role === "creator" ? "Creator" : role === "maintainer" ? "Maintainer" : "Reviewer"}</small></div><button className="more-button" aria-label="Profile options">···</button></div>
+        <div className="profile-row"><div className="person-avatar">{roleInitials(role)}</div><div className="profile-copy"><b>{roleLabel(role)}</b><small>Demo role</small></div><button className="more-button" aria-label="Profile options">···</button></div>
       </aside>
 
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumbs"><span>OnBrand</span><span className="crumb-slash">/</span><b>{view === "review" ? "Review queue" : view === "knowledge" ? "Knowledge base" : "Insights"}</b></div>
-          <div className="topbar-right"><div className="secure-indicator"><span className="secure-dot" /> {workspaceMode === "demo" ? "Demo workspace" : "Saved in this browser"}</div><label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label><button className="avatar-button" aria-label="Current account">AS</button></div>
+          <div className="topbar-right"><div className="secure-indicator"><span className="secure-dot" /> {workspaceMode === "demo" ? "Demo workspace" : "Saved in this browser"}</div><label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label><button className="avatar-button" aria-label={roleLabel(role)}>{roleInitials(role)}</button></div>
         </header>
 
         {view === "review" ? <>
@@ -688,7 +689,7 @@ export default function Home() {
             </div>
 
             <aside className="detail-panel">
-              {review && <div className="assignment-row"><label htmlFor="review-assignee">Assigned reviewer</label><select id="review-assignee" value={review.assignedTo ?? "Aanchal Sharma"} onChange={(event) => assignReviewer(event.target.value)} disabled={role !== "reviewer"}><option>Aanchal Sharma</option><option>Siddhesh Songare</option></select></div>}
+              {review && <div className="assignment-row"><label htmlFor="review-assignee">Assigned reviewer</label><select id="review-assignee" value={review.assignedTo ?? "Workspace reviewer"} onChange={(event) => assignReviewer(event.target.value)} disabled={role !== "reviewer"}><option>Workspace reviewer</option><option>Backup reviewer</option></select></div>}
               <div className="detail-header"><div><span className="panel-kicker">FINDING DETAILS</span><h2>{selected ? statusLabel[selected.evidence_status] : "Review details"}</h2></div>{selected && <span className={`status-icon ${statusClass[selected.evidence_status]}`}>{selected.evidence_status === "SUPPORTED" ? "✓" : selected.evidence_status === "CONFLICT" ? "↔" : "!"}</span>}</div>
               {selected ? <>
                 <div className="detail-claim">{selected.claim_text}</div>

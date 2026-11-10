@@ -4,7 +4,7 @@
 
 **Live judge build:** [Open OnBrand at outcoded.xyz](https://outcoded.xyz). [Vercel fallback](https://on-brand-zeta.vercel.app) is also available.
 
-OnBrand analyses and recommends. It does **not** publish content or execute external actions. A human reviewer retains approval authority. The current Round 2 build is a judge-ready prototype: demo records use browser-local storage, the role switch is simulated, and there is no production login or shared database connected.
+OnBrand analyses and recommends. It does **not** publish content or execute external actions. A human reviewer retains approval authority. The current Round 2 build is a judge-ready prototype: demo records use browser-local storage, the role switch is simulated, and there is no production login or shared database connected. Public demo attribution uses role labels rather than team-member names; older saved review records are normalized when restored.
 
 ## Three improvements visible in the build
 

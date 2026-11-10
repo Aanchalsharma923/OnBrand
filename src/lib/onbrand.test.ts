@@ -210,6 +210,21 @@ describe("OnBrand evidence review evaluation", () => {
     expect(ownBrand.findings[0].evidence_status).toBe("NEEDS_HUMAN");
   });
 
+  it("shows the exact approved policy quote behind a contradicted child-development claim", () => {
+    const finding = reviewDraft({ draft: initialDraft, sources: seedSources })
+      .findings.find((item) => item.claim_text === "helps children grow smarter.");
+    expect(finding?.evidence_status).toBe("CONTRADICTED");
+    expect(finding?.source_evidence).toHaveLength(1);
+    expect(finding?.source_evidence[0].quote).toBe("Sample Foods Oat Bites: claim restriction — do not make child-development promises.");
+    expect(finding?.source_evidence[0].citation_validation).toMatchObject({
+      c1_source_exists: true,
+      c2_version_valid: true,
+      c3_scope_eligible: true,
+      c4_quote_valid: true,
+    });
+    expect(finding?.explanation).toContain("Applicable approved policy says");
+  });
+
   it("invalidates the source snapshot when an approved fact changes", () => {
     const original = sourceSnapshotHash(seedSources);
     const changed = seedSources.map((source) => source.id === "SRC-PRODUCT"

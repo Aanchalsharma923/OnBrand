@@ -418,7 +418,7 @@ function retrieve(claim: string, sources: Source[], channel: string, date: strin
   return ranked.slice(0, 5);
 }
 
-function ruleFinding(claim: string, context: string, sources: Source[], channel: string, date: string, includeDemoRules = true): { label: string; severity: Severity } | undefined {
+function ruleFinding(claim: string, context: string, sources: Source[], channel: string, date: string, includeDemoRules = true): { label: string; severity: Severity; evidence?: Finding["source_evidence"] } | undefined {
   const normalizedClaim = normalize(claim);
   for (const rule of (includeDemoRules ? seedRules : [])) {
     if (rule.id === "R-09" && /sample foods oat bites/i.test(context)) continue;
@@ -426,7 +426,26 @@ function ruleFinding(claim: string, context: string, sources: Source[], channel:
     if (rule.terms.some((term) => term.startsWith("#")
       ? (term === "#ad" ? /(^|\s)#ad($|\s)/i.test(claim) : false)
       : (` ${normalizedClaim} `).includes(` ${normalize(term)} `))) {
-      return { label: rule.label, severity: /R-01|R-02|R-05|R-06|R-07|R-13/.test(rule.id) ? "HIGH" : "MEDIUM" };
+      const evidence = sources.filter((source) => eligible(source, channel, date))
+        .flatMap((source) => source.facts
+          .filter((fact) => normalize(fact.attribute) === "claim restriction")
+          .filter((fact) => normalize(fact.statement).includes(normalize(rule.label))
+            || rule.terms.some((term) => !term.startsWith("#") && normalize(fact.value).includes(normalize(term))))
+          .map((fact) => ({
+            source_id: source.id,
+            source_version: source.version,
+            quote: fact.statement,
+            authority: source.authority,
+            score: 1,
+            citation_validation: {
+              c1_source_exists: true,
+              c2_version_valid: true,
+              c3_scope_eligible: true,
+              c4_quote_valid: source.facts.some((candidate) => candidate.sourceId === source.id && candidate.statement === fact.statement),
+              c5_relation: "NOT_RUN" as const,
+            },
+          })));
+      return { label: rule.label, severity: /R-01|R-02|R-05|R-06|R-07|R-13/.test(rule.id) ? "HIGH" : "MEDIUM", evidence };
     }
   }
   const avoidedTerms = sources.filter((source) => eligible(source, channel, date))
@@ -587,7 +606,7 @@ export function reviewDraft(input: {
       const restricted = /sugar free|zero sugar|no sugar|prevent|cure|treat|children grow|smarter|meal replacement/i.test(claimText);
       status = restricted ? "CONTRADICTED" : (best ? "PARTIALLY_SUPPORTED" : "NO_APPROVED_EVIDENCE");
       severity = rule.severity;
-      explanation = `${rule.label}. ${best ? `The approved source says: “${best.fact.statement}”` : "No applicable approved evidence was retrieved."}`;
+      explanation = `${rule.label}. ${rule.evidence?.length ? `Applicable approved policy says: “${rule.evidence[0].quote}”` : "No matching approved policy quotation was available."}`;
     } else if (!best || best.score < 0.2) {
       status = "NO_APPROVED_EVIDENCE"; severity = "REVIEW";
       explanation = "No applicable approved source was found. This means unverified, not proven false.";
@@ -625,7 +644,7 @@ export function reviewDraft(input: {
       severity,
       blocking_for_review: status === "CONTRADICTED" || status === "CONFLICT" || status === "NEEDS_HUMAN" || (status === "NO_APPROVED_EVIDENCE" && isRisk),
       explanation,
-      source_evidence: evidence,
+      source_evidence: rule?.evidence?.length ? rule.evidence : evidence,
       suggestion: suggested,
       suggestion_state: suggested ? "CANDIDATE" : undefined,
       created_at: new Date().toISOString(),
