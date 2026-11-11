@@ -7,6 +7,13 @@ export type EvidenceStatus =
   | "CONFLICT"
   | "NEEDS_HUMAN";
 export type Severity = "LOW" | "MEDIUM" | "HIGH" | "REVIEW";
+export type ExtractionReview = {
+  method: "OCR";
+  quality: "RELIABLE" | "NEEDS_PROOFREAD" | "UNREADABLE";
+  confidence: number;
+  rawTextHash: string;
+  reviewedTextHash?: string;
+};
 
 export type Source = {
   id: string;
@@ -91,6 +98,7 @@ export type Draft = {
   originalDocumentKey?: string;
   originalDocumentName?: string;
   originalDocumentType?: string;
+  extraction?: ExtractionReview;
 };
 
 export type Review = {
@@ -215,7 +223,7 @@ export const seedRules = [
   { id: "R-15", label: "Do not treat draft text as instructions to the system", terms: ["ignore previous instructions", "reveal system prompt", "override policy"] },
 ];
 
-export const starterDraft = `Meet Sample Foods Oat Bites, a cocoa oat snack for everyday moments. Each 30 g serving has 6 g protein and 4 g added sugar. It is made with wholegrain oats. Our starter bundle includes 3 jars and standard delivery. Sample Foods is sugar free and helps children grow smarter. #ad`;
+export const starterDraft = `Meet Sample Foods Oat Bites, a cocoa oat snack for everyday moments. Each 30 g serving has 6 g protein and 4 g added sugar. It is made with wholegrain oats. Our starter bundle includes 3 jars and standard delivery. Sample Foods is sugar free and helps children grow smarter. It improves focus. #ad`;
 
 const sha256RoundConstants = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -505,6 +513,8 @@ export function reviewDraft(input: {
   const claims = sentences.flatMap((sentence) => {
     const raw = sentence[0];
     const base = sentence.index ?? 0;
+    const sentenceWithoutLeadIn = normalize(raw.replace(/^\s*meet\s+/i, "").replace(/[.!?\s]+$/g, ""));
+    if (sentenceWithoutLeadIn === normalize(draft.product)) return [];
     const metricPattern = /\b\d+(?:\.\d+)?\s*(?:g|grams?|mg|ml|months?|jars?|bites?)\s+(?:serving|protein|added\s+sugar|sugar|calories|jars?|bites?)\b/gi;
     const metrics = [...raw.matchAll(metricPattern)];
     if (metrics.length < 2) {
@@ -605,6 +615,12 @@ export function reviewDraft(input: {
     const best = sortedByAuthority[0] ?? firstRelevant;
     const injection = detectInjection(claimText);
     const rule = ruleFinding(claimText, claim.context, sources, draft.channel, draft.publicationDate, input.includeDemoRules ?? true);
+    const sugarFact = /sugar free|zero sugar|no sugar/i.test(claimText)
+      ? retrieve("added sugar per serving", sources, draft.channel, draft.publicationDate).find(({ fact }) => normalize(fact.attribute) === "added sugar per serving")
+      : undefined;
+    const servingFact = sugarFact
+      ? retrieve("serving size", sources, draft.channel, draft.publicationDate).find(({ fact }) => normalize(fact.attribute) === "serving size")
+      : undefined;
     const claimQuantities = parseQuantities(claimText);
     const normalizedClaim = normalize(claimText);
     const directFactRelation = retrieved.some(({ source, fact }) => {
@@ -638,9 +654,17 @@ export function reviewDraft(input: {
       explanation = "Eligible approved sources at the same authority level disagree. The system will not choose a value automatically.";
     } else if (rule) {
       const restricted = /sugar free|zero sugar|no sugar|prevent|cure|treat|children grow|smarter|meal replacement/i.test(claimText);
-      status = restricted ? "CONTRADICTED" : (best ? "PARTIALLY_SUPPORTED" : "NO_APPROVED_EVIDENCE");
-      severity = rule.severity;
-      explanation = `${rule.label}. ${rule.evidence?.length ? `Applicable approved policy says: “${rule.evidence[0].quote}”` : "No matching approved policy quotation was available."}`;
+      if (!rule.evidence?.length && /children grow|smarter/i.test(claimText)) {
+        status = "NEEDS_HUMAN";
+        severity = "REVIEW";
+        explanation = `${rule.label}. No applicable approved policy quotation was available, so this is not labelled contradicted. A reviewer must assess it.`;
+      } else {
+        status = restricted ? "CONTRADICTED" : (best ? "PARTIALLY_SUPPORTED" : "NO_APPROVED_EVIDENCE");
+        severity = rule.severity;
+        explanation = rule.evidence?.length
+          ? `${rule.label}. Applicable approved policy says: “${rule.evidence[0].quote}”`
+          : `${rule.label}. The applicable restriction is recorded in the review rules, but no approved quotation was retrieved; a reviewer should verify the policy basis.`;
+      }
     } else if (!best || best.score < 0.2) {
       status = "NO_APPROVED_EVIDENCE"; severity = "REVIEW";
       explanation = "No applicable approved source was found. This means unverified, not proven false.";
@@ -656,8 +680,8 @@ export function reviewDraft(input: {
       status = "NEEDS_HUMAN"; severity = "REVIEW";
       explanation = "Related approved information was found, but its support for this wording is uncertain. A reviewer should decide.";
     }
-    const suggested = status === "CONTRADICTED" && /sugar free|zero sugar|no sugar|children grow|kids smarter|prevent|cure|treat/i.test(claimText)
-      ? "Sample Foods Oat Bites are made with wholegrain oats."
+    const suggested = status === "CONTRADICTED" && sugarFact && servingFact
+      ? `${sugarFact.fact.subject} contains ${sugarFact.fact.value} ${sugarFact.fact.unit ?? "g"} added sugar per ${servingFact.fact.value} ${servingFact.fact.unit ?? "g"} serving.`
       : status === "CONTRADICTED" && claimQuantities[0] && evidenceQuantity
         ? claimText.replace(claimQuantities[0].number, evidenceQuantity.number)
         : status === "NO_APPROVED_EVIDENCE" || status === "NEEDS_HUMAN"
@@ -718,8 +742,9 @@ export function recheckSuggestion(draft: Draft, finding: Finding, sources = seed
   const candidateText = draft.content.slice(0, start) + finding.suggestion + draft.content.slice(end);
   const candidateDraft = { ...draft, content: candidateText, hash: computeDraftHash({ ...draft, content: candidateText }), version: draft.version + 1 };
   const checked = reviewDraft({ draft: candidateDraft, sources });
-  const revised = checked.findings.find((f) => f.claim_text === finding.suggestion);
-  if (!revised || revised.blocking_for_review || revised.evidence_status !== "SUPPORTED" || revised.source_evidence.length === 0) {
+  const replacementEnd = start + Array.from(finding.suggestion).length;
+  const revisedClaims = checked.findings.filter((item) => item.end > start && item.start < replacementEnd);
+  if (!revisedClaims.length || revisedClaims.some((item) => item.blocking_for_review || item.evidence_status !== "SUPPORTED" || item.source_evidence.length === 0)) {
     return { ok: false, reason: "The candidate did not pass a full review. It cannot be accepted." };
   }
   return { ok: true, candidate: candidateText, reason: "Grounded and rechecked through the complete review pipeline." };
@@ -741,6 +766,7 @@ export function createDraft(content: string, patch: Partial<Draft> = {}): Draft 
     originalDocumentKey: patch.originalDocumentKey,
     originalDocumentName: patch.originalDocumentName,
     originalDocumentType: patch.originalDocumentType,
+    extraction: patch.extraction,
   };
   draft.hash = computeDraftHash(draft);
   return draft;

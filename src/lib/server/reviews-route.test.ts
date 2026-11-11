@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../../app/api/reviews/route";
-import { createDraft, initialDraft, reviewDraft, seedSources, sourceSnapshotHash } from "../onbrand";
+import { createDraft, initialDraft, reviewDraft, seedSources, sourceSnapshotHash, stableHash } from "../onbrand";
 
 const completion = (summary: string) => new Response(JSON.stringify({
   id: "mock-completion",
@@ -24,6 +24,26 @@ afterEach(() => {
 });
 
 describe("public deterministic review boundary", () => {
+  it("blocks uncertain OCR until text is edited and explicitly proofread", async () => {
+    const raw = "v i Sample Foods : Py EID ——— po 4 J OZ";
+    const corrected = "Sample Foods Oat Bites. 6 g protein per serving.";
+    const draft = createDraft(raw, { ...initialDraft, extraction: {
+      method: "OCR", quality: "UNREADABLE", confidence: 12, rawTextHash: stableHash(raw),
+    } });
+    const blocked = await POST(new Request("http://localhost/api/reviews", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ draft, sources: seedSources }),
+    }));
+    expect(blocked.status).toBe(409);
+
+    const correctedDraft = createDraft(corrected, { ...draft, extraction: {
+      ...draft.extraction!, reviewedTextHash: stableHash(corrected),
+    } });
+    const reviewed = await POST(new Request("http://localhost/api/reviews", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ draft: correctedDraft, sources: seedSources }),
+    }));
+    expect(reviewed.status).toBe(200);
+  });
+
   it("ignores a browser request to enable model calls even when a provider is configured", async () => {
     vi.stubEnv("OPENAI_API_KEY", "test-key");
     vi.stubEnv("OPENAI_BASE_URL", "https://mock-model.invalid/v1");

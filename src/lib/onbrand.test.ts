@@ -31,6 +31,17 @@ describe("OnBrand evidence review evaluation", () => {
     expect(finding.source_evidence).toHaveLength(0);
   });
 
+  it("does not create a claim finding from a standalone product title", () => {
+    expect(reviewDraft({ draft: createDraft("Sample Foods Oat Bites.") }).findings).toHaveLength(0);
+  });
+
+  it("keeps the demo focus benefit unverified and distinct from a contradiction", () => {
+    const finding = reviewDraft({ draft: initialDraft }).findings.find((item) => item.claim_text === "It improves focus.");
+    expect(finding?.evidence_status).toBe("NO_APPROVED_EVIDENCE");
+    expect(finding?.source_evidence).toHaveLength(0);
+    expect(finding?.explanation).toContain("unverified, not proven false");
+  });
+
   it("still retrieves an approved fact when the claim matches its attribute and value", () => {
     const draft = createDraft("Sample Foods Oat Bites are made with wholegrain oats.");
     const [finding] = reviewDraft({ draft }).findings;
@@ -230,6 +241,13 @@ describe("OnBrand evidence review evaluation", () => {
       c4_quote_valid: true,
     });
     expect(finding?.explanation).toContain("Applicable approved policy says");
+  });
+
+  it("does not contradict child-development claims without an approved policy quotation", () => {
+    const finding = reviewDraft({ draft: initialDraft, sources: seedSources.filter((source) => source.id !== "SRC-CLAIMS") })
+      .findings.find((item) => item.claim_text === "helps children grow smarter.");
+    expect(finding?.evidence_status).toBe("NEEDS_HUMAN");
+    expect(finding?.source_evidence).toHaveLength(0);
   });
 
   it("invalidates the source snapshot when an approved fact changes", () => {

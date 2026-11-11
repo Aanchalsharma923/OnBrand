@@ -19,6 +19,13 @@ const reviewRequest = z.object({
     publicationDate: z.string().date(),
     version: z.number().int().positive(),
     hash: z.string().min(1).max(64),
+    extraction: z.object({
+      method: z.literal("OCR"),
+      quality: z.enum(["RELIABLE", "NEEDS_PROOFREAD", "UNREADABLE"]),
+      confidence: z.number().min(0).max(100),
+      rawTextHash: z.string().length(64),
+      reviewedTextHash: z.string().length(64).optional(),
+    }).optional(),
   }),
   sources: z.array(sourceSchema).max(100).optional().refine((sources) => !sources || sources.reduce((total, source) => total + source.facts.length, 0) <= 2500, "Too many facts in one review request."),
   includeDemoRules: z.boolean().optional(),
@@ -31,6 +38,14 @@ export async function POST(request: Request) {
     if (contentLength > 3_000_000) return NextResponse.json({ error: "Review request is larger than the 3 MB limit." }, { status: 413 });
     const body = reviewRequest.parse(await request.json());
     const draft = body.draft as Draft;
+    if (draft.extraction && draft.extraction.quality !== "RELIABLE") {
+      const currentTextHash = stableHash(draft.content);
+      const edited = currentTextHash !== draft.extraction.rawTextHash;
+      const acknowledged = draft.extraction.reviewedTextHash === currentTextHash;
+      if (!edited || !acknowledged) {
+        return NextResponse.json({ error: "OCR text needs a manual correction and proofread confirmation before review." }, { status: 409 });
+      }
+    }
     const sources = body.sources as Source[] | undefined;
     // Never trust caller-supplied hashes: the server recomputes the content fingerprint.
     const safeDraft = createDraft(draft.content, { ...draft });

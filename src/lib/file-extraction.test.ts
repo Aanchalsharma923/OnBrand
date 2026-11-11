@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { extractUploadedFile, videoSampleTimestamps } from "./file-extraction";
+import { assessOcrQuality, extractUploadedFile, videoSampleTimestamps } from "./file-extraction";
+
+describe("OCR quality gate", () => {
+  it("accepts clean readable text at high confidence", () => {
+    expect(assessOcrQuality("Sample Foods Oat Bites\n6g protein per serving", 92).status).toBe("RELIABLE");
+  });
+
+  it("rejects empty and symbol-heavy poster output as review-ready", () => {
+    expect(assessOcrQuality("", 0).status).toBe("UNREADABLE");
+    const garbled = assessOcrQuality('v i Sample Foods : Py EID ——— po 4 J OZ Oat Bites /5, Hid J — ow v - = -at 9 arter JP', 31);
+    expect(garbled.status).not.toBe("RELIABLE");
+    expect(assessOcrQuality("7] pr. A cocoa oat snack SA for everyday moments F 4 yc pp Py a ©_/ gtarter Made with rE 4 gundle wholegrain oats", 73).status).toBe("NEEDS_PROOFREAD");
+  });
+});
 
 describe("reel frame sampling", () => {
   it("samples at least three evenly spaced frames from short reels and caps long reels at six", () => {
@@ -42,7 +55,7 @@ describe("browser draft text extraction", () => {
 
   it("rejects unsupported formats with a useful message", async () => {
     const file = new File(["binary"], "draft.doc");
-    await expect(extractUploadedFile(file)).rejects.toThrow("Supported files: DOCX, text PDF");
+    await expect(extractUploadedFile(file)).rejects.toThrow("Supported files: DOCX/PPTX");
   });
 
   it("enforces the 10 MB source-file limit before parsing", async () => {

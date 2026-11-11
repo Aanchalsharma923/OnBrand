@@ -30,17 +30,21 @@ Run `npm run test`. The current set has thirty-five checks, including atomic-cla
 | Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
 | Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
 | Browser file imports | TXT, Markdown and HTML content is retained as editable draft text; unsupported, oversized text and video files are rejected before parsing |
+| OCR quality gate | Clean text, symbol-heavy corruption and empty output are classified; low-quality OCR requires text correction and an explicit proofread acknowledgement in both the client and review API |
+| Standalone product title | A title matching the configured product name alone creates no claim finding |
 | Reel frame schedule | Short reels receive at least three evenly spaced OCR samples; long reels remain capped at six samples |
 
 **Latest historical run:** 35/35 automated checks passed on 8 Nov 2026. Thirty-four focused checks and one 20-draft synthetic development-set test ran. API regressions verify that public reviews stay deterministic even when a provider is configured and a browser requests model use, and that own-brand requests cannot inherit demo rules or evidence. Video checks verify the 50 MB limit before decode and the even sampling schedule; they do not prove real MP4/WebM frame OCR on diverse devices or media. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
 
-**10 Nov audit run:** 38/38 automated checks passed on the review branch. New regressions ensure role-only identity labels and that a matched approved child-development policy is shown with its exact source quote and valid C1–C4 checks. Lint, TypeScript and production build passed. See [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for full boundaries and [`DEFECT_REGISTER.md`](DEFECT_REGISTER.md) for open work. This run used Node 22.23.2 despite the package declaring Node 24; repeat on Node 24 before release.
+**10 Nov emergency stabilization run:** 49/49 automated checks passed (7 files), including OCR confidence/readability gates, the review API's edit-and-acknowledge requirement, missing policy quotation handling and suppression of a standalone product-title finding. TypeScript and ESLint passed. Production build passed with an isolated Next `distDir` because the normal `.next` cleanup encountered Windows `EPERM`; the temporary config change was reverted. The active runtime used Node 22.23.2 although the package declares Node 24; rerun under Node 24 before release. See [`AUDIT_REPORT.md`](AUDIT_REPORT.md) and [`DEFECT_REGISTER.md`](DEFECT_REGISTER.md).
 
 ## 20-draft synthetic development set
 
 `src/lib/dev-set.test.ts` composes 20 synthetic drafts across social, web and email channels, with five labelled findings per draft (100 claim instances total). Its fixture bank covers supported facts, numeric contradictions, unsupported benefits, restricted claims, equal-authority bundle conflicts and injection text. The test checks expected status agreement, exact draft-span mapping, exact source quotation/version membership in the approved fixture, and blocking of expected high-risk findings.
 
 **Latest run:** 100/100 expected statuses; 100/100 exact span and approved source quote/version checks; 0/60 missed blocks on contradicted, conflict and injection instances. The 100 claim instances reuse a small set of controlled templates, so this verifies deterministic behavior against the seeded domain and must not be presented as general accuracy. The B0 comparison below uses this same development set; it does not replace an independently adjudicated set.
+
+The emergency OCR and standalone-title changes do not alter the controlled 20-draft set. The latest execution reports all 100 labelled instances passing as part of the 49-test suite.
 
 ## B0 single-call RAG baseline
 

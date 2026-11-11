@@ -90,3 +90,29 @@ The review branch stores uploaded originals in browser IndexedDB and associates 
 ## Delivery notes
 
 Review the changes in the isolated `codex/round2-review` branch/worktree before merging or deploying. The branch was pushed to the fork and verified at `b7a90fe56bc1d6448402f4b85f4d7356013e182a`; fork/upstream `master` remains `2c4601754b9cbf547804081a28b9482c3bf191c3`, and production was not deployed. The supplied local `master` checkout and its pre-existing changes remain intact. D-03 is verified for selectable-text PDF and basic DOCX body/table content; D-04 remains an open prototype limitation.
+
+## 10 Nov emergency OCR stabilization follow-up
+
+### Confirmed P0 root cause and response
+
+The browser OCR path previously made a single Tesseract pass over the source-size canvas with default page segmentation. Image preprocessing was absent, and a nonempty string under the character limit was treated as successful extraction; OCR confidence and text coherence were discarded. On the supplied readable 1536×1024 poster, this produced 169 tokenized words of symbol-heavy fragments and 29 findings, of which only 1 was supported. The claim engine then interpreted fragments as independent assertions. This was reproduced in the browser before the repair.
+
+The current extractor uses grayscale/contrast preprocessing, upscaling (within the pixel cap), sparse-text and automatic-layout OCR passes, and confidence/readability/noise scoring. This did not make the source poster perfectly legible: a fresh production-browser extraction still returned rough copy at 73% confidence. It is therefore classified `NEEDS_PROOFREAD`; text remains editable, the original image persists, and both the button and API reject review until the user corrects the text and acknowledges proofreading. Unreadable/empty output is classified `UNREADABLE`, remains editable, and cannot generate a report before correction. No image coordinates are fabricated.
+
+### Regression fixtures and fresh browser evidence
+
+- Added the supplied source poster as `test-fixtures/sample-foods-oat-bites-ad.png` and a severely downsampled/compressed image as `test-fixtures/poor-quality-oat-bites-ad.jpg`.
+- On the original image, OCR returned 71 words at 73% confidence. The app kept the original visible and exposed the extraction in the editor; review remained disabled until correction and explicit confirmation.
+- On the poor-quality image, OCR returned no text (0 words) with a misleadingly high 95% engine confidence. The token/empty-text gate correctly labelled it `UNREADABLE`, preserved the original, disabled the review action and showed zero findings. This demonstrates why engine confidence alone is insufficient.
+- After manual correction, the seeded product facts showed supported status; the starter bundle showed a conflict with both approved 2-jar and 3-jar quotes; sugar-free and child-development claims showed their exact approved restriction quotes. These bundle/child claims were typed into the edited demo text for the review test; they are not asserted to be visible in the poster pixels. The grounded sugar correction passed its local recheck and created a new version. Removing the remaining conflict and restricted claim, confirming the changed OCR text, and re-running review produced 5 supported findings and enabled a separate human approval. Nothing was published.
+- A standalone product-name sentence no longer creates a claim finding. The demo seed includes an unsupported “improves focus” statement; it remains `NO_APPROVED_EVIDENCE`, with no invented quote and a distinct approval explanation.
+
+### Latest verification and remaining gaps
+
+- `npm test -- --run`: **49/49 passed** across 7 files, including the existing 100-case development-set assertion.
+- `npx tsc --noEmit`: passed.
+- `npm run lint`: passed after excluding the isolated Next build output from ESLint.
+- `npm run build`: passed with temporary isolated `.next-review` output; the temporary `next.config.ts` and generated `tsconfig.json` changes were reverted. A standard `.next` build attempt separately failed at cleanup with Windows `EPERM` unlinking an existing `.next/static` file; whether OneDrive or a running process held it was not proven. The isolated build emits `/`, `/api/health` and `/api/reviews`.
+- Browser verification used the local application at `127.0.0.1:3005` and the supplied exact poster plus degraded derivative. The exact text selection remains a text annotation only; OCR image-region coordinates are unavailable.
+- Minimal synthetic PPTX and XLSX fixtures were smoke-tested in the local browser: slide text, shared strings, inline strings and numeric worksheet values appeared in the editable draft and original download link remained available. This does not prove compatibility with complex production Office files. Video speech, complex visual layout, non-English OCR, page coordinates for OCR-only content, and all-format/mobile/accessibility matrices remain unverified.
+- Current branch is `codex/round2-review`, HEAD `81846b0` (`Make evidence report filters functional`). These follow-up changes are local and uncommitted; no push or production deployment was made.

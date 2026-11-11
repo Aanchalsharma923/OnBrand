@@ -18,8 +18,9 @@ import {
   recheckSuggestion,
   sourceSnapshotHash,
   sourceInjectionWarnings,
+  stableHash,
 } from "@/lib/onbrand";
-import { extractUploadedFile } from "@/lib/file-extraction";
+import { extractUploadedFile, extractUploadedFileDetailed } from "@/lib/file-extraction";
 import { roleInitials, roleLabel, sanitizeReviewAttribution } from "@/lib/identity";
 import { saveOriginalDocument } from "@/lib/document-store";
 import { OriginalDocument } from "./original-document";
@@ -165,13 +166,24 @@ export default function Home() {
   const findings = useMemo(() => review?.findings ?? [], [review]);
   const visibleFindings = useMemo(() => filterFindings(findings, findingFilter), [findings, findingFilter]);
   const selected = visibleFindings.find((finding) => finding.finding_id === selectedFinding) ?? visibleFindings[0];
-  const hasCurrentReview = Boolean(review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
+  const currentExtractionHash = draft.extraction ? stableHash(draft.content) : "";
+  const extractionBlocked = Boolean(draft.extraction && draft.extraction.quality !== "RELIABLE"
+    && (draft.extraction.rawTextHash === currentExtractionHash || draft.extraction.reviewedTextHash !== currentExtractionHash));
+  const hasCurrentReview = Boolean(!extractionBlocked && review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
+  const hasCurrentDecision = Boolean(hasCurrentReview && review?.decision && review.decision.draftHash === draft.hash && review.decision.sourceSnapshotHash === review.sourceSnapshotHash);
   const counts = useMemo(() => ({
     blocking: findings.filter((f) => f.blocking_for_review).length,
     supported: findings.filter((f) => f.evidence_status === "SUPPORTED").length,
     conflicts: findings.filter((f) => f.evidence_status === "CONFLICT").length,
     unsupported: findings.filter((f) => f.evidence_status === "NO_APPROVED_EVIDENCE").length,
   }), [findings]);
+  const approvalDisabledReason = role !== "reviewer" ? "Switch to Reviewer to record the human decision."
+    : extractionBlocked ? "Proofread and confirm the corrected OCR text before review."
+      : !review ? "Run a review before recording a decision."
+        : !hasCurrentReview ? "This report is stale. Run a fresh review before deciding."
+          : counts.blocking > 0 ? `Resolve or escalate ${counts.blocking} blocking finding${counts.blocking === 1 ? "" : "s"} before approval.`
+            : counts.unsupported > 0 ? `Add approved evidence or revise ${counts.unsupported} unverified claim${counts.unsupported === 1 ? "" : "s"} before approval.` : "";
+  const currentWorkflowStep = !draft.content.trim() ? 0 : !hasCurrentReview ? 1 : counts.blocking > 0 ? 2 : !hasCurrentDecision ? 3 : 4;
   const currentProfileSource = sources.find((source) => source.id === "SRC-VOICE" && !source.revokedAt);
   const profileValue = (attribute: string, fallback: string) => currentProfileSource?.facts.find((fact) => fact.attribute === attribute)?.value ?? fallback;
   const profileVoice = profileValue("voice", workspaceMode === "demo" ? "warm, practical and curious" : "Not provided");
@@ -285,7 +297,14 @@ export default function Home() {
     setIsExtracting(true);
     setExtractionStatus("Preparing file locally…");
     try {
-      const extractedText = await extractUploadedFile(file, setExtractionStatus);
+      const extracted = await extractUploadedFileDetailed(file, setExtractionStatus);
+      const extractedText = extracted.text;
+      const extraction = extracted.method === "OCR" && extracted.ocrQuality ? {
+        method: "OCR" as const,
+        quality: extracted.ocrQuality.status,
+        confidence: extracted.ocrQuality.confidence,
+        rawTextHash: stableHash(extractedText),
+      } : undefined;
       const originalDocumentKey = crypto.randomUUID();
       let originalSaved = false;
       try {
@@ -298,13 +317,14 @@ export default function Home() {
       const nextDraft = createDraft(extractedText, { ...draft, title: file.name, version: nextVersion,
         originalDocumentKey: originalSaved ? originalDocumentKey : undefined,
         originalDocumentName: originalSaved ? file.name : undefined,
-        originalDocumentType: originalSaved ? file.type : undefined });
+        originalDocumentType: originalSaved ? file.type : undefined, extraction });
       setDraft(nextDraft);
       setVersions((current) => [...current, nextDraft]);
       setSelectedFinding(null);
       setLastDecision("");
-      setExtractionStatus(`${file.name} · text extracted on this device${originalSaved ? " and original preserved in this browser" : "; original could not be preserved"}. Proofread the extracted text before review.`);
-      announce("File text added as a new draft version. Proofread it, then run review.");
+      const qualityNote = extracted.ocrQuality ? ` OCR ${extracted.ocrQuality.status.toLowerCase().replaceAll("_", " ")} (${extracted.ocrQuality.confidence}% confidence).` : "";
+      setExtractionStatus(`${file.name} · text extracted on this device.${qualityNote}${originalSaved ? " Original preserved in this browser." : " Original could not be preserved."}`);
+      announce(extraction && extraction.quality !== "RELIABLE" ? "OCR text needs correction and proofread confirmation before review." : "File text added as a new draft version. Inspect it before review.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "This file could not be read.";
       setExtractionStatus(message);
@@ -313,6 +333,15 @@ export default function Home() {
       setIsExtracting(false);
       input.value = "";
     }
+  }
+
+  function confirmOcrProofread() {
+    if (!draft.extraction || !draft.content.trim() || stableHash(draft.content) === draft.extraction.rawTextHash) {
+      announce("Correct the extracted text before confirming the proofread.");
+      return;
+    }
+    updateDraftMetadata({ extraction: { ...draft.extraction, reviewedTextHash: stableHash(draft.content) } });
+    announce("Corrected OCR text marked as proofread. Run the evidence review when ready.");
   }
 
   function saveVersion(): typeof draft {
@@ -326,6 +355,10 @@ export default function Home() {
   }
 
   async function runReview() {
+    if (extractionBlocked) {
+      announce("Correct the OCR text and confirm that you proofread it before running review.");
+      return;
+    }
     setIsReviewing(true);
     await new Promise((resolve) => window.setTimeout(resolve, 450));
     try {
@@ -642,7 +675,7 @@ export default function Home() {
 
   return (
     <div className="app-shell">
-      {showWelcome && <div className="welcome-backdrop"><section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title"><div className="welcome-brand"><BrandMark /><span>OnBrand</span></div><div className="eyebrow"><span className="eyebrow-dot" /> START HERE</div><h1 id="welcome-title">Start with a sample or your own brand</h1><p className="welcome-lead">Choose the sample workspace for a quick tour, or create a workspace for your brand. Workspaces and knowledge are saved in this browser; switching replaces the workspace currently saved here.</p><div className="welcome-options"><button className="welcome-option" onClick={enterDemo}><span className="welcome-option-mark">✳</span><b>Explore demo data</b><small>Try a ready-to-review Sample Foods campaign with example brand rules and findings.</small><span className="welcome-action">Open the demo →</span></button><div className="welcome-option own-option"><span className="welcome-option-mark">＋</span><b>Use my own brand</b><small>Set your brand voice and audience, add your own approved facts or guidelines, then review a poster, reel or draft.</small><form onSubmit={createOwnWorkspace}><label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Northstar Studio" /></label><label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, warm and direct" /></label><label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. first-time home buyers" /></label><details><summary>Add optional guardrails</summary><label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" /></label><label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" /></label></details><button className="welcome-submit" type="submit">Create my workspace →</button></form></div></div><div className="welcome-capabilities"><b>How your review works</b><span>1. Add a PDF, DOCX, image or text guide and approve its passages. 2. Upload a poster/image or MP4/WebM reel, then run review. Poster text and text in 3 to 6 evenly sampled reel frames is checked (3 minutes/50 MB max).</span><span>Reel speech, colors, logos and layout are not analysed. OnBrand gives evidence-linked recommendations; your team decides what to accept. Nothing is published.</span></div></section></div>}
+      {showWelcome && <div className="welcome-backdrop"><section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title"><div className="welcome-brand"><BrandMark /><span>OnBrand</span></div><div className="eyebrow"><span className="eyebrow-dot" /> START HERE</div><h1 id="welcome-title">Start with a sample or your own brand</h1><p className="welcome-lead">Choose the sample workspace for a quick tour, or create a workspace for your brand. Workspaces and knowledge are saved in this browser; switching replaces the workspace currently saved here.</p><div className="welcome-options"><button className="welcome-option" onClick={enterDemo}><span className="welcome-option-mark">✳</span><b>Explore demo data</b><small>Try a ready-to-review Sample Foods campaign with example brand rules and findings.</small><span className="welcome-action">Open the demo →</span></button><div className="welcome-option own-option"><span className="welcome-option-mark">＋</span><b>Use my own brand</b><small>Set your brand voice and audience, add your own approved facts or guidelines, then review a poster, reel or draft.</small><form onSubmit={createOwnWorkspace}><label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Northstar Studio" /></label><label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, warm and direct" /></label><label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. first-time home buyers" /></label><details><summary>Add optional guardrails</summary><label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" /></label><label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" /></label></details><button className="welcome-submit" type="submit">Create my workspace →</button></form></div></div><div className="welcome-capabilities"><b>How your review works</b><span>1. Add an approved knowledge document and approve its passages. 2. Upload an image, PDF, DOCX/PPTX, XLSX/CSV, text file or MP4/WebM video. Extracted text stays editable for review.</span><span>OCR/video frame text may need proofreading; speech, visual design and non-text content are not reviewed. OnBrand shows evidence-backed findings; people decide what to accept. Nothing is published.</span></div></section></div>}
       <aside className="sidebar">
         <div className="brand-lockup"><BrandMark /><span>OnBrand</span><span className="brand-beta">BETA</span></div>
         <button className="workspace-switcher" aria-label="Current workspace" onClick={() => setShowWelcome(true)}>
@@ -667,15 +700,22 @@ export default function Home() {
 
         {view === "review" ? <>
           <div className="page-heading">
-            <div><div className="eyebrow"><span className="eyebrow-dot" /> PRE-PUBLICATION CHECK</div><h1>Review workspace</h1><p>One calm, evidence-led pass before your content goes live.</p></div>
-            <div className="heading-actions"><button className="quiet-button" onClick={() => setShowAudit((v) => !v)}><span className="history-icon">◷</span> {showAudit ? "Hide history" : "Version history"}</button><button className="primary-button" onClick={runReview} disabled={isReviewing}>{isReviewing ? <><span className="spinner" /> Checking evidence…</> : <><span className="sparkle">✳</span> Run review</>}</button></div>
+            <div><div className="eyebrow"><span className="eyebrow-dot" /> PRE-PUBLICATION CHECK</div><h1>{review ? `Review: ${draft.title} v${draft.version}` : "Review workspace"}</h1><p>One calm, evidence-led pass before your content goes live.</p></div>
+            <div className="heading-actions"><button className="quiet-button" onClick={() => setShowAudit((v) => !v)}><span className="history-icon">◷</span> {showAudit ? "Hide history" : "Version history"}</button><button className="primary-button" onClick={runReview} disabled={isReviewing || extractionBlocked} title={extractionBlocked ? "Correct the OCR text and confirm your proofread first." : undefined}>{isReviewing ? <><span className="spinner" /> Checking evidence…</> : <><span className="sparkle">✳</span> Run review</>}</button></div>
           </div>
+          <ol className="workflow-stepper" aria-label="Review progress">
+            {["Draft", "Check evidence", "Fix & recheck", "Human decision"].map((label, index) => {
+              const complete = index < currentWorkflowStep;
+              const current = index === currentWorkflowStep;
+              return <li key={label} className={`workflow-step ${complete ? "complete" : current ? "current" : "pending"}`} aria-current={current ? "step" : undefined}><span className="workflow-marker">{complete ? "✓" : index + 1}</span><span className="workflow-label">{label}</span></li>;
+            })}
+          </ol>
           {workspaceMode === "own" && activeSources.length <= 1 && <div className="next-step-banner"><span className="next-step-number">1</span><div><b>Start by adding your approved brand knowledge</b><small>Bring in your claims, product facts, policies or guidelines. Review each passage and approve it before running a content check.</small></div><button className="small-ghost" onClick={() => setView("knowledge")}>Set up knowledge <Icon name="arrow" /></button></div>}
           {!hasCurrentReview && review && <div className="stale-banner"><span>↻</span> This draft or its approved knowledge changed. The previous decision is no longer current. Run a fresh review.</div>}
           {showAudit && <div className="history-strip"><b>Version history</b>{versions.slice().reverse().map((item) => <span key={`${item.id}-${item.version}-${item.hash}`} className={item.hash === draft.hash && item.version === draft.version ? "history-current" : ""}>v{item.version} · {item.hash.slice(0, 10)}</span>)}{review && <span>Last review · {new Date(review.createdAt).toLocaleString()}</span>}</div>}
 
           <section className="summary-strip" aria-label="Review overview">
-            <div className="summary-title"><span className="summary-icon">◉</span><div><b>{review ? hasCurrentReview ? "Review ready" : "Review out of date" : "Draft ready for review"}</b><small>{review ? hasCurrentReview ? `${findings.length} claims checked · evidence snapshot locked` : "Refresh the report before a decision" : "Add or edit content, then run an evidence check"}</small></div></div>
+            <div className="summary-title"><span className="summary-icon">◉</span><div><b>{extractionBlocked ? "Proofread extracted text" : review ? hasCurrentReview ? "Review ready" : "Review out of date" : "Draft ready for review"}</b><small>{extractionBlocked ? "Correct the OCR text below and confirm your proofread before checking claims." : review ? hasCurrentReview ? `${findings.length} claims checked · evidence snapshot locked` : "Refresh the report before a decision" : "Add or edit content, then run an evidence check"}</small></div></div>
             <div className="summary-metric"><b>{findings.length || "—"}</b><small>CLAIMS CHECKED</small></div><div className="summary-metric"><b className={counts.blocking ? "metric-warn" : ""}>{review ? counts.blocking : "—"}</b><small>NEEDS ATTENTION</small></div><div className="summary-metric"><b>{review ? `${counts.supported}/${findings.length}` : "—"}</b><small>EVIDENCE-ALIGNED</small></div>
           </section>
 
@@ -685,7 +725,8 @@ export default function Home() {
               <div className="draft-meta"><span className="meta-chip"><span className="tiny-icon">▣</span>{draft.channel}</span><span className="meta-chip"><span className="tiny-icon">◌</span>{draft.product}</span><span className="meta-chip"><span className="tiny-icon">◷</span>{draft.audience}</span></div>
               <label className="sr-only" htmlFor="draft-content">Draft content</label>
               <textarea ref={draftEditorRef} id="draft-content" className="draft-editor" value={draft.content} onChange={(event) => updateDraftContent(event.target.value)} placeholder="Paste or write draft copy to check it against approved brand knowledge…" />
-              <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload poster, reel or file"}<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.mp4,.webm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload a poster, reel, document or text file" /></label><div aria-live="polite">{extractionStatus || "Choose a poster/image, MP4/WebM reel, DOCX, PDF or text file."}<small>Poster: checks readable text. Reel: checks text in 3 to 6 evenly sampled frames (max 3 minutes/50 MB); spoken audio is not transcribed. Colors, logos and layout are not checked. Files are read on this device; extracted text is sent for review only when you run it. Please proofread OCR text.</small></div></div>
+              <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload poster, reel or file"}<input type="file" accept=".docx,.pptx,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.csv,.mp4,.webm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload an image, video, document, presentation, spreadsheet or text file" /></label><div aria-live="polite">{extractionStatus || "Choose an image/video, PDF, DOCX/PPTX, XLSX/CSV or text file."}<small>Text review accepts image and scanned/text PDF OCR; DOCX/PPTX, XLSX/CSV, TXT, Markdown and HTML extraction; MP4/WebM frame text sampling. Original files remain available when browser storage permits. Video speech, visual design, slide artwork, spreadsheet formulas and non-text picture content are not reviewed; extracted text is sent for review only when you run it.</small></div></div>
+              {draft.extraction && <div className={`ocr-review-notice ${extractionBlocked ? "needs-proofread" : "proofread-done"}`} role="status"><div><b>{extractionBlocked ? `OCR needs proofreading · ${draft.extraction.confidence}% confidence` : "OCR text proofread"}</b><small>{extractionBlocked ? "Recognition quality is uncertain. Correct the editable text above; the original file remains available below." : "The reviewed text is ready for an evidence check."}</small></div>{extractionBlocked && <button type="button" className="quiet-button" onClick={confirmOcrProofread} disabled={!draft.content.trim() || currentExtractionHash === draft.extraction.rawTextHash}>I corrected and checked the text</button>}</div>}
               {draft.originalDocumentKey && draft.originalDocumentName && <OriginalDocument fileKey={draft.originalDocumentKey} name={draft.originalDocumentName} type={draft.originalDocumentType ?? ""} content={draft.content} findings={findings} selectedFindingId={selected?.finding_id ?? null} onSelectFinding={setSelectedFinding} currentReview={hasCurrentReview} />}
               <div className="editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span><button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>Save version</button><span className="saved-label"><span /> Saved locally</span></div>
               <div className="editor-callout"><span className="callout-symbol">i</span><span>Draft text is treated as untrusted content. Instructions inside a draft cannot change OnBrand’s review rules.</span></div>
@@ -708,11 +749,19 @@ export default function Home() {
 
             <aside className="detail-panel">
               {review && <div className="assignment-row"><label htmlFor="review-assignee">Assigned reviewer</label><select id="review-assignee" value={review.assignedTo ?? "Workspace reviewer"} onChange={(event) => assignReviewer(event.target.value)} disabled={role !== "reviewer"}><option>Workspace reviewer</option><option>Backup reviewer</option></select></div>}
+              <section className="review-activity" aria-label="Review activity">
+                <div className="review-activity-header"><div><span className="panel-kicker">REVIEW ACTIVITY</span><h3>{isReviewing ? "Checking evidence" : hasCurrentReview ? "Report ready" : review ? "Refresh needed" : "Ready to review"}</h3></div><span className={`activity-state ${hasCurrentReview ? "ready" : isReviewing ? "running" : "waiting"}`}>{hasCurrentReview ? "Complete" : isReviewing ? "Running" : "Waiting"}</span></div>
+                <ol className="activity-list">
+                  <li className={draft.content.trim() ? "done" : "waiting"}><span className="activity-marker">{draft.content.trim() ? "✓" : "1"}</span><div><b>Draft prepared</b><small>{draft.originalDocumentName ? `${draft.originalDocumentName} · browser-local original` : `Version ${draft.version} · ${draft.content.trim() ? `${draft.content.trim().split(/\s+/).length} words` : "No draft content yet"}`}</small></div></li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}><span className="activity-marker">{hasCurrentReview ? "✓" : "2"}</span><div><b>Evidence review</b><small>{hasCurrentReview ? `${findings.length} finding${findings.length === 1 ? "" : "s"} · ${review?.engineMode === "deterministic-preview" ? "deterministic checks" : "review complete"}` : isReviewing ? "Comparing claims with approved sources" : review ? "Draft or sources changed · rerun review" : "Run a review to compare approved sources"}</small></div></li>
+                  <li className={hasCurrentDecision ? "done" : hasCurrentReview && counts.blocking === 0 ? "active" : "waiting"}><span className="activity-marker">{hasCurrentDecision ? "✓" : "3"}</span><div><b>Human decision</b><small>{hasCurrentDecision ? `Recorded · ${review?.decision?.state.replaceAll("_", " ").toLowerCase()}` : counts.blocking > 0 && hasCurrentReview ? `${counts.blocking} blocking finding${counts.blocking === 1 ? "" : "s"} need attention first` : "People decide · nothing is published here"}</small></div></li>
+                </ol>
+                {review?.agentNotes?.length ? <div className="activity-advisory"><div className="detail-label">OPTIONAL MODEL NOTES · NOT VERDICTS</div>{review.agentNotes.map((note) => <div className="agent-note" key={note.agent}><b>{note.agent}</b><p>{note.summary}</p></div>)}</div> : <p className="activity-disclosure">{modelDisclosure.startsWith("Deterministic mode") || modelDisclosure.startsWith("No model is configured") ? "Deterministic review · no model call was made." : "Optional advisory unavailable · evidence decisions remain code-checked."}</p>}
+              </section>
               <div className="detail-header"><div><span className="panel-kicker">FINDING DETAILS</span><h2>{selected ? statusLabel[selected.evidence_status] : "Review details"}</h2></div>{selected && <span className={`status-icon ${statusClass[selected.evidence_status]}`}>{selected.evidence_status === "SUPPORTED" ? "✓" : selected.evidence_status === "CONFLICT" ? "↔" : "!"}</span>}</div>
               {selected ? <>
                 <div className="detail-claim">{selected.claim_text}</div>
                 <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">✳</span> WHY IT MATTERS</div><p>{selected.explanation}</p></div>
-                {review?.agentNotes?.length ? <div className="agent-panel"><div className="agent-panel-heading"><span className="panel-kicker">MULTI-AGENT ADVISORY</span><span>MODEL NOTES · NOT VERDICTS</span></div>{review.agentNotes.map((note) => <div className="agent-note" key={note.agent}><b>{note.agent}</b><p>{note.summary}</p></div>)}</div> : <div className="model-state-note"><span className="model-state-dot" />{modelDisclosure.startsWith("Deterministic mode") || modelDisclosure.startsWith("No model is configured") ? "Deterministic review mode · no model call was made." : "Optional advisory panel unavailable · unresolved evidence claims are routed to human review."}</div>}
                 <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">▤</span> RETRIEVED SOURCES <span className="evidence-count">{selected.source_evidence.length}</span></div>
                   {selected.source_evidence.length ? selected.source_evidence.slice(0, 2).map((evidence, index) => {
                     const source = sources.find((s) => s.id === evidence.source_id);
@@ -725,10 +774,10 @@ export default function Home() {
                     return <div className="evidence-card" key={`${evidence.source_id}-${evidence.source_version}-${index}`}><div className="evidence-source"><span className="source-file-icon">▤</span><span><b>{source?.title ?? evidence.source_id}</b><small>v{evidence.source_version} · authority {evidence.authority} · {verificationLabel}</small></span><span className="source-open">↗</span></div><blockquote>“{evidence.quote}”</blockquote></div>;
                   }) : <div className="no-evidence-card"><span>◌</span><p>No applicable approved evidence was found. Escalate or add an approved source.</p></div>}
                 </div>
-                {selected.suggestion && <div className="suggestion-card"><div className="suggestion-top"><span>✧</span><div><b>Suggested revision</b><small>Candidate · must pass full recheck</small></div></div><p>{selected.suggestion}</p><button className="suggestion-button" onClick={() => acceptSuggestion(selected)} disabled={!hasCurrentReview || selected.suggestion_state === "REJECTED"}><Icon name="check" /> Recheck & apply</button></div>}
+                {selected.suggestion && <div className="suggestion-card"><div className="suggestion-top"><span>✧</span><div><b>Suggested revision</b><small>{selected.suggestion_state === "REJECTED" ? "Recheck did not pass · edit the draft manually" : "Candidate · must pass full recheck"}</small></div></div><div className="suggestion-comparison"><div><small>Current claim</small><p>“{selected.claim_text}”</p></div><span className="suggestion-arrow" aria-hidden="true">→</span><div className="candidate-copy"><small>Suggested copy</small><p>“{selected.suggestion}”</p></div></div><button className="suggestion-button" onClick={() => acceptSuggestion(selected)} disabled={!hasCurrentReview || selected.suggestion_state === "REJECTED"}><Icon name="check" /> Recheck & apply</button></div>}
                 <div className="detail-section comments-section"><div className="detail-label"><Icon name="comment" /> REVIEW THREAD <span className="evidence-count">{review?.comments.length ?? 0}</span></div>{review?.comments.map((item) => <div className="comment-item" key={item.id}><b>{item.author}</b>{item.draftVersionId && <span className="comment-context">{item.draftVersionId} · {item.draftHash?.slice(0, 8)}</span>}<small>{item.text}</small>{item.resolved ? <span className="comment-resolved">Resolved</span> : role === "reviewer" && <button className="comment-resolve" onClick={() => resolveComment(item.id)}>Resolve</button>}</div>)}<div className="comment-entry"><input value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addComment()} placeholder="Add a comment…" aria-label="Add a review comment" /><button onClick={addComment} aria-label="Post comment">↗</button></div></div>
               </> : <div className="detail-placeholder"><div className="placeholder-art">◈</div><b>Select a finding to inspect</b><p>Each item includes its exact source, version and reasoning.</p></div>}
-              <div className="decision-area"><div className="decision-boundary"><span className="lock-icon">⌑</span><p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p></div><div className="decision-actions"><button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>Request changes</button><button className="approve-button" onClick={() => makeDecision("APPROVED")} disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0}><Icon name="check" /> Approve version</button></div>{review?.decision && <button className="reopen-button" onClick={reopenDecision} disabled={role !== "reviewer" || !hasCurrentReview}>Reopen {review.decision.state.replaceAll("_", " ").toLowerCase()}</button>}{review?.decisionHistory?.length ? <details className="decision-history"><summary>Decision audit · {review.decisionHistory.length} event{review.decisionHistory.length === 1 ? "" : "s"}</summary>{review.decisionHistory.slice().reverse().map((event, index) => <div className="audit-event" key={`${event.at}-${index}`}><b>{event.action === "DECISION_REOPENED" ? "Decision reopened" : event.state?.replaceAll("_", " ")}</b><span>{event.by} · {new Date(event.at).toLocaleString()}</span><small>Draft {event.draftHash.slice(0, 8)} · knowledge {event.sourceSnapshotHash.slice(0, 8)}</small></div>)}</details> : null}{lastDecision && <div className="decision-record">Recorded: {lastDecision} · hash {draft.hash.slice(0, 8)}</div>}{role !== "reviewer" && <div className="role-hint">Switch to Reviewer to record a decision.</div>}</div>
+              <div className="decision-area"><div className="decision-boundary"><span className="lock-icon">⌑</span><p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p></div><div className="decision-actions"><button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>Request changes</button><button className="approve-button" onClick={() => makeDecision("APPROVED")} disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0 || counts.unsupported > 0} title={approvalDisabledReason || undefined} aria-describedby={approvalDisabledReason ? "approval-disabled-reason" : undefined}><Icon name="check" /> Approve version</button></div>{approvalDisabledReason && <div className="role-hint" id="approval-disabled-reason">{approvalDisabledReason}</div>}{review?.decision && <button className="reopen-button" onClick={reopenDecision} disabled={role !== "reviewer" || !hasCurrentReview}>Reopen {review.decision.state.replaceAll("_", " ").toLowerCase()}</button>}{review?.decisionHistory?.length ? <details className="decision-history"><summary>Decision audit · {review.decisionHistory.length} event{review.decisionHistory.length === 1 ? "" : "s"}</summary>{review.decisionHistory.slice().reverse().map((event, index) => <div className="audit-event" key={`${event.at}-${index}`}><b>{event.action === "DECISION_REOPENED" ? "Decision reopened" : event.state?.replaceAll("_", " ")}</b><span>{event.by} · {new Date(event.at).toLocaleString()}</span><small>Draft {event.draftHash.slice(0, 8)} · knowledge {event.sourceSnapshotHash.slice(0, 8)}</small></div>)}</details> : null}{lastDecision && <div className="decision-record">Recorded: {lastDecision} · hash {draft.hash.slice(0, 8)}</div>}</div>
             </aside>
           </section>
         </> : view === "knowledge" ? <>
