@@ -1,0 +1,5 @@
+.next
+.next-review
+test-fixtures
+node_modules
+*.tsbuildinfo
