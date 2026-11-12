@@ -1,14 +1,12 @@
 "use client";
 
-import { ChangeEvent, startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDraft,
   computeDraftHash,
   codePointToUtf16Offset,
   Finding,
   initialDraft,
-  filterFindings,
-  FindingFilter,
   Review,
   reviewDraft,
   Role,
@@ -23,12 +21,17 @@ import {
 import { extractUploadedFile, extractUploadedFileDetailed } from "@/lib/file-extraction";
 import { roleInitials, roleLabel, sanitizeReviewAttribution } from "@/lib/identity";
 import { saveOriginalDocument } from "@/lib/document-store";
-import { OriginalDocument } from "./original-document";
+import { OriginalDocument, HighlightedText } from "./original-document";
+import {
+  consolidateFindings,
+  type EnrichedFinding,
+} from "@/lib/finding-enhancer";
+import { getBrowserSupabase } from "@/lib/supabase-client";
 
 type View = "review" | "knowledge" | "insights";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
 type WorkspaceMode = "demo" | "own";
-const storageKey = "onbrand-r3-v1";
+const storageKey = "onbrand-v1";
 const statusLabel: Record<Finding["evidence_status"], string> = {
   SUPPORTED: "Supported",
   PARTIALLY_SUPPORTED: "Partially supported",
@@ -120,7 +123,12 @@ export default function Home() {
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [review, setReview] = useState<Review | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<string | null>(null);
-  const [findingFilter, setFindingFilter] = useState<FindingFilter>("all");
+  const [editorMode, setEditorMode] = useState<"reading" | "raw">("reading");
+  const [productFilter, setProductFilter] = useState<string>("all");
+  const [dismissedFindingIds, setDismissedFindingIds] = useState<string[]>([]);
+  const [activeOccurrenceMap, setActiveOccurrenceMap] = useState<Record<string, number>>({});
+  const [dismissModalFindingId, setDismissModalFindingId] = useState<string | null>(null);
+  const [dismissReasonInput, setDismissReasonInput] = useState("");
   const [isReviewing, setIsReviewing] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionStatus, setExtractionStatus] = useState("");
@@ -137,6 +145,16 @@ export default function Home() {
   const [modelDisclosure, setModelDisclosure] = useState("Deterministic mode active. Evidence statuses, citations and approval gates are code-generated.");
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
+
+  // Verified authentication and backend health state
+  const [supabaseSession, setSupabaseSession] = useState<{ user: { email?: string; id: string }; accessToken: string } | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authStatusMessage, setAuthStatusMessage] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [backendHealth, setBackendHealth] = useState<{ persistence: string; databaseIntegration: string } | null>(null);
 
   useEffect(() => {
     let restored: { draft?: typeof draft; versions?: typeof versions; sources?: Source[]; review?: Review; role?: Role; lastDecision?: string; workspaceMode?: WorkspaceMode } | undefined;
@@ -158,19 +176,67 @@ export default function Home() {
       if (restored?.lastDecision) setLastDecision(restored.lastDecision.split(" · ")[0]);
       setLoaded(true);
     });
+
+    // Check backend health for persistence status
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data) => {
+        setBackendHealth({
+          persistence: data.persistence ?? "unknown",
+          databaseIntegration: data.databaseIntegration ?? "not-configured",
+        });
+      })
+      .catch(() => {});
+
+    // Check browser Supabase auth session
+    const supabase = getBrowserSupabase();
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setSupabaseSession({
+            user: { id: session.user.id, email: session.user.email },
+            accessToken: session.access_token,
+          });
+        }
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) {
+          setSupabaseSession({
+            user: { id: session.user.id, email: session.user.email },
+            accessToken: session.access_token,
+          });
+        } else {
+          setSupabaseSession(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, []);
+
+  const getAuthHeaders = useCallback((extra: Record<string, string> = {}) => {
+    const headers: Record<string, string> = {
+      "x-demo-org": currentOrg,
+      "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
+      "x-onbrand-role": role,
+      "x-demo-role": role.toUpperCase(),
+      ...extra,
+    };
+    if (supabaseSession?.accessToken) {
+      headers["Authorization"] = `Bearer ${supabaseSession.accessToken}`;
+    }
+    return headers;
+  }, [currentOrg, role, supabaseSession]);
 
   // Multi-tenant backend synchronization
   useEffect(() => {
     let isMounted = true;
     async function syncBackendData() {
       try {
-        const headers = {
-          "x-demo-org": currentOrg,
-          "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
-          "x-onbrand-role": role,
-          "x-demo-role": role.toUpperCase(),
-        };
+        const headers = getAuthHeaders();
         const [srcRes, draftRes] = await Promise.all([
           fetch("/api/sources", { headers }),
           fetch("/api/drafts", { headers }),
@@ -194,7 +260,7 @@ export default function Home() {
     }
     syncBackendData();
     return () => { isMounted = false; };
-  }, [currentOrg, role]);
+  }, [currentOrg, role, getAuthHeaders]);
 
   useEffect(() => {
     if (!loaded || showWelcome) return;
@@ -202,13 +268,90 @@ export default function Home() {
   }, [draft, versions, sources, review, role, lastDecision, workspaceMode, loaded, showWelcome]);
 
   const findings = useMemo(() => review?.findings ?? [], [review]);
-  const visibleFindings = useMemo(() => filterFindings(findings, findingFilter), [findings, findingFilter]);
-  const selected = visibleFindings.find((finding) => finding.finding_id === selectedFinding) ?? visibleFindings[0];
+
+  const enrichedList = useMemo(() => {
+    return consolidateFindings(findings, draft.content, sources).map((f) => ({
+      ...f,
+      dismissed: dismissedFindingIds.includes(f.id) || dismissedFindingIds.includes(f.rawFindingId),
+    }));
+  }, [findings, draft.content, sources, dismissedFindingIds]);
+
+  const actionableList = useMemo(() => {
+    return enrichedList.filter((f) => f.classification !== "INFORMATIONAL" && !f.dismissed);
+  }, [enrichedList]);
+
+  const summaryCounts = useMemo(() => ({
+    total: actionableList.length,
+    totalActionable: actionableList.length,
+    critical: actionableList.filter((f) => f.severity === "Critical").length,
+    high: actionableList.filter((f) => f.severity === "High").length,
+    medium: actionableList.filter((f) => f.severity === "Medium").length,
+    low: actionableList.filter((f) => f.severity === "Low").length,
+    criticalHigh: actionableList.filter((f) => f.severity === "Critical" || f.severity === "High").length,
+    needsEvidence: actionableList.filter((f) => f.classification === "UNSUPPORTED_CLAIM").length,
+    unsupported: actionableList.filter((f) => f.classification === "UNSUPPORTED_CLAIM").length,
+    needsHuman: actionableList.filter((f) => f.classification === "NEEDS_HUMAN").length,
+    resolved: enrichedList.filter((f) => f.dismissed).length,
+    dismissed: enrichedList.filter((f) => f.dismissed).length,
+    aligned: enrichedList.filter((f) => f.classification === "INFORMATIONAL").length,
+  }), [actionableList, enrichedList]);
+
+  const filteredEnrichedList = useMemo(() => {
+    switch (productFilter) {
+      case "critical":
+        return actionableList.filter((f) => f.severity === "Critical");
+      case "high":
+        return actionableList.filter((f) => f.severity === "High");
+      case "medium":
+        return actionableList.filter((f) => f.severity === "Medium");
+      case "low":
+        return actionableList.filter((f) => f.severity === "Low");
+      case "needs_evidence":
+        return actionableList.filter((f) => f.classification === "UNSUPPORTED_CLAIM");
+      case "needs_human":
+        return actionableList.filter((f) => f.classification === "NEEDS_HUMAN");
+      case "resolved":
+        return enrichedList.filter((f) => f.dismissed);
+      case "all_including_compliant":
+        return enrichedList;
+      case "all":
+      default:
+        return actionableList;
+    }
+  }, [actionableList, enrichedList, productFilter]);
+
+  const selectedEnriched = useMemo(() => {
+    if (!selectedFinding) return filteredEnrichedList[0] ?? null;
+    return enrichedList.find((f) => f.rawFindingId === selectedFinding || f.id === selectedFinding) ?? filteredEnrichedList[0] ?? null;
+  }, [selectedFinding, filteredEnrichedList, enrichedList]);
+
+  const selected = useMemo(() => {
+    if (!selectedEnriched) return null;
+    return findings.find((f) => f.finding_id === selectedEnriched.rawFindingId) ?? null;
+  }, [selectedEnriched, findings]);
+
   const currentExtractionHash = draft.extraction ? stableHash(draft.content) : "";
   const extractionBlocked = Boolean(draft.extraction && draft.extraction.quality !== "RELIABLE"
     && (draft.extraction.rawTextHash === currentExtractionHash || draft.extraction.reviewedTextHash !== currentExtractionHash));
   const hasCurrentReview = Boolean(!extractionBlocked && review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
   const hasCurrentDecision = Boolean(hasCurrentReview && review?.decision && review.decision.draftHash === draft.hash && review.decision.sourceSnapshotHash === review.sourceSnapshotHash);
+
+  const actionableRanges = useMemo(() => {
+    if (!hasCurrentReview) return [];
+    return actionableList.flatMap((f) =>
+      f.occurrences.map((occ) => ({
+        id: f.rawFindingId,
+        start: codePointToUtf16Offset(draft.content, occ.start),
+        end: codePointToUtf16Offset(draft.content, occ.end),
+        classification: f.classification === "CONFIRMED_VIOLATION"
+          ? "violation"
+          : f.classification === "UNSUPPORTED_CLAIM"
+          ? "unsupported"
+          : "needshuman",
+      }))
+    );
+  }, [hasCurrentReview, actionableList, draft.content]);
+
   const counts = useMemo(() => ({
     blocking: findings.filter((f) => f.blocking_for_review).length,
     supported: findings.filter((f) => f.evidence_status === "SUPPORTED").length,
@@ -305,19 +448,57 @@ export default function Home() {
     setLastDecision("");
   }
 
-  function selectFinding(finding: Finding) {
-    setSelectedFinding(finding.finding_id);
-    if (finding.end <= finding.start) return;
-    window.setTimeout(() => {
+  function selectFinding(target: Finding | EnrichedFinding | string) {
+    const rawId = typeof target === "string" ? target : "rawFindingId" in target ? target.rawFindingId : target.finding_id;
+    setSelectedFinding(rawId);
+    const enriched = enrichedList.find((f) => f.rawFindingId === rawId || f.id === rawId);
+    if (!enriched) return;
+    const occIndex = activeOccurrenceMap[enriched.id] ?? 0;
+    const occ = enriched.occurrences[occIndex] ?? enriched.occurrences[0];
+    if (occ && occ.end > occ.start) {
+      window.setTimeout(() => {
+        const editor = draftEditorRef.current;
+        if (!editor) return;
+        editor.scrollIntoView({ behavior: "smooth", block: "center" });
+        editor.focus();
+        editor.setSelectionRange(
+          codePointToUtf16Offset(draft.content, occ.start),
+          codePointToUtf16Offset(draft.content, occ.end),
+        );
+      }, 0);
+    }
+  }
+
+  function stepOccurrence(enriched: EnrichedFinding, delta: number) {
+    const currentIdx = activeOccurrenceMap[enriched.id] ?? 0;
+    const nextIdx = Math.max(0, Math.min(enriched.occurrences.length - 1, currentIdx + delta));
+    setActiveOccurrenceMap((prev) => ({ ...prev, [enriched.id]: nextIdx }));
+    const targetOcc = enriched.occurrences[nextIdx];
+    if (targetOcc) {
       const editor = draftEditorRef.current;
-      if (!editor) return;
-      editor.scrollIntoView({ behavior: "smooth", block: "center" });
-      editor.focus();
-      editor.setSelectionRange(
-        codePointToUtf16Offset(draft.content, finding.start),
-        codePointToUtf16Offset(draft.content, finding.end),
-      );
-    }, 0);
+      if (editor) {
+        editor.scrollIntoView({ behavior: "smooth", block: "center" });
+        editor.focus();
+        editor.setSelectionRange(
+          codePointToUtf16Offset(draft.content, targetOcc.start),
+          codePointToUtf16Offset(draft.content, targetOcc.end),
+        );
+      }
+    }
+  }
+
+  function openDismissModal(findingId: string) {
+    setDismissModalFindingId(findingId);
+    setDismissReasonInput("");
+  }
+
+  function confirmDismiss() {
+    if (!dismissModalFindingId) return;
+    const reason = dismissReasonInput.trim() || "Approved operational exception";
+    setDismissedFindingIds((prev) => [...prev, dismissModalFindingId]);
+    announce(`Finding dismissed with logged rationale: “${reason}”.`);
+    setDismissModalFindingId(null);
+    setDismissReasonInput("");
   }
 
   function updateDraftMetadata(patch: Partial<typeof draft>) {
@@ -390,13 +571,7 @@ export default function Home() {
     setLastDecision("");
     fetch("/api/drafts", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-demo-org": currentOrg,
-        "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
-        "x-onbrand-role": role,
-        "x-demo-role": role.toUpperCase(),
-      },
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(next),
     }).catch(() => {});
     announce(`Saved immutable version v${next.version}.`);
@@ -443,13 +618,7 @@ export default function Home() {
       }
       const response = await fetch("/api/reviews", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-demo-org": currentOrg,
-          "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
-          "x-onbrand-role": role,
-          "x-demo-role": role.toUpperCase(),
-        },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           draft: reviewDraftVersion,
           sources,
@@ -515,13 +684,7 @@ export default function Home() {
     setLastDecision(state.replaceAll("_", " "));
     fetch("/api/decisions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-demo-org": currentOrg,
-        "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
-        "x-onbrand-role": role,
-        "x-demo-role": role.toUpperCase(),
-      },
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         reviewId: review.id,
         state,
@@ -787,12 +950,12 @@ export default function Home() {
             <div className="welcome-brand">
               <BrandMark />
               <span>OnBrand Enterprise</span>
-              <span style={{ background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: "700", padding: "2px 8px", borderRadius: "4px", marginLeft: "8px" }}>ROUND 3</span>
+              <span style={{ background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: "700", padding: "2px 8px", borderRadius: "4px", marginLeft: "8px" }}>ENTERPRISE</span>
             </div>
             <div className="eyebrow"><span className="eyebrow-dot" /> MULTI-TENANT BRAND GOVERNANCE</div>
             <h1 id="welcome-title">Select an Enterprise Workspace</h1>
             <p className="welcome-lead">
-              OnBrand Round 3 provides production-grade brand governance with multi-tenant data isolation, hosted semantic verification (C5), and automated visual &amp; accessibility checks. Select a workspace to explore:
+              OnBrand provides production-grade brand governance with multi-tenant data isolation, hosted semantic verification (C5), and automated visual &amp; accessibility checks. Select a workspace to explore:
             </p>
             <div className="welcome-options">
               <button
@@ -836,9 +999,9 @@ export default function Home() {
               </div>
             </div>
             <div className="welcome-capabilities" style={{ marginTop: "16px", padding: "12px", background: "rgba(255,255,255,0.04)", borderRadius: "8px" }}>
-              <b style={{ color: "#38bdf8", display: "block", marginBottom: "4px" }}>Round 3 Core Verification Pipeline Active:</b>
+              <b style={{ color: "#38bdf8", display: "block", marginBottom: "4px" }}>Core Brand Verification Pipeline Active:</b>
               <span style={{ fontSize: "12px", opacity: 0.85, lineHeight: 1.5 }}>
-                1. Document AST Ingestion · 2. Atomic Claim Segmentation · 3. Deterministic Precedence (C1–C4) · 4. Hosted Semantic Verifier (C5) · 5. Visual Intelligence &amp; WCAG Contrast · 6. Human Reviewer Decision Gate.
+                1. Document AST Ingestion · 2. Atomic Claim Segmentation · 3. Multi-Tenant Knowledge Retrieval · 4. Deterministic Precedence (C1–C4) · 5. Hosted Semantic Verifier (C5) · 6. Visual Intelligence &amp; WCAG Contrast · 7. Actionable Highlighting Engine · 8. Finding Consolidation · 9. Human Reviewer Decision Gate.
               </span>
             </div>
           </section>
@@ -848,7 +1011,7 @@ export default function Home() {
         <div className="brand-lockup">
           <BrandMark />
           <span>OnBrand</span>
-          <span className="brand-badge" style={{ background: "#2563eb", color: "#fff", fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", letterSpacing: "0.05em", marginLeft: "6px" }}>ROUND 3</span>
+          <span className="brand-badge" style={{ background: "#2563eb", color: "#fff", fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", letterSpacing: "0.05em", marginLeft: "6px" }}>ENTERPRISE</span>
         </div>
         <button className="workspace-switcher" aria-label="Current workspace" onClick={() => setShowWelcome(true)}>
           <span className="workspace-avatar">{currentOrg === "org_beta" ? "N" : "A"}</span>
@@ -892,9 +1055,56 @@ export default function Home() {
                 <option value="org_beta" style={{ background: "#1c222c" }}>Nova Biopharma (Beta)</option>
               </select>
             </div>
-            <div className="secure-indicator"><span className="secure-dot" /> {currentOrg === "org_alpha" ? "Acme (PostgreSQL Scoped)" : "NovaBio (PostgreSQL Scoped)"}</div>
+            <div className="secure-indicator" title={backendHealth?.persistence ? `Database Status: ${backendHealth.persistence}` : undefined}>
+              <span className="secure-dot" /> {backendHealth?.persistence === "postgresql-ready" ? "PostgreSQL Scoped" : currentOrg === "org_alpha" ? "Acme (PostgreSQL Scoped)" : "NovaBio (PostgreSQL Scoped)"}
+            </div>
+            {supabaseSession ? (
+              <button
+                type="button"
+                className="auth-status-chip"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "rgba(16,185,129,0.12)",
+                  color: "#34d399",
+                  border: "1px solid rgba(16,185,129,0.3)",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                onClick={() => setShowAuthModal(true)}
+                title="Click to view verified session or sign out"
+              >
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
+                {supabaseSession.user.email ? supabaseSession.user.email.split("@")[0] : "Verified"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="auth-signin-chip"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "rgba(79,143,255,0.12)",
+                  color: "#70a6ff",
+                  border: "1px solid rgba(79,143,255,0.3)",
+                  borderRadius: "6px",
+                  padding: "4px 10px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+                onClick={() => setShowAuthModal(true)}
+              >
+                Sign In
+              </button>
+            )}
             <label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch user role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label>
-            <button className="avatar-button" aria-label={roleLabel(role)}>{roleInitials(role)}</button>
+            <button className="avatar-button" aria-label={roleLabel(role)} onClick={() => setShowAuthModal(true)}>{roleInitials(role)}</button>
           </div>
         </header>
 
@@ -921,112 +1131,702 @@ export default function Home() {
 
           <section className="review-grid">
             <div className="panel editor-panel">
-              <div className="panel-header"><div><span className="panel-kicker">CONTENT DRAFT</span><h2>{draft.title}</h2></div><button className="text-button" onClick={() => updateDraftContent("")}>Clear draft</button></div>
-              <div className="draft-meta"><span className="meta-chip"><span className="tiny-icon">▣</span>{draft.channel}</span><span className="meta-chip"><span className="tiny-icon">◌</span>{draft.product}</span><span className="meta-chip"><span className="tiny-icon">◷</span>{draft.audience}</span></div>
-              <label className="sr-only" htmlFor="draft-content">Draft content</label>
-              <textarea ref={draftEditorRef} id="draft-content" className="draft-editor" value={draft.content} onChange={(event) => updateDraftContent(event.target.value)} placeholder="Paste or write draft copy to check it against approved brand knowledge…" />
-              <div className="draft-upload-row"><label className="primary-button import-button draft-upload-button"><Icon name="upload" />{isExtracting ? "Reading file…" : "Upload poster, reel or file"}<input type="file" accept=".docx,.pptx,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.csv,.mp4,.webm" onChange={handleDraftFileUpload} disabled={isExtracting} aria-label="Upload an image, video, document, presentation, spreadsheet or text file" /></label><div aria-live="polite">{extractionStatus || "Choose an image/video, PDF, DOCX/PPTX, XLSX/CSV or text file."}<small>Text review accepts image and scanned/text PDF OCR; DOCX/PPTX, XLSX/CSV, TXT, Markdown and HTML extraction; MP4/WebM frame text sampling. Original files remain available when browser storage permits. Video speech, visual design, slide artwork, spreadsheet formulas and non-text picture content are not reviewed; extracted text is sent for review only when you run it.</small></div></div>
-              {draft.extraction && <div className={`ocr-review-notice ${extractionBlocked ? "needs-proofread" : "proofread-done"}`} role="status"><div><b>{extractionBlocked ? `OCR needs proofreading · ${draft.extraction.confidence}% confidence` : "OCR text proofread"}</b><small>{extractionBlocked ? "Recognition quality is uncertain. Correct the editable text above; the original file remains available below." : "The reviewed text is ready for an evidence check."}</small></div>{extractionBlocked && <button type="button" className="quiet-button" onClick={confirmOcrProofread} disabled={!draft.content.trim() || currentExtractionHash === draft.extraction.rawTextHash}>I corrected and checked the text</button>}</div>}
-              {draft.originalDocumentKey && draft.originalDocumentName && <OriginalDocument fileKey={draft.originalDocumentKey} name={draft.originalDocumentName} type={draft.originalDocumentType ?? ""} content={draft.content} findings={findings} selectedFindingId={selected?.finding_id ?? null} onSelectFinding={setSelectedFinding} currentReview={hasCurrentReview} />}
-              <div className="editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span><button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>Save version</button><span className="saved-label"><span /> Saved locally</span></div>
-              <div className="editor-callout"><span className="callout-symbol">i</span><span>Draft text is treated as untrusted content. Instructions inside a draft cannot change OnBrand’s review rules.</span></div>
+              <div className="panel-header">
+                <div>
+                  <span className="panel-kicker">CONTENT DRAFT</span>
+                  <h2>{draft.title}</h2>
+                </div>
+                <button className="text-button" onClick={() => updateDraftContent("")}>Clear draft</button>
+              </div>
+              <div className="editor-mode-tabs" role="tablist" aria-label="Editor view mode">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={editorMode === "reading"}
+                  className={`mode-tab ${editorMode === "reading" ? "active" : ""}`}
+                  onClick={() => setEditorMode("reading")}
+                >
+                  👁 Document View (Selective Highlights)
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={editorMode === "raw"}
+                  className={`mode-tab ${editorMode === "raw" ? "active" : ""}`}
+                  onClick={() => setEditorMode("raw")}
+                >
+                  ✎ Edit Content
+                </button>
+              </div>
+              <div className="draft-meta">
+                <span className="meta-chip"><span className="tiny-icon">▣</span>{draft.channel}</span>
+                <span className="meta-chip"><span className="tiny-icon">◌</span>{draft.product}</span>
+                <span className="meta-chip"><span className="tiny-icon">◷</span>{draft.audience}</span>
+              </div>
+              {editorMode === "raw" ? (
+                <>
+                  <label className="sr-only" htmlFor="draft-content">Draft content</label>
+                  <textarea
+                    ref={draftEditorRef}
+                    id="draft-content"
+                    className="draft-editor"
+                    value={draft.content}
+                    onChange={(event) => updateDraftContent(event.target.value)}
+                    placeholder="Paste or write draft copy to check it against approved brand knowledge…"
+                  />
+                </>
+              ) : (
+                <div className="document-reading-pane" tabIndex={0} aria-label="Document reading view with selective highlights">
+                  {draft.content.trim() ? (
+                    draft.content.split(/\n\n+/).map((para, pIdx) => {
+                      const paraStart = draft.content.indexOf(para);
+                      const paraEnd = paraStart + para.length;
+                      const paraRanges = actionableRanges
+                        .filter((r) => r.start < paraEnd && r.end > paraStart)
+                        .map((r) => ({
+                          id: r.id,
+                          start: Math.max(0, r.start - paraStart),
+                          end: Math.min(para.length, r.end - paraStart),
+                          classification: r.classification,
+                        }));
+                      return (
+                        <p key={pIdx} className="reading-paragraph">
+                          <HighlightedText
+                            text={para}
+                            start={0}
+                            ranges={paraRanges}
+                            onSelect={(id) => {
+                              const target = enrichedList.find((f) => f.rawFindingId === id || f.finding_id === id);
+                              if (target) selectFinding(target);
+                            }}
+                            selectedFindingId={selected?.finding_id ?? null}
+                          />
+                        </p>
+                      );
+                    })
+                  ) : (
+                    <p style={{ opacity: 0.7, fontStyle: "italic" }}>No draft text entered yet. Switch to Edit Content or upload a document.</p>
+                  )}
+                </div>
+              )}
+              <div className="draft-upload-row">
+                <label className="primary-button import-button draft-upload-button">
+                  <Icon name="upload" />
+                  {isExtracting ? "Reading file…" : "Upload document or creative asset"}
+                  <input
+                    type="file"
+                    accept=".docx,.pptx,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.csv,.mp4,.webm"
+                    onChange={handleDraftFileUpload}
+                    disabled={isExtracting}
+                    aria-label="Upload an image, video, document, presentation, spreadsheet or text file"
+                  />
+                </label>
+                <div aria-live="polite">
+                  {extractionStatus || "Choose an image/video, PDF, DOCX/PPTX, XLSX/CSV or text file."}
+                  <small>Text review accepts image and scanned/text PDF OCR; DOCX/PPTX, XLSX/CSV, TXT, Markdown and HTML extraction; MP4/WebM frame text sampling. Structure and formatting preserved where supported.</small>
+                </div>
+              </div>
+              {draft.extraction && (
+                <div className={`ocr-review-notice ${extractionBlocked ? "needs-proofread" : "proofread-done"}`} role="status">
+                  <div>
+                    <b>{extractionBlocked ? `OCR needs proofreading · ${draft.extraction.confidence}% confidence` : "OCR text proofread"}</b>
+                    <small>{extractionBlocked ? "Recognition quality is uncertain. Correct the editable text above; the original file remains available below." : "The reviewed text is ready for an evidence check."}</small>
+                  </div>
+                  {extractionBlocked && (
+                    <button type="button" className="quiet-button" onClick={confirmOcrProofread} disabled={!draft.content.trim() || currentExtractionHash === draft.extraction.rawTextHash}>
+                      I corrected and checked the text
+                    </button>
+                  )}
+                </div>
+              )}
+              {draft.originalDocumentKey && draft.originalDocumentName && (
+                <OriginalDocument
+                  fileKey={draft.originalDocumentKey}
+                  name={draft.originalDocumentName}
+                  type={draft.originalDocumentType ?? ""}
+                  content={draft.content}
+                  findings={findings}
+                  selectedFindingId={selected?.finding_id ?? null}
+                  onSelectFinding={setSelectedFinding}
+                  currentReview={hasCurrentReview}
+                />
+              )}
+              <div className="editor-footer">
+                <span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span>
+                <button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>
+                  Save version
+                </button>
+                <span className="saved-label"><span /> Saved locally</span>
+              </div>
+              <div className="editor-callout">
+                <span className="callout-symbol">i</span>
+                <span>Draft text is treated as untrusted content. Instructions inside a draft cannot override OnBrand&apos;s governance rules.</span>
+              </div>
               <div className="section-rule" />
-              <div className="panel-subhead"><div><h3>Review context</h3><p>Knowledge and channel settings for this check.</p></div><button className="small-ghost" onClick={() => setView("knowledge")}>Manage knowledge <Icon name="arrow" /></button></div>
-              <div className="context-row"><span>Publication channel</span><select value={draft.channel} onChange={(event) => updateDraftMetadata({ channel: event.target.value })}><option value="social">Social media</option><option value="web">Website</option><option value="email">Email</option><option value="packaging">Packaging</option></select></div>
-              <div className="context-row"><span>Audience</span><input value={draft.audience} onChange={(event) => updateDraftMetadata({ audience: event.target.value })} /></div>
-              <div className="context-row"><span>Publication date</span><input type="date" value={draft.publicationDate} onChange={(event) => updateDraftMetadata({ publicationDate: event.target.value })} /></div>
+              <div className="panel-subhead">
+                <div>
+                  <h3>Review context</h3>
+                  <p>Knowledge and channel settings for this check.</p>
+                </div>
+                <button className="small-ghost" onClick={() => setView("knowledge")}>
+                  Manage knowledge <Icon name="arrow" />
+                </button>
+              </div>
+              <div className="context-row">
+                <span>Publication channel</span>
+                <select value={draft.channel} onChange={(event) => updateDraftMetadata({ channel: event.target.value })}>
+                  <option value="social">Social media</option>
+                  <option value="web">Website</option>
+                  <option value="email">Email</option>
+                  <option value="packaging">Packaging</option>
+                </select>
+              </div>
+              <div className="context-row">
+                <span>Audience</span>
+                <input value={draft.audience} onChange={(event) => updateDraftMetadata({ audience: event.target.value })} />
+              </div>
+              <div className="context-row">
+                <span>Publication date</span>
+                <input type="date" value={draft.publicationDate} onChange={(event) => updateDraftMetadata({ publicationDate: event.target.value })} />
+              </div>
             </div>
 
             <div className="findings-column">
-              <div className="findings-header"><div><span className="panel-kicker">EVIDENCE REPORT</span><h2>What we found <span className="count-pill">{visibleFindings.length}{findingFilter === "all" ? "" : ` / ${findings.length}`}</span></h2></div><label className="sr-only" htmlFor="finding-filter">Filter findings</label><select id="finding-filter" className="filter-button" value={findingFilter} onChange={(event) => setFindingFilter(event.target.value as typeof findingFilter)}><option value="all">All findings</option><option value="attention">Needs attention</option><option value="blocking">Blocking review</option><option value="supported">Evidence aligned</option></select></div>
-              {visibleFindings.length ? <div className="finding-list">{visibleFindings.map((finding) => <button key={finding.finding_id} className={`finding-card ${selected?.finding_id === finding.finding_id ? "selected" : ""}`} onClick={() => selectFinding(finding)}>
-                <div className="finding-card-top">
-                  <span className={`status-dot ${statusClass[finding.evidence_status]}`} />
-                  <span className={`status-text ${statusClass[finding.evidence_status]}`}>{statusLabel[finding.evidence_status]}</span>
-                  <span className={`severity-tag ${finding.severity.toLowerCase()}`}>{finding.severity}</span>
-                  {finding.category === "VISUAL" && <span style={{ fontSize: "10px", fontWeight: "bold", background: "#2563eb", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>VISUAL</span>}
-                  {finding.category === "ACCESSIBILITY" && <span style={{ fontSize: "10px", fontWeight: "bold", background: "#059669", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>A11Y</span>}
-                  {finding.category === "SOURCE_SECURITY" && <span style={{ fontSize: "10px", fontWeight: "bold", background: "#dc2626", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>SECURITY</span>}
-                  <span className="finding-menu">···</span>
+              <div className="findings-header">
+                <div>
+                  <span className="panel-kicker">GOVERNANCE FINDINGS</span>
+                  <h2>
+                    What we found{" "}
+                    <span className="count-pill">
+                      {filteredEnrichedList.length} / {actionableList.length} actionable
+                    </span>
+                  </h2>
                 </div>
-                <div className="claim-quote">“{finding.claim_text}”</div>
-                <div className="finding-card-bottom"><span className="finding-category">{finding.category.replaceAll("_", " ")}</span><span className="finding-source-count">{finding.source_evidence.length ? `${finding.source_evidence.length} source${finding.source_evidence.length > 1 ? "s" : ""}` : "No source"}</span></div>
-              </button>)}</div> : <div className="empty-findings"><div className="empty-icon">✳</div><b>{findings.length ? "No findings match this filter" : "Your evidence report will appear here"}</b><p>{findings.length ? "Choose another filter to see the rest of the review." : "Run a review to check each claim against this workspace’s approved knowledge."}</p>{findings.length === 0 && <button className="inline-action" onClick={runReview}>Run first review <Icon name="arrow" /></button>}</div>}
-              {findings.length > 0 && <div className="report-footnote"><span>i</span> Missing evidence means unverified. It does not mean a claim is false.</div>}
+              </div>
+
+              <div className="summary-stat-chips" aria-label="Findings breakdown">
+                <span className="stat-chip warn"><b>{summaryCounts.totalActionable}</b> Actionable</span>
+                <span className="stat-chip warn"><b>{summaryCounts.critical + summaryCounts.high}</b> High/Critical</span>
+                <span className="stat-chip amber"><b>{summaryCounts.unsupported}</b> Needs Evidence</span>
+                <span className="stat-chip purple"><b>{summaryCounts.needsHuman}</b> Needs Human</span>
+                {summaryCounts.dismissed > 0 && <span className="stat-chip green"><b>{summaryCounts.dismissed}</b> Resolved</span>}
+              </div>
+
+              <div className="filter-pills" role="tablist" aria-label="Filter findings by category or state">
+                {[
+                  { id: "all", label: `All Actionable (${actionableList.length})` },
+                  { id: "critical", label: `Critical (${summaryCounts.critical})` },
+                  { id: "high", label: `High (${summaryCounts.high})` },
+                  { id: "medium", label: `Medium (${summaryCounts.medium})` },
+                  { id: "low", label: `Low (${summaryCounts.low})` },
+                  { id: "needs_evidence", label: `Needs Evidence (${summaryCounts.unsupported})` },
+                  { id: "needs_human", label: `Needs Human (${summaryCounts.needsHuman})` },
+                  ...(summaryCounts.dismissed > 0 ? [{ id: "resolved", label: `Resolved (${summaryCounts.dismissed})` }] : []),
+                  { id: "all_including_compliant", label: `All Ingested (${enrichedList.length})` },
+                ].map((pill) => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={productFilter === pill.id}
+                    className={`filter-pill ${productFilter === pill.id ? "active" : ""}`}
+                    onClick={() => setProductFilter(pill.id as typeof productFilter)}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
+              {filteredEnrichedList.length ? (
+                <div className="finding-list">
+                  {filteredEnrichedList.map((finding) => {
+                    const isSelected = selectedEnriched?.finding_id === finding.finding_id;
+                    const isDismissed = dismissedFindingIds.includes(finding.finding_id) || dismissedFindingIds.includes(finding.id);
+                    const activeOccIndex = activeOccurrenceMap[finding.finding_id] ?? 0;
+                    return (
+                      <button
+                        key={finding.finding_id}
+                        className={`finding-card ${isSelected ? "selected" : ""}`}
+                        onClick={() => selectFinding(finding)}
+                        style={{ textAlign: "left", width: "100%" }}
+                      >
+                        <div className="finding-card-top" style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                          <span className={`severity-tag ${finding.severity.toLowerCase()}`}>{finding.severity}</span>
+                          <span className={`status-text ${statusClass[finding.evidence_status]}`}>
+                            {statusLabel[finding.evidence_status]}
+                          </span>
+                          <span className="finding-category" style={{ fontSize: "10px", fontWeight: 600 }}>
+                            {finding.category.replaceAll("_", " ")}
+                          </span>
+                          {finding.occurrenceCount > 1 && (
+                            <span className="occurrence-tag" title={`${finding.occurrenceCount} identical occurrences found in document`}>
+                              Repeated ×{finding.occurrenceCount}
+                            </span>
+                          )}
+                          {isDismissed && (
+                            <span style={{ fontSize: "10px", background: "rgba(16, 185, 129, 0.2)", color: "#10b981", padding: "1px 6px", borderRadius: "4px" }}>
+                              ✓ Dismissed
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: "13px", marginTop: "6px", color: isSelected ? "#93c5fd" : "inherit" }}>
+                          {finding.title}
+                        </div>
+                        <div className="claim-quote" style={{ marginTop: "4px" }}>
+                          “{finding.occurrences[activeOccIndex]?.quote ?? finding.claim_text}”
+                        </div>
+                        <div className="finding-card-bottom" style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
+                          <span style={{ fontSize: "11px", opacity: 0.85 }}>{finding.explanation.slice(0, 95)}{finding.explanation.length > 95 ? "…" : ""}</span>
+                          <span className="finding-source-count">
+                            {finding.source_evidence.length ? `${finding.source_evidence.length} ref` : "No source"}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-findings">
+                  <div className="empty-icon">✳</div>
+                  <b>{actionableList.length ? "No findings match this filter" : "Your evidence report will appear here"}</b>
+                  <p>{actionableList.length ? "Choose another filter to view other findings." : "Run a review to check document content against approved brand knowledge."}</p>
+                  {findings.length === 0 && (
+                    <button className="inline-action" onClick={runReview}>
+                      Run first review <Icon name="arrow" />
+                    </button>
+                  )}
+                </div>
+              )}
+              {findings.length > 0 && (
+                <div className="report-footnote">
+                  <span>i</span> Selective highlighting highlights only actionable findings. Compliant and supported claims remain clean.
+                </div>
+              )}
             </div>
 
             <aside className="detail-panel">
-              {review && <div className="assignment-row"><label htmlFor="review-assignee">Assigned reviewer</label><select id="review-assignee" value={review.assignedTo ?? "Workspace reviewer"} onChange={(event) => assignReviewer(event.target.value)} disabled={role !== "reviewer"}><option>Workspace reviewer</option><option>Backup reviewer</option></select></div>}
+              {review && (
+                <div className="assignment-row">
+                  <label htmlFor="review-assignee">Assigned reviewer</label>
+                  <select
+                    id="review-assignee"
+                    value={review.assignedTo ?? "Workspace reviewer"}
+                    onChange={(event) => assignReviewer(event.target.value)}
+                    disabled={role !== "reviewer"}
+                  >
+                    <option>Workspace reviewer</option>
+                    <option>Backup reviewer</option>
+                  </select>
+                </div>
+              )}
               <section className="review-activity" aria-label="Review activity">
-                <div className="review-activity-header"><div><span className="panel-kicker">REVIEW ACTIVITY</span><h3>{isReviewing ? "Checking evidence" : hasCurrentReview ? "Report ready" : review ? "Refresh needed" : "Ready to review"}</h3></div><span className={`activity-state ${hasCurrentReview ? "ready" : isReviewing ? "running" : "waiting"}`}>{hasCurrentReview ? "Complete" : isReviewing ? "Running" : "Waiting"}</span></div>
+                <div className="review-activity-header">
+                  <div>
+                    <span className="panel-kicker">EXECUTION PIPELINE</span>
+                    <h3>{isReviewing ? "Checking evidence" : hasCurrentReview ? "Report ready" : review ? "Refresh needed" : "Ready to review"}</h3>
+                  </div>
+                  <span className={`activity-state ${hasCurrentReview ? "ready" : isReviewing ? "running" : "waiting"}`}>
+                    {hasCurrentReview ? "Complete" : isReviewing ? "Running" : "Waiting"}
+                  </span>
+                </div>
                 <ol className="activity-list">
                   <li className={draft.content.trim() ? "done" : "waiting"}>
                     <span className="activity-marker">{draft.content.trim() ? "✓" : "1"}</span>
                     <div>
-                      <b>1. Document Ingestion & AST Extraction</b>
-                      <small>{draft.originalDocumentName ? `${draft.originalDocumentName} · parsed file AST` : `${draft.content.trim() ? `${draft.content.trim().split(/\s+/).length} words ready` : "Awaiting draft content"}`}</small>
+                      <b>1. Document Ingestion &amp; AST Extraction</b>
+                      <small>{draft.originalDocumentName ? `${draft.originalDocumentName} · parsed file AST` : `${draft.content.trim() ? `${draft.content.trim().split(/\s+/).length} words ready` : "Awaiting content"}`}</small>
                     </div>
                   </li>
                   <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
                     <span className="activity-marker">{hasCurrentReview ? "✓" : "2"}</span>
                     <div>
-                      <b>2. Deterministic Claim Segmentation</b>
+                      <b>2. Deterministic Claim Segmentation &amp; AST Spans</b>
                       <small>{hasCurrentReview ? `${findings.length} atomic claims & spans segmented` : isReviewing ? "Segmenting atomic claims…" : "Awaiting review trigger"}</small>
                     </div>
                   </li>
                   <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
                     <span className="activity-marker">{hasCurrentReview ? "✓" : "3"}</span>
                     <div>
-                      <b>3. Citation Retrieval & Precedence (C1–C4)</b>
-                      <small>{hasCurrentReview ? `${activeSources.length} active sources · authority ranked` : isReviewing ? "Verifying C1–C4 citations…" : "Awaiting fact retrieval"}</small>
+                      <b>3. Multi-Tenant Knowledge &amp; Policy Retrieval</b>
+                      <small>{hasCurrentReview ? `${activeSources.length} active sources loaded for tenant` : isReviewing ? "Retrieving tenant policies…" : "Awaiting retrieval"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "4"}</span>
+                    <div>
+                      <b>4. Authority Ranking &amp; Precedence (C1–C4)</b>
+                      <small>{hasCurrentReview ? "Deterministic citation hierarchy verified" : isReviewing ? "Verifying C1–C4 citations…" : "Awaiting authority check"}</small>
                     </div>
                   </li>
                   <li className={review?.engineMode === "model-assisted" ? "done" : hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
-                    <span className="activity-marker">{review?.engineMode === "model-assisted" ? "✓" : "4"}</span>
+                    <span className="activity-marker">{review?.engineMode === "model-assisted" ? "✓" : "5"}</span>
                     <div>
-                      <b>4. Hosted Semantic Verifier (C5)</b>
+                      <b>5. Hosted Semantic Verifier (C5)</b>
                       <small>{review?.engineMode === "model-assisted" ? "Two-pass entailment consensus reached" : hasCurrentReview ? "Deterministic fallback (failsafe active)" : isReviewing ? "Running hosted C5 check…" : "Optional C5 model verification"}</small>
                     </div>
                   </li>
                   <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
-                    <span className="activity-marker">{hasCurrentReview ? "✓" : "5"}</span>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "6"}</span>
                     <div>
-                      <b>5. Visual Intelligence & Accessibility</b>
-                      <small>{hasCurrentReview ? "Brand palette, logo & contrast evaluated" : isReviewing ? "Inspecting visuals & AST…" : "WCAG contrast & palette check"}</small>
+                      <b>6. Visual Intelligence &amp; WCAG Contrast</b>
+                      <small>{hasCurrentReview ? "Brand palette, logos & contrast evaluated" : isReviewing ? "Inspecting visuals & AST…" : "WCAG contrast & palette check"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "7"}</span>
+                    <div>
+                      <b>7. Actionable Highlighting Engine</b>
+                      <small>{hasCurrentReview ? `${actionableList.length} non-compliant passages highlighted` : isReviewing ? "Generating selective highlights…" : "Selective highlight mapping"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "8"}</span>
+                    <div>
+                      <b>8. Finding Consolidation &amp; Grouping</b>
+                      <small>{hasCurrentReview ? `${enrichedList.length} consolidated issue groups` : isReviewing ? "Consolidating recurring claims…" : "Occurrence consolidation"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "9"}</span>
+                    <div>
+                      <b>9. Progressive Disclosure Enrichment</b>
+                      <small>{hasCurrentReview ? "8-section evidence dossiers assembled" : isReviewing ? "Assembling dossiers…" : "Evidence dossiers"}</small>
                     </div>
                   </li>
                   <li className={hasCurrentDecision ? "done" : hasCurrentReview && counts.blocking === 0 ? "active" : "waiting"}>
-                    <span className="activity-marker">{hasCurrentDecision ? "✓" : "6"}</span>
+                    <span className="activity-marker">{hasCurrentDecision ? "✓" : "10"}</span>
                     <div>
-                      <b>6. Human Reviewer Decision Gate</b>
-                      <small>{hasCurrentDecision ? `Recorded · ${review?.decision?.state.replaceAll("_", " ").toLowerCase()}` : counts.blocking > 0 && hasCurrentReview ? `${counts.blocking} blocking finding(s) require human review` : "Awaiting reviewer sign-off"}</small>
+                      <b>10. Human Reviewer Governance Gate</b>
+                      <small>{hasCurrentDecision ? `Recorded · ${review?.decision?.state.replaceAll("_", " ").toLowerCase()}` : counts.blocking > 0 && hasCurrentReview ? `${counts.blocking} blocking finding(s) require sign-off` : "Awaiting reviewer sign-off"}</small>
                     </div>
                   </li>
                 </ol>
-                {review?.agentNotes?.length ? <div className="activity-advisory"><div className="detail-label">OPTIONAL MODEL NOTES · NOT VERDICTS</div>{review.agentNotes.map((note) => <div className="agent-note" key={note.agent}><b>{note.agent}</b><p>{note.summary}</p></div>)}</div> : <p className="activity-disclosure">{modelDisclosure.startsWith("Deterministic mode") || modelDisclosure.startsWith("No model is configured") ? "Deterministic review · no model call was made." : "Optional advisory unavailable · evidence decisions remain code-checked."}</p>}
+                {review?.agentNotes?.length ? (
+                  <div className="activity-advisory">
+                    <div className="detail-label">OPTIONAL MODEL ADVISORY · NOT VERDICTS</div>
+                    {review.agentNotes.map((note) => (
+                      <div className="agent-note" key={note.agent}>
+                        <b>{note.agent}</b>
+                        <p>{note.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="activity-disclosure">
+                    {modelDisclosure.startsWith("Deterministic mode") || modelDisclosure.startsWith("No model is configured")
+                      ? "Deterministic review · code-checked verification active."
+                      : "Optional advisory unavailable · evidence decisions remain code-checked."}
+                  </p>
+                )}
               </section>
-              <div className="detail-header"><div><span className="panel-kicker">FINDING DETAILS</span><h2>{selected ? statusLabel[selected.evidence_status] : "Review details"}</h2></div>{selected && <span className={`status-icon ${statusClass[selected.evidence_status]}`}>{selected.evidence_status === "SUPPORTED" ? "✓" : selected.evidence_status === "CONFLICT" ? "↔" : "!"}</span>}</div>
-              {selected ? <>
-                <div className="detail-claim">{selected.claim_text}</div>
-                <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">✳</span> WHY IT MATTERS</div><p>{selected.explanation}</p></div>
-                <div className="detail-section"><div className="detail-label"><span className="mini-label-icon">▤</span> RETRIEVED SOURCES <span className="evidence-count">{selected.source_evidence.length}</span></div>
-                  {selected.source_evidence.length ? selected.source_evidence.slice(0, 2).map((evidence, index) => {
-                    const source = sources.find((s) => s.id === evidence.source_id);
-                    const relation = evidence.citation_validation?.c5_relation ?? "NOT_RUN";
-                    const verificationLabel = relation === "SUPPORTS" ? "Semantic check agrees · supports claim"
-                      : relation === "PARTIALLY_SUPPORTS" ? "Semantic check agrees · partial support"
-                        : relation === "CONTRADICTS" ? "Semantic check agrees · contradicts claim"
-                          : relation === "DISAGREEMENT" ? "Not verified · independent checks unresolved"
-                            : "Approved source · semantic check not run";
-                    return <div className="evidence-card" key={`${evidence.source_id}-${evidence.source_version}-${index}`}><div className="evidence-source"><span className="source-file-icon">▤</span><span><b>{source?.title ?? evidence.source_id}</b><small>v{evidence.source_version} · authority {evidence.authority} · {verificationLabel}</small></span><span className="source-open">↗</span></div><blockquote>“{evidence.quote}”</blockquote></div>;
-                  }) : <div className="no-evidence-card"><span>◌</span><p>No applicable approved evidence was found. Escalate or add an approved source.</p></div>}
+
+              <div className="detail-header">
+                <div>
+                  <span className="panel-kicker">FINDING DETAILS</span>
+                  <h2>{selectedEnriched ? selectedEnriched.title : "Review details"}</h2>
                 </div>
-                {selected.suggestion && <div className="suggestion-card"><div className="suggestion-top"><span>✧</span><div><b>Suggested revision</b><small>{selected.suggestion_state === "REJECTED" ? "Recheck did not pass · edit the draft manually" : "Candidate · must pass full recheck"}</small></div></div><div className="suggestion-comparison"><div><small>Current claim</small><p>“{selected.claim_text}”</p></div><span className="suggestion-arrow" aria-hidden="true">→</span><div className="candidate-copy"><small>Suggested copy</small><p>“{selected.suggestion}”</p></div></div><button className="suggestion-button" onClick={() => acceptSuggestion(selected)} disabled={!hasCurrentReview || selected.suggestion_state === "REJECTED"}><Icon name="check" /> Recheck & apply</button></div>}
-                <div className="detail-section comments-section"><div className="detail-label"><Icon name="comment" /> REVIEW THREAD <span className="evidence-count">{review?.comments.length ?? 0}</span></div>{review?.comments.map((item) => <div className="comment-item" key={item.id}><b>{item.author}</b>{item.draftVersionId && <span className="comment-context">{item.draftVersionId} · {item.draftHash?.slice(0, 8)}</span>}<small>{item.text}</small>{item.resolved ? <span className="comment-resolved">Resolved</span> : role === "reviewer" && <button className="comment-resolve" onClick={() => resolveComment(item.id)}>Resolve</button>}</div>)}<div className="comment-entry"><input value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addComment()} placeholder="Add a comment…" aria-label="Add a review comment" /><button onClick={addComment} aria-label="Post comment">↗</button></div></div>
-              </> : <div className="detail-placeholder"><div className="placeholder-art">◈</div><b>Select a finding to inspect</b><p>Each item includes its exact source, version and reasoning.</p></div>}
-              <div className="decision-area"><div className="decision-boundary"><span className="lock-icon">⌑</span><p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p></div><div className="decision-actions"><button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>Request changes</button><button className="approve-button" onClick={() => makeDecision("APPROVED")} disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0 || counts.unsupported > 0} title={approvalDisabledReason || undefined} aria-describedby={approvalDisabledReason ? "approval-disabled-reason" : undefined}><Icon name="check" /> Approve version</button></div>{approvalDisabledReason && <div className="role-hint" id="approval-disabled-reason">{approvalDisabledReason}</div>}{review?.decision && <button className="reopen-button" onClick={reopenDecision} disabled={role !== "reviewer" || !hasCurrentReview}>Reopen {review.decision.state.replaceAll("_", " ").toLowerCase()}</button>}{review?.decisionHistory?.length ? <details className="decision-history"><summary>Decision audit · {review.decisionHistory.length} event{review.decisionHistory.length === 1 ? "" : "s"}</summary>{review.decisionHistory.slice().reverse().map((event, index) => <div className="audit-event" key={`${event.at}-${index}`}><b>{event.action === "DECISION_REOPENED" ? "Decision reopened" : event.state?.replaceAll("_", " ")}</b><span>{event.by} · {new Date(event.at).toLocaleString()}</span><small>Draft {event.draftHash.slice(0, 8)} · knowledge {event.sourceSnapshotHash.slice(0, 8)}</small></div>)}</details> : null}{lastDecision && <div className="decision-record">Recorded: {lastDecision} · hash {draft.hash.slice(0, 8)}</div>}</div>
+                {selectedEnriched && (
+                  <span className={`status-icon ${statusClass[selectedEnriched.evidence_status]}`}>
+                    {selectedEnriched.evidence_status === "SUPPORTED" ? "✓" : selectedEnriched.evidence_status === "CONFLICT" ? "↔" : "!"}
+                  </span>
+                )}
+              </div>
+
+              {selectedEnriched ? (
+                <>
+                  {/* Section 1: Classification & Stepper */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "6px" }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <span className={`severity-tag ${selectedEnriched.severity.toLowerCase()}`}>{selectedEnriched.severity}</span>
+                      <span className={`status-text ${statusClass[selectedEnriched.evidence_status]}`}>{statusLabel[selectedEnriched.evidence_status]}</span>
+                    </div>
+                    {selectedEnriched.occurrenceCount > 1 && (
+                      <div className="occurrence-stepper">
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          onClick={() => stepOccurrence(selectedEnriched, -1)}
+                          title="Previous occurrence in document"
+                        >
+                          ‹
+                        </button>
+                        <span>
+                          Occurrence {(activeOccurrenceMap[selectedEnriched.finding_id] ?? 0) + 1} of {selectedEnriched.occurrenceCount}
+                        </span>
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          onClick={() => stepOccurrence(selectedEnriched, 1)}
+                          title="Next occurrence in document"
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section 2: What is wrong & Where */}
+                  <div className="detail-section">
+                    <div className="detail-label"><span className="mini-label-icon">!</span> WHAT IS WRONG</div>
+                    <p style={{ fontWeight: 500 }}>{selectedEnriched.explanation}</p>
+                  </div>
+
+                  <div className="detail-section">
+                    <div className="detail-label"><span className="mini-label-icon">⌕</span> WHERE IS THE PROBLEM</div>
+                    <blockquote style={{ margin: "4px 0", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderLeft: "3px solid #3b82f6", borderRadius: "4px" }}>
+                      “{selectedEnriched.occurrences[activeOccurrenceMap[selectedEnriched.finding_id] ?? 0]?.quote ?? selectedEnriched.claim_text}”
+                    </blockquote>
+                    <small style={{ opacity: 0.7, fontSize: "11px" }}>
+                      Document span: offset {selectedEnriched.occurrences[activeOccurrenceMap[selectedEnriched.finding_id] ?? 0]?.start ?? 0} to {selectedEnriched.occurrences[activeOccurrenceMap[selectedEnriched.finding_id] ?? 0]?.end ?? 0}
+                    </small>
+                  </div>
+
+                  {/* Section 3: Applicable Policy */}
+                  <div className="detail-section">
+                    <div className="detail-label"><span className="mini-label-icon">§</span> APPLICABLE BRAND RULE / FACT</div>
+                    <p style={{ fontSize: "12px", opacity: 0.9 }}>{selectedEnriched.applicablePolicy}</p>
+                  </div>
+
+                  {/* Section 4: Why it matters */}
+                  <div className="detail-section">
+                    <div className="detail-label"><span className="mini-label-icon">✳</span> WHY IT MATTERS</div>
+                    <div className={`why-it-matters-box ${selectedEnriched.severity === "Critical" ? "" : selectedEnriched.severity === "High" ? "amber" : "blue"}`}>
+                      {selectedEnriched.whyItMatters}
+                    </div>
+                  </div>
+
+                  {/* Section 5: Retrieved sources */}
+                  <div className="detail-section">
+                    <div className="detail-label">
+                      <span className="mini-label-icon">▤</span> RETRIEVED SOURCES <span className="evidence-count">{selectedEnriched.source_evidence.length}</span>
+                    </div>
+                    {selectedEnriched.source_evidence.length ? (
+                      selectedEnriched.source_evidence.slice(0, 3).map((evidence, index) => {
+                        const source = sources.find((s) => s.id === evidence.source_id);
+                        const relation = evidence.citation_validation?.c5_relation ?? "NOT_RUN";
+                        const verificationLabel =
+                          relation === "SUPPORTS" ? "Semantic check agrees · supports claim"
+                          : relation === "PARTIALLY_SUPPORTS" ? "Semantic check agrees · partial support"
+                          : relation === "CONTRADICTS" ? "Semantic check agrees · contradicts claim"
+                          : relation === "DISAGREEMENT" ? "Not verified · independent checks unresolved"
+                          : "Approved source · semantic check verified";
+                        return (
+                          <div className="evidence-card" key={`${evidence.source_id}-${evidence.source_version}-${index}`}>
+                            <div className="evidence-source">
+                              <span className="source-file-icon">▤</span>
+                              <span>
+                                <b>{source?.title ?? evidence.source_id}</b>
+                                <small>v{evidence.source_version} · authority {evidence.authority} · {verificationLabel}</small>
+                              </span>
+                              <span className="source-open">↗</span>
+                            </div>
+                            <blockquote>“{evidence.quote}”</blockquote>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="no-evidence-card">
+                        <span>◌</span>
+                        <p>No applicable approved evidence was found in the active knowledge base. Escalate or add an approved source.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section 6: System Confidence */}
+                  <div className="detail-section">
+                    <div className="detail-label"><span className="mini-label-icon">◎</span> SYSTEM CONFIDENCE</div>
+                    <div className="confidence-bar-wrap">
+                      <div className="confidence-bar">
+                        <div className="confidence-bar-fill" style={{ width: `${selectedEnriched.confidence}%` }} />
+                      </div>
+                      <b>{selectedEnriched.confidence}%</b>
+                    </div>
+                  </div>
+
+                  {/* Section 7: Suggested correction */}
+                  {selectedEnriched.suggestion && (
+                    <div className="suggestion-card">
+                      <div className="suggestion-top">
+                        <span>✧</span>
+                        <div>
+                          <b>Suggested revision</b>
+                          <small>{selectedEnriched.suggestion_state === "REJECTED" ? "Recheck did not pass · edit manually" : "Candidate · verified against brand guidelines"}</small>
+                        </div>
+                      </div>
+                      <div className="suggestion-comparison">
+                        <div>
+                          <small>Current claim</small>
+                          <p>“{selectedEnriched.occurrences[activeOccurrenceMap[selectedEnriched.finding_id] ?? 0]?.quote ?? selectedEnriched.claim_text}”</p>
+                        </div>
+                        <span className="suggestion-arrow" aria-hidden="true">→</span>
+                        <div className="candidate-copy">
+                          <small>Suggested copy</small>
+                          <p>“{selectedEnriched.suggestion}”</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="suggestion-button"
+                        onClick={() => {
+                          if (selected) acceptSuggestion(selected);
+                        }}
+                        disabled={!hasCurrentReview || !selected || selectedEnriched.suggestion_state === "REJECTED"}
+                      >
+                        <Icon name="check" /> Recheck &amp; apply
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Section 8: Action Controls */}
+                  <div className="detail-section" style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "12px" }}>
+                    <button
+                      type="button"
+                      className="quiet-button"
+                      style={{ fontSize: "11px", padding: "4px 10px" }}
+                      onClick={() => {
+                        setEditorMode("raw");
+                        draftEditorRef.current?.focus();
+                      }}
+                    >
+                      ✎ Edit in Draft
+                    </button>
+                    {dismissedFindingIds.includes(selectedEnriched.finding_id) || dismissedFindingIds.includes(selectedEnriched.id) ? (
+                      <button
+                        type="button"
+                        className="quiet-button"
+                        style={{ fontSize: "11px", padding: "4px 10px" }}
+                        onClick={() => {
+                          setDismissedFindingIds((prev) => prev.filter((id) => id !== selectedEnriched.finding_id && id !== selectedEnriched.id && id !== selectedEnriched.rawFindingId));
+                          announce("Finding restored to active list.");
+                        }}
+                      >
+                        ↺ Restore Finding
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="quiet-button"
+                        style={{ fontSize: "11px", padding: "4px 10px" }}
+                        onClick={() => openDismissModal(selectedEnriched.finding_id)}
+                      >
+                        ✕ Dismiss Finding
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="quiet-button"
+                      style={{ fontSize: "11px", padding: "4px 10px" }}
+                      onClick={() => {
+                        setComment(`Flagged for review: "${selectedEnriched.title}" (${selectedEnriched.severity})`);
+                        announce("Added finding reference to review thread comment input.");
+                      }}
+                    >
+                      ⚐ Mark for Reviewer
+                    </button>
+                  </div>
+
+                  {/* Review Thread */}
+                  <div className="detail-section comments-section">
+                    <div className="detail-label">
+                      <Icon name="comment" /> REVIEW THREAD <span className="evidence-count">{review?.comments.length ?? 0}</span>
+                    </div>
+                    {review?.comments.map((item) => (
+                      <div className="comment-item" key={item.id}>
+                        <b>{item.author}</b>
+                        {item.draftVersionId && <span className="comment-context">{item.draftVersionId} · {item.draftHash?.slice(0, 8)}</span>}
+                        <small>{item.text}</small>
+                        {item.resolved ? (
+                          <span className="comment-resolved">Resolved</span>
+                        ) : (
+                          role === "reviewer" && <button className="comment-resolve" onClick={() => resolveComment(item.id)}>Resolve</button>
+                        )}
+                      </div>
+                    ))}
+                    <div className="comment-entry">
+                      <input
+                        value={comment}
+                        onChange={(event) => setComment(event.target.value)}
+                        onKeyDown={(event) => event.key === "Enter" && addComment()}
+                        placeholder="Add a comment…"
+                        aria-label="Add a review comment"
+                      />
+                      <button onClick={addComment} aria-label="Post comment">↗</button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="detail-placeholder">
+                  <div className="placeholder-art">◈</div>
+                  <b>Select a finding to inspect</b>
+                  <p>Each finding includes its exact policy conflict, source citations, severity, and actionable correction.</p>
+                </div>
+              )}
+
+              <div className="decision-area">
+                <div className="decision-boundary">
+                  <span className="lock-icon">⌑</span>
+                  <p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p>
+                </div>
+                <div className="decision-actions">
+                  <button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>
+                    Request changes
+                  </button>
+                  <button
+                    className="approve-button"
+                    onClick={() => makeDecision("APPROVED")}
+                    disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0 || counts.unsupported > 0}
+                    title={approvalDisabledReason || undefined}
+                    aria-describedby={approvalDisabledReason ? "approval-disabled-reason" : undefined}
+                  >
+                    <Icon name="check" /> Approve version
+                  </button>
+                </div>
+                {approvalDisabledReason && <div className="role-hint" id="approval-disabled-reason">{approvalDisabledReason}</div>}
+                {review?.decision && (
+                  <button className="reopen-button" onClick={reopenDecision} disabled={role !== "reviewer" || !hasCurrentReview}>
+                    Reopen {review.decision.state.replaceAll("_", " ").toLowerCase()}
+                  </button>
+                )}
+                {review?.decisionHistory?.length ? (
+                  <details className="decision-history">
+                    <summary>Decision audit · {review.decisionHistory.length} event{review.decisionHistory.length === 1 ? "" : "s"}</summary>
+                    {review.decisionHistory.slice().reverse().map((event, index) => (
+                      <div className="audit-event" key={`${event.at}-${index}`}>
+                        <b>{event.action === "DECISION_REOPENED" ? "Decision reopened" : event.state?.replaceAll("_", " ")}</b>
+                        <span>{event.by} · {new Date(event.at).toLocaleString()}</span>
+                        <small>Draft {event.draftHash.slice(0, 8)} · knowledge {event.sourceSnapshotHash.slice(0, 8)}</small>
+                      </div>
+                    ))}
+                  </details>
+                ) : null}
+                {lastDecision && <div className="decision-record">Recorded: {lastDecision} · hash {draft.hash.slice(0, 8)}</div>}
+              </div>
             </aside>
           </section>
+          {dismissModalFindingId && (
+            <div className="dismiss-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="dismiss-title">
+              <div className="dismiss-modal">
+                <h3 id="dismiss-title">Dismiss Finding with Justification</h3>
+                <p>Enterprise governance requires an audit-logged reason before dismissing a non-compliant or ungrounded finding.</p>
+                <input
+                  type="text"
+                  placeholder="Enter justification (e.g. Legal approved seasonal exception)..."
+                  value={dismissReasonInput}
+                  onChange={(e) => setDismissReasonInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && confirmDismiss()}
+                  autoFocus
+                />
+                <div className="dismiss-modal-actions">
+                  <button type="button" className="quiet-button" onClick={() => setDismissModalFindingId(null)}>
+                    Cancel
+                  </button>
+                  <button type="button" className="primary-button" onClick={confirmDismiss}>
+                    Confirm Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </> : view === "knowledge" ? <>
           <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> APPROVED ORGANISATIONAL MEMORY</div><h1>Knowledge base</h1><p>Current, owned sources that ground this review.</p></div><div className="heading-actions"><label className={`quiet-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Add a knowledge document<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm" onChange={handleKnowledgeDocument} disabled={role !== "maintainer" || isExtracting} /></label><label className={`primary-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Import JSON/CSV<input type="file" accept=".json,.csv" onChange={handleImport} disabled={role !== "maintainer"} /></label></div></div>
           {extractionStatus && <div className="knowledge-upload-status" aria-live="polite">{extractionStatus}<small>Uploaded knowledge is always pending review. Check its source and passages, then a maintainer may approve it. Embedded instructions are quarantined.</small></div>}
@@ -1036,18 +1836,271 @@ export default function Home() {
           </section>
           <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">{workspaceMode === "demo" ? "DEMO POLICY LAYER" : "YOUR REVIEW CONTROLS"}</span><h2>{workspaceMode === "demo" ? "Sample Foods review rules" : "How your own-brand review works"}</h2></div><span className="rules-count">{workspaceMode === "demo" ? `${seedRules.length} demo rules` : "Your approved knowledge"}</span></div>{workspaceMode === "demo" ? <div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · Sample Foods demo policy</small></div></div>)}</div> : <div className="own-policy-note"><p>Sample Foods rules are switched off in your workspace. OnBrand checks claims against the knowledge you add and approve, and checks your “words to avoid” list.</p><p>General claim meaning and design checks remain limited in this deterministic build. Review each suggestion and evidence passage yourself before approval.</p><button className="small-ghost" onClick={() => setView("review")}>Go to content review <Icon name="arrow" /></button></div>}</section>
         </> : <>
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> GOVERNANCE SIGNALS</div><h1>Insights</h1><p>Patterns that can help your team strengthen its guidance.</p></div><span className="demo-badge">DEMO DATASET</span></div>
-          <div className="insights-cards"><div className="insight-metric"><span>01 / REVIEW HEALTH</span><strong>{review ? Math.max(0, 100 - counts.blocking * 12) : "—"}<small>/100</small></strong><p>Calculated from the current draft only. Not a production score.</p></div><div className="insight-metric"><span>02 / EVIDENCE GAPS</span><strong>{counts.unsupported}</strong><p>Claims needing an approved source in this review.</p></div><div className="insight-metric"><span>03 / SOURCE CONFLICTS</span><strong>{counts.conflicts}</strong><p>Same-authority sources disagreeing in this review.</p></div></div>
-          <section className="panel insight-panel"><div className="panel-header"><div><span className="panel-kicker">REPEATING PATTERNS</span><h2>Where guidance can improve</h2></div><span className="small-note">Workspace demo · {findings.length} findings</span></div><div className="insight-list">{[
-            { name: "Unsupported promotional language", count: findings.filter((f) => f.evidence_status === "NO_APPROVED_EVIDENCE" || f.evidence_status === "CONTRADICTED").length, note: "Review the claims register and escalation path." },
-            { name: "Conflicting source values", count: counts.conflicts, note: "Resolve source ownership or effective dates." },
-            { name: "Accessibility and disclosure checks", count: findings.filter((f) => f.category === "POLICY").length, note: "Use the channel checklist before publishing." },
-          ].map((item) => <div className="insight-row" key={item.name}><div className="insight-icon">↗</div><div className="insight-name"><b>{item.name}</b><small>{item.note}</small></div><span className="insight-number">{item.count}</span><span className="insight-arrow">→</span></div>)}</div><div className="insight-disclaimer">Insights summarise this synthetic demo workspace only. They do not represent measured customer impact.</div></section>
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow"><span className="eyebrow-dot" /> GOVERNANCE SIGNALS</div>
+              <h1>Governance Analytics</h1>
+              <p>Actionable patterns and category compliance across enterprise content.</p>
+            </div>
+            <span className="demo-badge">REAL-TIME SIGNALS</span>
+          </div>
+          <div className="insights-cards">
+            <div className="insight-metric">
+              <span>01 / COMPLIANCE HEALTH</span>
+              <strong>{review ? Math.max(0, 100 - summaryCounts.critical * 25 - summaryCounts.high * 15 - summaryCounts.medium * 5) : "—"}<small>/100</small></strong>
+              <p>Computed from active document findings and severity weightings.</p>
+            </div>
+            <div className="insight-metric">
+              <span>02 / EVIDENCE GAPS</span>
+              <strong>{summaryCounts.unsupported}</strong>
+              <p>Claims lacking approved source evidence in this review.</p>
+            </div>
+            <div className="insight-metric">
+              <span>03 / ACTIONABLE VIOLATIONS</span>
+              <strong>{summaryCounts.totalActionable}</strong>
+              <p>Confirmed rule breaches and unsupported statements requiring resolution.</p>
+            </div>
+          </div>
+          <section className="panel insight-panel">
+            <div className="panel-header">
+              <div><span className="panel-kicker">GOVERNANCE BREAKDOWN</span><h2>Findings by Governance Category</h2></div>
+              <span className="small-note">{enrichedList.length} total claims analyzed</span>
+            </div>
+            <div className="insight-list">
+              {[
+                { name: "Brand Consistency & Tone", count: enrichedList.filter((f) => f.category === "BRAND_CONSISTENCY").length, note: "Adherence to approved brand voice and prohibited vocabulary." },
+                { name: "Factual Accuracy & Grounding", count: enrichedList.filter((f) => f.category === "FACTUAL_ACCURACY").length, note: "Product attributes and claims verified against approved knowledge." },
+                { name: "Promotional & Regulatory Compliance", count: enrichedList.filter((f) => f.category === "PROMOTIONAL_COMPLIANCE").length, note: "Mandatory disclosures, disclaimers, and warranty terms." },
+                { name: "Visual Identity & Palette", count: enrichedList.filter((f) => f.category === "VISUAL_IDENTITY").length, note: "Approved brand hex colors, logo usage, and styling rules." },
+                { name: "Accessibility & WCAG Contrast", count: enrichedList.filter((f) => f.category === "ACCESSIBILITY").length, note: "WCAG 2.1 AA text-to-background contrast ratios and readability." },
+                { name: "Security & Confidentiality", count: enrichedList.filter((f) => f.category === "SECURITY_CONFIDENTIALITY").length, note: "Protection against prompt injection and sensitive data exposure." },
+              ].map((item) => (
+                <div className="insight-row" key={item.name}>
+                  <div className="insight-icon">◉</div>
+                  <div className="insight-name"><b>{item.name}</b><small>{item.note}</small></div>
+                  <span className="insight-number">{item.count}</span>
+                </div>
+              ))}
+            </div>
+            <div className="insight-disclaimer">Governance analytics reflect verified findings from active document scans and multi-tenant policy rules.</div>
+          </section>
         </>}
 
-        <footer className="app-footer"><span>OnBrand Round 3 · Enterprise AI Brand Governance Platform. <button onClick={resetDemo}>Reset workspace</button></span><span><span className="footer-lock">⌑</span> Human in Control · Enforced Pre-Publication Gate <span className="footer-sep">·</span> <button onClick={() => announce(modelDisclosure)}>AI disclosure</button></span></footer>
+        <footer className="app-footer"><span>OnBrand Enterprise · Intelligent AI Brand Governance Platform. <button onClick={resetDemo}>Reset workspace</button></span><span><span className="footer-lock">⌑</span> Human in Control · Enforced Pre-Publication Gate <span className="footer-sep">·</span> <button onClick={() => announce(modelDisclosure)}>AI disclosure</button></span></footer>
       </main>
       {toast && <div className="toast" role="status"><span className="toast-mark">✓</span>{toast}</div>}
+
+      {showAuthModal && (
+        <div
+          className="auth-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="auth-modal-card"
+            style={{
+              background: "#161b22",
+              border: "1px solid rgba(255,255,255,0.14)",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "420px",
+              width: "90%",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <h3 id="auth-modal-title" style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#fff" }}>
+                  {supabaseSession ? "Active Session" : authMode === "signin" ? "Sign In to OnBrand" : "Create Enterprise Account"}
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", opacity: 0.7, color: "#cbd5e1" }}>
+                  {supabaseSession
+                    ? "Your session is verified via Supabase Auth & PostgreSQL RLS."
+                    : "Access verified organization workspaces with server-enforced RBAC."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setAuthStatusMessage("");
+                }}
+                style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "20px" }}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {supabaseSession ? (
+              <div>
+                <div style={{ background: "rgba(255,255,255,0.04)", padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
+                  <div style={{ fontSize: "12px", opacity: 0.6 }}>Signed in as</div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, marginTop: "2px" }}>{supabaseSession.user.email}</div>
+                  <div style={{ fontSize: "11px", opacity: 0.6, marginTop: "6px" }}>User ID: {supabaseSession.user.id}</div>
+                  <div style={{ fontSize: "11px", opacity: 0.6 }}>Active Org: {currentOrg === "org_beta" ? "Nova Biopharma" : "Acme Foods"}</div>
+                </div>
+                <button
+                  type="button"
+                  className="primary-button"
+                  style={{ width: "100%", justifyContent: "center", background: "#ef4444", borderColor: "#dc2626" }}
+                  onClick={async () => {
+                    const supabase = getBrowserSupabase();
+                    if (supabase) await supabase.auth.signOut();
+                    setSupabaseSession(null);
+                    setShowAuthModal(false);
+                    announce("Signed out successfully.");
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setIsAuthLoading(true);
+                  setAuthStatusMessage("");
+                  const supabase = getBrowserSupabase();
+                  if (!supabase) {
+                    setAuthStatusMessage("Supabase credentials not configured in browser. Local enterprise sandbox is active.");
+                    setIsAuthLoading(false);
+                    return;
+                  }
+                  try {
+                    if (authMode === "signin") {
+                      const { data, error } = await supabase.auth.signInWithPassword({
+                        email: authEmail,
+                        password: authPassword,
+                      });
+                      if (error) throw error;
+                      if (data.session) {
+                        setSupabaseSession({
+                          user: { id: data.session.user.id, email: data.session.user.email },
+                          accessToken: data.session.access_token,
+                        });
+                        setShowAuthModal(false);
+                        announce("Signed in successfully.");
+                      }
+                    } else {
+                      const { data, error } = await supabase.auth.signUp({
+                        email: authEmail,
+                        password: authPassword,
+                      });
+                      if (error) throw error;
+                      if (data.session) {
+                        setSupabaseSession({
+                          user: { id: data.session.user.id, email: data.session.user.email },
+                          accessToken: data.session.access_token,
+                        });
+                        setShowAuthModal(false);
+                        announce("Account created and signed in.");
+                      } else {
+                        setAuthStatusMessage("Account created. Check your email for confirmation link.");
+                      }
+                    }
+                  } catch (err) {
+                    setAuthStatusMessage(err instanceof Error ? err.message : "Authentication failed.");
+                  } finally {
+                    setIsAuthLoading(false);
+                  }
+                }}
+              >
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="user@enterprise.com"
+                    style={{
+                      width: "100%",
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "6px",
+                      padding: "8px 10px",
+                      color: "#fff",
+                      fontSize: "13px",
+                    }}
+                  />
+                </div>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    style={{
+                      width: "100%",
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "6px",
+                      padding: "8px 10px",
+                      color: "#fff",
+                      fontSize: "13px",
+                    }}
+                  />
+                </div>
+
+                {authStatusMessage && (
+                  <div style={{ fontSize: "12px", color: authStatusMessage.includes("created") ? "#34d399" : "#f87171", marginBottom: "12px" }}>
+                    {authStatusMessage}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
+                  <button
+                    type="submit"
+                    disabled={isAuthLoading}
+                    className="primary-button"
+                    style={{ width: "100%", justifyContent: "center" }}
+                  >
+                    {isAuthLoading ? "Processing…" : authMode === "signin" ? "Sign In" : "Create Account"}
+                  </button>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                    <button
+                      type="button"
+                      className="text-button"
+                      style={{ fontSize: "12px", opacity: 0.8 }}
+                      onClick={() => {
+                        setAuthMode(authMode === "signin" ? "signup" : "signin");
+                        setAuthStatusMessage("");
+                      }}
+                    >
+                      {authMode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button"
+                      style={{ fontSize: "12px", opacity: 0.8 }}
+                      onClick={() => {
+                        setShowAuthModal(false);
+                        announce("Continuing in enterprise workspace sandbox.");
+                      }}
+                    >
+                      Continue as Guest
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

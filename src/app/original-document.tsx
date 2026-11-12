@@ -20,20 +20,51 @@ type Props = {
 type DocBlock = { type: "paragraph"; location: TextLocation } | { type: "table"; rows: DocBlock[][][] };
 const wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-function HighlightedText({ text, start, ranges, onSelect }: { text: string; start: number; ranges: Array<{ id: string; start: number; end: number }>; onSelect: (id: string) => void }) {
-  return <>{splitTextAtFindings(text, start, ranges).map((part, index) => part.findingIds.length
-    ? <mark key={index} className="document-finding-mark" data-finding-ids={part.findingIds.join(" ")} onClick={() => onSelect(part.findingIds[0])}>{part.text}</mark>
-    : <span key={index}>{part.text}</span>)}</>;
+export function HighlightedText({
+  text,
+  start,
+  ranges,
+  onSelect,
+  selectedFindingId,
+}: {
+  text: string;
+  start: number;
+  ranges: Array<{ id: string; start: number; end: number; classification?: string }>;
+  onSelect: (id: string) => void;
+  selectedFindingId?: string | null;
+}) {
+  return <>{splitTextAtFindings(text, start, ranges).map((part, index) => {
+    if (!part.findingIds.length) return <span key={index}>{part.text}</span>;
+    const activeRange = ranges.find((r) => part.findingIds.includes(r.id));
+    const cls = activeRange?.classification ?? "unsupported";
+    const isSelected = part.findingIds.includes(selectedFindingId ?? "");
+    return (
+      <mark
+        key={index}
+        className={`document-finding-mark ${cls}${isSelected ? " selected" : ""}`}
+        data-finding-ids={part.findingIds.join(" ")}
+        onClick={() => onSelect(part.findingIds[0])}
+        title={`Click to inspect finding (${cls})`}
+      >
+        {part.text}
+      </mark>
+    );
+  })}</>;
 }
 
 function DocxViewer({ file, content, findings, selectedFindingId, onSelectFinding, currentReview }: Omit<Props, "fileKey" | "name" | "type"> & { file: Blob }) {
   const [blocks, setBlocks] = useState<DocBlock[]>([]);
   const [error, setError] = useState("");
   const paragraphRefs = useRef(new Map<number, HTMLElement>());
-  const ranges = useMemo(() => currentReview ? findings.map((finding) => ({
+  const ranges = useMemo(() => currentReview ? findings.filter((f) => f.evidence_status !== "SUPPORTED").map((finding) => ({
     id: finding.finding_id,
     start: codePointToUtf16Offset(content, finding.start),
     end: codePointToUtf16Offset(content, finding.end),
+    classification: finding.evidence_status === "CONTRADICTED" || finding.evidence_status === "CONFLICT"
+      ? "violation"
+      : finding.evidence_status === "NO_APPROVED_EVIDENCE"
+      ? "unsupported"
+      : "needshuman",
   })) : [], [content, currentReview, findings]);
 
   useEffect(() => {
@@ -95,7 +126,7 @@ function DocxViewer({ file, content, findings, selectedFindingId, onSelectFindin
 
   const renderBlocks = (items: DocBlock[], keyPrefix: string): React.ReactNode => items.map((block, index) => block.type === "paragraph"
     ? <p key={`${keyPrefix}-p-${index}`} ref={(node) => { if (node) paragraphRefs.current.set(block.location.index, node); }} className="docx-paragraph" data-paragraph={block.location.index + 1}>
-      <HighlightedText text={block.location.text} start={block.location.start} ranges={ranges} onSelect={onSelectFinding} />
+      <HighlightedText text={block.location.text} start={block.location.start} ranges={ranges} onSelect={onSelectFinding} selectedFindingId={selectedFindingId} />
     </p>
     : <table key={`${keyPrefix}-table-${index}`} className="docx-table"><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{renderBlocks(cell, `${keyPrefix}-${index}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody></table>);
 
@@ -123,10 +154,15 @@ function PdfViewer({ file, content, findings, selectedFindingId, onSelectFinding
       ? `Navigated to the source page for “${finding.claim_text}”. Highlighting is limited to selectable PDF text.`
       : "This finding could not be matched to selectable PDF text; it may come from OCR or extraction differences.";
   }, [content, currentReview, findings, pageLocations, selectedFindingId]);
-  const ranges = useMemo(() => currentReview ? findings.map((finding) => ({
+  const ranges = useMemo(() => currentReview ? findings.filter((f) => f.evidence_status !== "SUPPORTED").map((finding) => ({
     id: finding.finding_id,
     start: codePointToUtf16Offset(content, finding.start),
     end: codePointToUtf16Offset(content, finding.end),
+    classification: finding.evidence_status === "CONTRADICTED" || finding.evidence_status === "CONFLICT"
+      ? "violation"
+      : finding.evidence_status === "NO_APPROVED_EVIDENCE"
+      ? "unsupported"
+      : "needshuman",
   })) : [], [content, currentReview, findings]);
 
   useEffect(() => {
@@ -206,10 +242,14 @@ function PdfViewer({ file, content, findings, selectedFindingId, onSelectFinding
           const pieces = splitTextAtFindings(text, pageLocation.start + localOffset, ranges);
           div.replaceChildren(...pieces.map((piece) => {
             if (!piece.findingIds.length) return document.createTextNode(piece.text);
+            const activeRange = ranges.find((r) => piece.findingIds.includes(r.id));
+            const cls = activeRange?.classification ?? "unsupported";
+            const isSelected = piece.findingIds.includes(selectedFindingId ?? "");
             const mark = document.createElement("mark");
-            mark.className = `pdf-finding-mark${piece.findingIds.includes(selectedFindingId ?? "") ? " selected" : ""}`;
+            mark.className = `pdf-finding-mark ${cls}${isSelected ? " selected" : ""}`;
             mark.dataset.findingIds = piece.findingIds.join(" ");
             mark.textContent = piece.text;
+            mark.title = `Click to inspect finding (${cls})`;
             return mark;
           }));
           localOffset += text.length;
