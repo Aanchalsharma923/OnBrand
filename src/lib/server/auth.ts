@@ -80,3 +80,4 @@ export function requireRole(ctx: TenantContext, allowedRoles: ServerRole[]) {
     );
   }
 }
+

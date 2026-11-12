@@ -65,7 +65,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 180
+        "latencyMs": 181
       },
       {
         "id": "CASE-03",
@@ -645,7 +645,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 40
+        "latencyMs": 31
       },
       {
         "id": "CASE-02",
@@ -669,7 +669,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 16
+        "latencyMs": 15
       },
       {
         "id": "CASE-05",
@@ -685,7 +685,7 @@
         "goldBlocking": true,
         "predictedBlocking": true,
         "predictedStatus": "CONTRADICTED",
-        "latencyMs": 14
+        "latencyMs": 13
       },
       {
         "id": "CASE-07",
@@ -693,7 +693,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 15
+        "latencyMs": 14
       },
       {
         "id": "CASE-08",
@@ -701,7 +701,7 @@
         "goldBlocking": true,
         "predictedBlocking": true,
         "predictedStatus": "CONTRADICTED",
-        "latencyMs": 16
+        "latencyMs": 15
       },
       {
         "id": "CASE-09",
@@ -765,7 +765,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 12
+        "latencyMs": 13
       },
       {
         "id": "CASE-17",
@@ -781,7 +781,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 12
+        "latencyMs": 13
       },
       {
         "id": "CASE-19",
@@ -797,7 +797,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 13
+        "latencyMs": 14
       },
       {
         "id": "CASE-21",
@@ -805,7 +805,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 14
+        "latencyMs": 16
       },
       {
         "id": "CASE-22",
@@ -813,7 +813,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 16
+        "latencyMs": 17
       },
       {
         "id": "CASE-23",
@@ -853,7 +853,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 16
+        "latencyMs": 15
       },
       {
         "id": "CASE-28",
@@ -869,7 +869,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 15
+        "latencyMs": 14
       },
       {
         "id": "CASE-30",
@@ -877,7 +877,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 14
+        "latencyMs": 13
       }
     ]
   },
@@ -893,7 +893,7 @@
       "falsePositiveRate": 0,
       "f1Score": 0.4,
       "p50LatencyMs": 221,
-      "p95LatencyMs": 224
+      "p95LatencyMs": 223
     },
     "confusionMatrix": {
       "SUPPORTED": {
@@ -939,7 +939,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 223
+        "latencyMs": 222
       },
       {
         "id": "CASE-02",
@@ -947,7 +947,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 223
+        "latencyMs": 222
       },
       {
         "id": "CASE-03",
@@ -955,7 +955,7 @@
         "goldBlocking": true,
         "predictedBlocking": true,
         "predictedStatus": "NEEDS_HUMAN",
-        "latencyMs": 221
+        "latencyMs": 222
       },
       {
         "id": "CASE-04",
@@ -979,7 +979,7 @@
         "goldBlocking": true,
         "predictedBlocking": true,
         "predictedStatus": "CONTRADICTED",
-        "latencyMs": 220
+        "latencyMs": 221
       },
       {
         "id": "CASE-07",
@@ -1011,7 +1011,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 221
+        "latencyMs": 220
       },
       {
         "id": "CASE-11",
@@ -1019,7 +1019,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 220
+        "latencyMs": 221
       },
       {
         "id": "CASE-12",
@@ -1051,7 +1051,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 220
+        "latencyMs": 221
       },
       {
         "id": "CASE-16",
@@ -1059,7 +1059,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 220
+        "latencyMs": 221
       },
       {
         "id": "CASE-17",
@@ -1083,7 +1083,7 @@
         "goldBlocking": true,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 220
+        "latencyMs": 221
       },
       {
         "id": "CASE-20",
@@ -1099,7 +1099,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 222
+        "latencyMs": 223
       },
       {
         "id": "CASE-22",
@@ -1115,7 +1115,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 223
+        "latencyMs": 222
       },
       {
         "id": "CASE-24",
@@ -1123,7 +1123,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 222
+        "latencyMs": 224
       },
       {
         "id": "CASE-25",
@@ -1131,7 +1131,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 222
+        "latencyMs": 223
       },
       {
         "id": "CASE-26",
@@ -1139,7 +1139,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 224
+        "latencyMs": 222
       },
       {
         "id": "CASE-27",
@@ -1147,7 +1147,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 224
+        "latencyMs": 223
       },
       {
         "id": "CASE-28",
@@ -1155,7 +1155,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 222
+        "latencyMs": 220
       },
       {
         "id": "CASE-29",
@@ -1171,7 +1171,7 @@
         "goldBlocking": false,
         "predictedBlocking": false,
         "predictedStatus": "SUPPORTED",
-        "latencyMs": 220
+        "latencyMs": 221
       }
     ]
   }

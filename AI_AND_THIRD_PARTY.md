@@ -69,3 +69,4 @@ To prevent quota exhaustion and runaway costs:
 - Annotator 1 (Siddhesh) and Annotator 2 (Aanchal) independently scored all 30 cases without consulting each other.
 - Inter-annotator agreement: **Cohen's Kappa $\kappa = 0.8565$** (exceeding the standard $\ge 0.85$ threshold for almost-perfect agreement).
 - Disagreements on Case 14 and Case 16 were adjudicated with formal written rationale in `src/eval/adjudication.md`.
+

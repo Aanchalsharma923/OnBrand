@@ -102,3 +102,4 @@ Three major promised capabilities were delivered, verified, and deployed:
 1. **Pure Engine Invariant**: `src/lib/onbrand.ts` contains zero database, network, filesystem, or external model imports. It remains side-effect free and 100% deterministic.
 2. **AI Failsafe Invariant**: No model output can override code-level blocking findings (`CONTRADICTED`, `CONFLICT`, `SOURCE_SECURITY`). Model errors, timeouts, or quota limits fail-safe to `NEEDS_HUMAN` (blocking review).
 3. **Server-Derived Tenancy Invariant**: Client-supplied tenant IDs and roles are never trusted. All database operations and repository queries derive tenant scope from verified server session context.
+
