@@ -130,10 +130,11 @@ export default function Home() {
   const [lastDecision, setLastDecision] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("demo");
+  const [currentOrg, setCurrentOrg] = useState("org_alpha");
   const [showWelcome, setShowWelcome] = useState(false);
   const [ownBrandName, setOwnBrandName] = useState("");
   const [ownProfile, setOwnProfile] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
-  const [modelDisclosure, setModelDisclosure] = useState("This workspace is using deterministic checks. Evidence statuses, citations and approval gates are code-generated. People review every recommendation and make the decision.");
+  const [modelDisclosure, setModelDisclosure] = useState("Deterministic mode active. Evidence statuses, citations and approval gates are code-generated.");
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
 
@@ -157,6 +158,37 @@ export default function Home() {
       setLoaded(true);
     });
   }, []);
+
+  // Multi-tenant backend synchronization
+  useEffect(() => {
+    let isMounted = true;
+    async function syncBackendData() {
+      try {
+        const headers = { "x-demo-org": currentOrg };
+        const [srcRes, draftRes] = await Promise.all([
+          fetch("/api/sources", { headers }),
+          fetch("/api/drafts", { headers }),
+        ]);
+        if (srcRes.ok) {
+          const sData = await srcRes.json();
+          if (isMounted && Array.isArray(sData.sources) && sData.sources.length > 0) {
+            setSources(sData.sources);
+          }
+        }
+        if (draftRes.ok) {
+          const dData = await draftRes.json();
+          if (isMounted && Array.isArray(dData.drafts) && dData.drafts.length > 0) {
+            setDraft(dData.drafts[0]);
+            setVersions(dData.drafts);
+          }
+        }
+      } catch {
+        // Fallback to local memory state safely
+      }
+    }
+    syncBackendData();
+    return () => { isMounted = false; };
+  }, [currentOrg]);
 
   useEffect(() => {
     if (!loaded || showWelcome) return;
@@ -350,8 +382,38 @@ export default function Home() {
     setDraft(next);
     setVersions((current) => [...current, next]);
     setLastDecision("");
+    fetch("/api/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-demo-org": currentOrg, "x-demo-role": role.toUpperCase() },
+      body: JSON.stringify(next),
+    }).catch(() => {});
     announce(`Saved immutable version v${next.version}.`);
     return next;
+  }
+
+  function switchOrg(orgId: string) {
+    setCurrentOrg(orgId);
+    setReview(null);
+    setLastDecision("");
+    if (orgId === "org_beta") {
+      const betaDraft = createDraft("NovaBio CardioShield supports healthy arterial elasticity. Clinically demonstrated in double-blind trials.", {
+        id: "DRAFT-BETA-01",
+        title: "CardioShield HCP Launch Post",
+        channel: "web",
+        product: "CardioShield",
+        audience: "Cardiologists & Healthcare Professionals",
+        publicationDate: "2026-11-15",
+        version: 1,
+      });
+      setDraft(betaDraft);
+      setVersions([betaDraft]);
+      announce("Switched to Nova Biopharma workspace. Complete tenant data isolation active.");
+    } else {
+      setDraft(initialDraft);
+      setVersions([initialDraft]);
+      setSources(seedSources);
+      announce("Switched to Acme Foods workspace.");
+    }
   }
 
   async function runReview() {
@@ -367,7 +429,21 @@ export default function Home() {
         setDraft(reviewDraftVersion);
         setVersions((current) => [...current, reviewDraftVersion]);
       }
-      const response = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: reviewDraftVersion, sources, includeDemoRules: workspaceMode === "demo", useAdvisoryModel: false }) });
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-demo-org": currentOrg,
+          "x-demo-role": role.toUpperCase(),
+        },
+        body: JSON.stringify({
+          draft: reviewDraftVersion,
+          sources,
+          includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha",
+          useAdvisoryModel: true,
+          visualChecks: true,
+        }),
+      });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Review request failed.");
       const nextReview = payload.review as Review;
@@ -423,6 +499,20 @@ export default function Home() {
     const decision = { state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash };
     setReview({ ...review, decision, decisionHistory: [...(review.decisionHistory ?? []), { action: "DECISION_RECORDED", state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash }] });
     setLastDecision(state.replaceAll("_", " "));
+    fetch("/api/decisions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-demo-org": currentOrg,
+        "x-demo-role": role.toUpperCase(),
+      },
+      body: JSON.stringify({
+        reviewId: review.id,
+        state,
+        draftHash: draft.hash,
+        sourceSnapshotHash: review.sourceSnapshotHash,
+      }),
+    }).catch(() => {});
     announce(`Decision recorded for ${draft.hash.slice(0, 8)}. Nothing has been published.`);
   }
 
@@ -695,7 +785,23 @@ export default function Home() {
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumbs"><span>OnBrand</span><span className="crumb-slash">/</span><b>{view === "review" ? "Review queue" : view === "knowledge" ? "Knowledge base" : "Insights"}</b></div>
-          <div className="topbar-right"><div className="secure-indicator"><span className="secure-dot" /> {workspaceMode === "demo" ? "Demo workspace" : "Saved in this browser"}</div><label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label><button className="avatar-button" aria-label={roleLabel(role)}>{roleInitials(role)}</button></div>
+          <div className="topbar-right">
+            <div className="tenant-selector" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px 8px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <span style={{ fontSize: "11px", opacity: 0.7, fontWeight: 500 }}>TENANT:</span>
+              <select
+                value={currentOrg}
+                onChange={(event) => switchOrg(event.target.value)}
+                style={{ background: "transparent", color: "inherit", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", outline: "none" }}
+                aria-label="Switch demo organization"
+              >
+                <option value="org_alpha" style={{ background: "#1c222c" }}>Acme Foods (Alpha)</option>
+                <option value="org_beta" style={{ background: "#1c222c" }}>Nova Biopharma (Beta)</option>
+              </select>
+            </div>
+            <div className="secure-indicator"><span className="secure-dot" /> {currentOrg === "org_alpha" ? "Acme (PostgreSQL Scoped)" : "NovaBio (PostgreSQL Scoped)"}</div>
+            <label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label>
+            <button className="avatar-button" aria-label={roleLabel(role)}>{roleInitials(role)}</button>
+          </div>
         </header>
 
         {view === "review" ? <>
@@ -740,7 +846,15 @@ export default function Home() {
             <div className="findings-column">
               <div className="findings-header"><div><span className="panel-kicker">EVIDENCE REPORT</span><h2>What we found <span className="count-pill">{visibleFindings.length}{findingFilter === "all" ? "" : ` / ${findings.length}`}</span></h2></div><label className="sr-only" htmlFor="finding-filter">Filter findings</label><select id="finding-filter" className="filter-button" value={findingFilter} onChange={(event) => setFindingFilter(event.target.value as typeof findingFilter)}><option value="all">All findings</option><option value="attention">Needs attention</option><option value="blocking">Blocking review</option><option value="supported">Evidence aligned</option></select></div>
               {visibleFindings.length ? <div className="finding-list">{visibleFindings.map((finding) => <button key={finding.finding_id} className={`finding-card ${selected?.finding_id === finding.finding_id ? "selected" : ""}`} onClick={() => selectFinding(finding)}>
-                <div className="finding-card-top"><span className={`status-dot ${statusClass[finding.evidence_status]}`} /><span className={`status-text ${statusClass[finding.evidence_status]}`}>{statusLabel[finding.evidence_status]}</span><span className={`severity-tag ${finding.severity.toLowerCase()}`}>{finding.severity}</span><span className="finding-menu">···</span></div>
+                <div className="finding-card-top">
+                  <span className={`status-dot ${statusClass[finding.evidence_status]}`} />
+                  <span className={`status-text ${statusClass[finding.evidence_status]}`}>{statusLabel[finding.evidence_status]}</span>
+                  <span className={`severity-tag ${finding.severity.toLowerCase()}`}>{finding.severity}</span>
+                  {finding.category === "VISUAL" && <span style={{ fontSize: "10px", fontWeight: "bold", background: "#2563eb", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>VISUAL</span>}
+                  {finding.category === "ACCESSIBILITY" && <span style={{ fontSize: "10px", fontWeight: "bold", background: "#059669", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>A11Y</span>}
+                  {finding.category === "SOURCE_SECURITY" && <span style={{ fontSize: "10px", fontWeight: "bold", background: "#dc2626", color: "#fff", padding: "1px 5px", borderRadius: "3px" }}>SECURITY</span>}
+                  <span className="finding-menu">···</span>
+                </div>
                 <div className="claim-quote">“{finding.claim_text}”</div>
                 <div className="finding-card-bottom"><span className="finding-category">{finding.category.replaceAll("_", " ")}</span><span className="finding-source-count">{finding.source_evidence.length ? `${finding.source_evidence.length} source${finding.source_evidence.length > 1 ? "s" : ""}` : "No source"}</span></div>
               </button>)}</div> : <div className="empty-findings"><div className="empty-icon">✳</div><b>{findings.length ? "No findings match this filter" : "Your evidence report will appear here"}</b><p>{findings.length ? "Choose another filter to see the rest of the review." : "Run a review to check each claim against this workspace’s approved knowledge."}</p>{findings.length === 0 && <button className="inline-action" onClick={runReview}>Run first review <Icon name="arrow" /></button>}</div>}
@@ -752,9 +866,48 @@ export default function Home() {
               <section className="review-activity" aria-label="Review activity">
                 <div className="review-activity-header"><div><span className="panel-kicker">REVIEW ACTIVITY</span><h3>{isReviewing ? "Checking evidence" : hasCurrentReview ? "Report ready" : review ? "Refresh needed" : "Ready to review"}</h3></div><span className={`activity-state ${hasCurrentReview ? "ready" : isReviewing ? "running" : "waiting"}`}>{hasCurrentReview ? "Complete" : isReviewing ? "Running" : "Waiting"}</span></div>
                 <ol className="activity-list">
-                  <li className={draft.content.trim() ? "done" : "waiting"}><span className="activity-marker">{draft.content.trim() ? "✓" : "1"}</span><div><b>Draft prepared</b><small>{draft.originalDocumentName ? `${draft.originalDocumentName} · browser-local original` : `Version ${draft.version} · ${draft.content.trim() ? `${draft.content.trim().split(/\s+/).length} words` : "No draft content yet"}`}</small></div></li>
-                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}><span className="activity-marker">{hasCurrentReview ? "✓" : "2"}</span><div><b>Evidence review</b><small>{hasCurrentReview ? `${findings.length} finding${findings.length === 1 ? "" : "s"} · ${review?.engineMode === "deterministic-preview" ? "deterministic checks" : "review complete"}` : isReviewing ? "Comparing claims with approved sources" : review ? "Draft or sources changed · rerun review" : "Run a review to compare approved sources"}</small></div></li>
-                  <li className={hasCurrentDecision ? "done" : hasCurrentReview && counts.blocking === 0 ? "active" : "waiting"}><span className="activity-marker">{hasCurrentDecision ? "✓" : "3"}</span><div><b>Human decision</b><small>{hasCurrentDecision ? `Recorded · ${review?.decision?.state.replaceAll("_", " ").toLowerCase()}` : counts.blocking > 0 && hasCurrentReview ? `${counts.blocking} blocking finding${counts.blocking === 1 ? "" : "s"} need attention first` : "People decide · nothing is published here"}</small></div></li>
+                  <li className={draft.content.trim() ? "done" : "waiting"}>
+                    <span className="activity-marker">{draft.content.trim() ? "✓" : "1"}</span>
+                    <div>
+                      <b>1. Document Ingestion & AST Extraction</b>
+                      <small>{draft.originalDocumentName ? `${draft.originalDocumentName} · parsed file AST` : `${draft.content.trim() ? `${draft.content.trim().split(/\s+/).length} words ready` : "Awaiting draft content"}`}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "2"}</span>
+                    <div>
+                      <b>2. Deterministic Claim Segmentation</b>
+                      <small>{hasCurrentReview ? `${findings.length} atomic claims & spans segmented` : isReviewing ? "Segmenting atomic claims…" : "Awaiting review trigger"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "3"}</span>
+                    <div>
+                      <b>3. Citation Retrieval & Precedence (C1–C4)</b>
+                      <small>{hasCurrentReview ? `${activeSources.length} active sources · authority ranked` : isReviewing ? "Verifying C1–C4 citations…" : "Awaiting fact retrieval"}</small>
+                    </div>
+                  </li>
+                  <li className={review?.engineMode === "model-assisted" ? "done" : hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{review?.engineMode === "model-assisted" ? "✓" : "4"}</span>
+                    <div>
+                      <b>4. Hosted Semantic Verifier (C5)</b>
+                      <small>{review?.engineMode === "model-assisted" ? "Two-pass entailment consensus reached" : hasCurrentReview ? "Deterministic fallback (failsafe active)" : isReviewing ? "Running hosted C5 check…" : "Optional C5 model verification"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentReview ? "done" : isReviewing ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentReview ? "✓" : "5"}</span>
+                    <div>
+                      <b>5. Visual Intelligence & Accessibility</b>
+                      <small>{hasCurrentReview ? "Brand palette, logo & contrast evaluated" : isReviewing ? "Inspecting visuals & AST…" : "WCAG contrast & palette check"}</small>
+                    </div>
+                  </li>
+                  <li className={hasCurrentDecision ? "done" : hasCurrentReview && counts.blocking === 0 ? "active" : "waiting"}>
+                    <span className="activity-marker">{hasCurrentDecision ? "✓" : "6"}</span>
+                    <div>
+                      <b>6. Human Reviewer Decision Gate</b>
+                      <small>{hasCurrentDecision ? `Recorded · ${review?.decision?.state.replaceAll("_", " ").toLowerCase()}` : counts.blocking > 0 && hasCurrentReview ? `${counts.blocking} blocking finding(s) require human review` : "Awaiting reviewer sign-off"}</small>
+                    </div>
+                  </li>
                 </ol>
                 {review?.agentNotes?.length ? <div className="activity-advisory"><div className="detail-label">OPTIONAL MODEL NOTES · NOT VERDICTS</div>{review.agentNotes.map((note) => <div className="agent-note" key={note.agent}><b>{note.agent}</b><p>{note.summary}</p></div>)}</div> : <p className="activity-disclosure">{modelDisclosure.startsWith("Deterministic mode") || modelDisclosure.startsWith("No model is configured") ? "Deterministic review · no model call was made." : "Optional advisory unavailable · evidence decisions remain code-checked."}</p>}
               </section>

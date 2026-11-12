@@ -16,6 +16,15 @@ CREATE TABLE IF NOT EXISTS memberships (
   display_name text NOT NULL,
   PRIMARY KEY (organization_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL UNIQUE,
+  email text,
+  display_name text,
+  avatar_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS sources (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -128,6 +137,20 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS assets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  sha256 varchar(64) NOT NULL,
+  phash text NOT NULL,
+  mime_type text NOT NULL,
+  byte_size integer NOT NULL,
+  approval_state varchar(24) NOT NULL DEFAULT 'APPROVED',
+  allowed_usage text,
+  uploaded_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS facts_search_idx ON facts USING gin (to_tsvector('simple', statement));
 CREATE INDEX IF NOT EXISTS facts_trigram_idx ON facts USING gin (statement gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS sources_scope_idx ON sources (organization_id, approval_state, effective_from, authority DESC);
@@ -138,11 +161,15 @@ CREATE OR REPLACE FUNCTION onbrand_org_id() RETURNS uuid LANGUAGE sql STABLE AS 
   SELECT nullif(current_setting('app.organization_id', true), '')::uuid
 $$;
 CREATE OR REPLACE FUNCTION onbrand_role() RETURNS text LANGUAGE sql STABLE AS $$
-  SELECT coalesce(nullif(current_setting('app.role', true), ''), 'none')
+  SELECT lower(coalesce(nullif(current_setting('app.role', true), ''), 'none'))
+$$;
+CREATE OR REPLACE FUNCTION onbrand_user_id() RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT nullif(current_setting('app.user_id', true), '')
 $$;
 
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE facts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE drafts ENABLE ROW LEVEL SECURITY;
@@ -152,9 +179,13 @@ ALTER TABLE findings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE VIEW review_decisions AS SELECT * FROM decisions;
 
 CREATE POLICY org_scope ON organizations USING (id = onbrand_org_id()) WITH CHECK (id = onbrand_org_id());
 CREATE POLICY membership_scope ON memberships USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id());
+CREATE POLICY profiles_scope ON profiles USING (true) WITH CHECK (user_id = coalesce(nullif(current_setting('app.user_id', true), ''), user_id));
 CREATE POLICY sources_scope ON sources USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() = 'maintainer');
 CREATE POLICY facts_scope ON facts USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() = 'maintainer');
 CREATE POLICY drafts_scope ON drafts USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('creator','reviewer','maintainer'));
@@ -162,5 +193,6 @@ CREATE POLICY draft_versions_scope ON draft_versions USING (organization_id = on
 CREATE POLICY reviews_scope ON reviews USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('creator','reviewer','maintainer'));
 CREATE POLICY findings_scope ON findings USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('creator','reviewer','maintainer'));
 CREATE POLICY comments_scope ON comments USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('creator','reviewer','maintainer'));
-CREATE POLICY decisions_scope ON decisions USING (organization_id = onbrand_org_id() AND onbrand_role() IN ('reviewer','maintainer')) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('reviewer','maintainer'));
+CREATE POLICY decisions_scope ON decisions USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('reviewer','maintainer'));
 CREATE POLICY audit_events_scope ON audit_events USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('creator','reviewer','maintainer'));
+CREATE POLICY assets_scope ON assets USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('maintainer'));

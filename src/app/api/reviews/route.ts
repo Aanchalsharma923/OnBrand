@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createDraft, initialDraft, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash, type Draft, type Source } from "../../../lib/onbrand";
 import { z } from "zod";
+import { resolveTenantContext } from "../../../lib/server/auth";
+import { getRepository } from "../../../lib/server/repository";
+import { modelConfigured, modelDescriptor, runAgentPanel, verifySemanticEvidence } from "../../../lib/server/model";
+import { checkAndIncrementModelQuota } from "../../../lib/server/model-limits";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });
 const sourceSchema = z.object({
@@ -30,6 +34,7 @@ const reviewRequest = z.object({
   sources: z.array(sourceSchema).max(100).optional().refine((sources) => !sources || sources.reduce((total, source) => total + source.facts.length, 0) <= 2500, "Too many facts in one review request."),
   includeDemoRules: z.boolean().optional(),
   useAdvisoryModel: z.boolean().optional(),
+  visualChecks: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -69,16 +74,85 @@ export async function POST(request: Request) {
         source_evidence: [], created_at: new Date().toISOString(),
       });
     }
-    // Public Round 2 reviews are deterministic by policy. Model-assisted review
-    // remains available only to local/dev workflows and cannot be enabled by a
-    // browser-supplied flag that could send customer drafts to a provider.
-    const finalReview = review;
-    finalReview.engineMode = "deterministic-preview";
+
+    let finalReview = review;
+    const ctx = await resolveTenantContext(request);
+    const repo = getRepository();
+
+    // Round 3: Hosted model activation when enabled by environment and requested
+    const isHostedModelEnabled = process.env.ENABLE_HOSTED_MODEL === "true";
+    let modelDisclosure = "Deterministic mode is active. No model call was made.";
+
+    if (body.useAdvisoryModel && isHostedModelEnabled && modelConfigured()) {
+      const quotaCheck = checkAndIncrementModelQuota(ctx.userId || ctx.organizationId);
+      if (!quotaCheck.allowed) {
+        finalReview.engineMode = "deterministic-preview";
+        modelDisclosure = `Deterministic fallback active: ${quotaCheck.reason || "Quota limit reached"}.`;
+      } else {
+        try {
+          const semanticResult = await verifySemanticEvidence(finalReview, safeDraft, approvedSources);
+          finalReview = semanticResult.review;
+          const agentNotes = await runAgentPanel(safeDraft, finalReview, approvedSources);
+          if (agentNotes) {
+            finalReview.agentNotes = [
+              { agent: "Advocate", summary: agentNotes.advocate },
+              { agent: "Challenger", summary: agentNotes.challenger },
+              { agent: "Judge", summary: agentNotes.judge },
+              { agent: "Policy & Risk", summary: agentNotes.policyRisk },
+            ];
+          }
+          if (semanticResult.state === "needs-human") {
+            finalReview.engineMode = "deterministic-preview";
+            modelDisclosure = `Hosted verification could not reach consensus on ${semanticResult.unresolvedCount} claim(s); routed safely to NEEDS_HUMAN.`;
+          } else if (semanticResult.candidateCount > 0 || agentNotes) {
+            finalReview.engineMode = "model-assisted";
+            modelDisclosure = `Hosted verification verified via ${modelDescriptor()}. Two-pass entailment and advisory panel complete.`;
+          } else {
+            finalReview.engineMode = "deterministic-preview";
+            modelDisclosure = "Deterministic mode is active. All claims verified via deterministic rules.";
+          }
+        } catch {
+          // Invariant 2: Failure degrades safely to deterministic fallback
+          finalReview.engineMode = "deterministic-preview";
+          modelDisclosure = "Hosted model call failed safely. Review evaluated under deterministic fallback rules.";
+          for (const finding of finalReview.findings) {
+            if (finding.category === "MESSAGE" && finding.evidence_status === "NEEDS_HUMAN") {
+              finding.blocking_for_review = true;
+            }
+          }
+        }
+      }
+    } else {
+      finalReview.engineMode = "deterministic-preview";
+    }
+
     finalReview.sourceSnapshotHash = sourceSnapshotHash(approvedSources);
+
+    // Save review & audit trail to repository
+    try {
+      await repo.saveReview(ctx, finalReview);
+      await repo.recordAuditEvent(ctx, {
+        id: `AUDIT-REV-${stableHash(finalReview.id + Date.now()).slice(0, 16)}`,
+        action: "REVIEW_COMPLETED",
+        actorId: ctx.userId,
+        organizationId: ctx.organizationId,
+        entityType: "review",
+        entityId: finalReview.id,
+        metadata: {
+          engineMode: finalReview.engineMode,
+          findingsCount: finalReview.findings.length,
+          hasBlocking: finalReview.findings.some((f) => f.blocking_for_review),
+        },
+        createdAt: new Date().toISOString(),
+      });
+    } catch {
+      // Repository logging must not break review return
+    }
+
     return NextResponse.json({
       review: finalReview,
       engine: finalReview.engineMode,
-      modelDisclosure: "Deterministic mode is active. No model call was made.",
+      modelDisclosure,
     });
   } catch (error) {
     const message = error instanceof z.ZodError ? "Invalid review request." : "Review failed safely. Check the draft and try again.";

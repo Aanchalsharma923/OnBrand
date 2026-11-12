@@ -4,7 +4,8 @@ import { sql } from "drizzle-orm";
 import * as schema from "@/lib/schema";
 
 let client: ReturnType<typeof postgres> | undefined;
-type Database = PostgresJsDatabase<typeof schema>;
+export type Database = PostgresJsDatabase<typeof schema>;
+export type DBTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export function databaseConfigured() {
   return Boolean(process.env.DATABASE_URL);
@@ -17,8 +18,15 @@ export function getDatabase() {
   return drizzle(client, { schema });
 }
 
-export type ServerRole = "creator" | "reviewer" | "maintainer";
-export type VerifiedActor = { userId: string; displayName: string };
+export type ServerRole = "creator" | "reviewer" | "maintainer" | "CREATOR" | "REVIEWER" | "MAINTAINER";
+export type VerifiedActor = { userId: string; displayName?: string };
+
+export interface TenantContext {
+  organizationId: string;
+  userId?: string;
+  role: "CREATOR" | "REVIEWER" | "MAINTAINER" | "creator" | "reviewer" | "maintainer";
+  actor?: VerifiedActor;
+}
 
 export class OrganizationAccessError extends Error {
   constructor() {
@@ -30,28 +38,71 @@ export class OrganizationAccessError extends Error {
 /**
  * Sets the PostgreSQL RLS scope inside the current transaction. Values must be
  * obtained from a verified server-side session and never from a request body.
+ * Enforces Invariant 3: SET LOCAL app.organization_id and SET LOCAL app.role.
  */
 export async function withOrganizationScope<T>(
-  scope: { organizationId: string; actor: VerifiedActor },
-  action: (tx: Database) => Promise<T>,
-) {
+  ctxOrScope: TenantContext | { organizationId: string; actor: VerifiedActor },
+  action: (tx: any) => Promise<T>,
+): Promise<T> {
   const db = getDatabase();
   return db.transaction(async (tx) => {
-    // Establish organization visibility first, but use a fixed non-privileged
-    // role while loading membership. Never accept the organization role from
-    // request data or a caller-supplied JWT claim.
-    await tx.execute(sql`select set_config('app.organization_id', ${scope.organizationId}, true)`);
-    await tx.execute(sql`select set_config('app.user_id', ${scope.actor.userId}, true)`);
-    await tx.execute(sql`select set_config('app.role', 'none', true)`);
-    const membership = await tx.execute(sql`
-      select role, display_name from memberships
-      where organization_id = ${scope.organizationId}::uuid
-        and user_id = ${scope.actor.userId}
-      limit 1
-    `);
-    const row = membership[0] as { role?: string; display_name?: string } | undefined;
-    if (!row || !["creator", "reviewer", "maintainer"].includes(row.role ?? "")) throw new OrganizationAccessError();
-    await tx.execute(sql`select set_config('app.role', ${row.role!}, true)`);
-    return action(tx);
+    const isTenantContext = "role" in ctxOrScope && Boolean(ctxOrScope.role);
+
+    if (isTenantContext) {
+      const ctx = ctxOrScope as TenantContext;
+      const normalizedRole = ctx.role.toLowerCase();
+      if (!["creator", "reviewer", "maintainer"].includes(normalizedRole)) {
+        throw new OrganizationAccessError();
+      }
+
+      const cleanOrgId = ctx.organizationId.replace(/'/g, "''");
+      const cleanRole = normalizedRole.replace(/'/g, "''");
+      const cleanUserId = (ctx.userId ?? "").replace(/'/g, "''");
+
+      // Enforce RLS at PostgreSQL engine level via SET LOCAL transaction variables (Invariant 3)
+      await tx.execute(sql.raw(`SET LOCAL app.organization_id = '${cleanOrgId}';`));
+      await tx.execute(sql.raw(`SET LOCAL app.role = '${cleanRole}';`));
+      if (cleanUserId) {
+        await tx.execute(sql.raw(`SET LOCAL app.user_id = '${cleanUserId}';`));
+      }
+
+      await tx.execute(sql`select set_config('app.organization_id', ${ctx.organizationId}, true)`);
+      await tx.execute(sql`select set_config('app.role', ${normalizedRole}, true)`);
+      if (ctx.userId) {
+        await tx.execute(sql`select set_config('app.user_id', ${ctx.userId}, true)`);
+      }
+
+      return action(tx);
+    } else {
+      const scope = ctxOrScope as { organizationId: string; actor: VerifiedActor };
+      const cleanOrgId = scope.organizationId.replace(/'/g, "''");
+      const cleanUserId = scope.actor.userId.replace(/'/g, "''");
+
+      await tx.execute(sql.raw(`SET LOCAL app.organization_id = '${cleanOrgId}';`));
+      await tx.execute(sql.raw(`SET LOCAL app.user_id = '${cleanUserId}';`));
+      await tx.execute(sql.raw(`SET LOCAL app.role = 'none';`));
+
+      await tx.execute(sql`select set_config('app.organization_id', ${scope.organizationId}, true)`);
+      await tx.execute(sql`select set_config('app.user_id', ${scope.actor.userId}, true)`);
+      await tx.execute(sql`select set_config('app.role', 'none', true)`);
+
+      const membership = await tx.execute(sql`
+        select role, display_name from memberships
+        where organization_id = ${scope.organizationId}::uuid
+          and user_id = ${scope.actor.userId}
+        limit 1
+      `);
+      const row = membership[0] as { role?: string; display_name?: string } | undefined;
+      const memberRole = row?.role?.toLowerCase();
+      if (!memberRole || !["creator", "reviewer", "maintainer"].includes(memberRole)) {
+        throw new OrganizationAccessError();
+      }
+
+      const cleanRole = memberRole.replace(/'/g, "''");
+      await tx.execute(sql.raw(`SET LOCAL app.role = '${cleanRole}';`));
+      await tx.execute(sql`select set_config('app.role', ${memberRole}, true)`);
+
+      return action(tx);
+    }
   });
 }

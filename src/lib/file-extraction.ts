@@ -1,3 +1,5 @@
+import type { Finding } from "./onbrand";
+
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_TEXT_CHARS = 20_000;
@@ -21,6 +23,8 @@ export type UploadedText = {
   text: string;
   method: "DIRECT" | "OCR";
   ocrQuality?: OcrQuality;
+  accessibilityFindings?: Finding[];
+  disclosures?: string[];
 };
 
 type OcrPass = { text: string; confidence: number; quality: OcrQuality };
@@ -61,6 +65,200 @@ export function assessOcrQuality(text: string, confidence: number): OcrQuality {
   return { status, confidence: Math.round(safeConfidence), readableTokenRatio, noisyCharacterRatio, message };
 }
 
+function extractParagraphsFromDocumentXml(documentXmlBytes: Uint8Array): string[] {
+  const xmlStr = new TextDecoder().decode(documentXmlBytes);
+  if (typeof DOMParser !== "undefined") {
+    const xml = new DOMParser().parseFromString(xmlStr, "application/xml");
+    if (!xml.querySelector("parsererror")) {
+      return [...xml.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "p")]
+        .map((paragraph) =>
+          [...paragraph.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "t")]
+            .map((text) => text.textContent ?? "")
+            .join("")
+        )
+        .filter(Boolean);
+    }
+  }
+
+  const paragraphs: string[] = [];
+  const pRegex = /<w:p(?:\s[^>]*)?>([\s\S]*?)<\/w:p>/gi;
+  let pMatch: RegExpExecArray | null;
+  while ((pMatch = pRegex.exec(xmlStr)) !== null) {
+    const tRegex = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/gi;
+    let tMatch: RegExpExecArray | null;
+    let text = "";
+    while ((tMatch = tRegex.exec(pMatch[1])) !== null) {
+      text += tMatch[1];
+    }
+    if (text) paragraphs.push(text);
+  }
+  return paragraphs;
+}
+
+export async function inspectDocxAccessibility(
+  docxInput: Buffer | Uint8Array
+): Promise<Finding[]> {
+  const { unzipSync } = await import("fflate");
+  const data = docxInput instanceof Uint8Array ? docxInput : new Uint8Array(docxInput);
+  let documentXmlBytes: Uint8Array | undefined;
+
+  try {
+    const archive = unzipSync(data, {
+      filter: (entry) => {
+        if (entry.name !== "word/document.xml") return false;
+        if (entry.originalSize > 10 * 1024 * 1024) return false;
+        return true;
+      },
+    });
+    documentXmlBytes = archive["word/document.xml"];
+  } catch {
+    return [];
+  }
+
+  if (!documentXmlBytes) return [];
+
+  const xmlStr = new TextDecoder().decode(documentXmlBytes);
+  const findings: Finding[] = [];
+  const now = new Date().toISOString();
+
+  // 1. Image alternative text check: <w:drawing>
+  const drawingRegex = /<w:drawing(?:\s[^>]*)?>([\s\S]*?)<\/w:drawing>/gi;
+  let drawingMatch: RegExpExecArray | null;
+  let imgIndex = 0;
+
+  while ((drawingMatch = drawingRegex.exec(xmlStr)) !== null) {
+    imgIndex++;
+    const drawingContent = drawingMatch[1];
+    const docPrMatch = /<(?:[a-zA-Z0-9_]+:)?docPr\b([^>]*)\/?>/i.exec(drawingContent);
+
+    let hasAlt = false;
+    if (docPrMatch) {
+      const attrs = docPrMatch[1];
+      const descrMatch = /\bdescr=["']([^"']*)["']/i.exec(attrs);
+      const titleMatch = /\btitle=["']([^"']*)["']/i.exec(attrs);
+      const descr = descrMatch ? descrMatch[1].trim() : "";
+      const title = titleMatch ? titleMatch[1].trim() : "";
+      if (descr.length > 0 || title.length > 0) {
+        hasAlt = true;
+      }
+    }
+
+    if (!hasAlt) {
+      findings.push({
+        finding_id: `finding-docx-alt-${imgIndex}-${Date.now()}`,
+        review_id: "",
+        draft_id: "",
+        draft_version_id: "",
+        draft_hash: "",
+        claim_id: `docx-alt-${imgIndex}`,
+        claim_text: "DOCX_ACCESSIBILITY: Missing alternative text for embedded image.",
+        start: 0,
+        end: 0,
+        category: "ACCESSIBILITY",
+        evidence_status: "CONFLICT",
+        severity: "HIGH",
+        blocking_for_review: true,
+        explanation: "DOCX_ACCESSIBILITY: Missing alternative text for embedded image.",
+        source_evidence: [],
+        created_at: now,
+      });
+    }
+  }
+
+  // 2. Heading hierarchy check: <w:p>
+  const pRegex = /<w:p(?:\s[^>]*)?>([\s\S]*?)<\/w:p>/gi;
+  let pMatch: RegExpExecArray | null;
+  let lastHeadingLevel: number | undefined;
+  let headingIndex = 0;
+
+  while ((pMatch = pRegex.exec(xmlStr)) !== null) {
+    const pContent = pMatch[1];
+    let level: number | undefined;
+
+    const styleMatch = /<w:pStyle\b[^>]*\bw:val=["']([^"']+)["']/i.exec(pContent);
+    if (styleMatch) {
+      const val = styleMatch[1];
+      const hMatch = /heading\s*([1-6])/i.exec(val);
+      if (hMatch) {
+        level = parseInt(hMatch[1], 10);
+      }
+    }
+
+    if (level === undefined) {
+      const outlineMatch = /<w:outlineLvl\b[^>]*\bw:val=["']([0-5])["']/i.exec(pContent);
+      if (outlineMatch) {
+        level = parseInt(outlineMatch[1], 10) + 1;
+      }
+    }
+
+    if (level !== undefined) {
+      headingIndex++;
+      if (lastHeadingLevel !== undefined && level > lastHeadingLevel + 1) {
+        findings.push({
+          finding_id: `finding-docx-heading-${headingIndex}-${Date.now()}`,
+          review_id: "",
+          draft_id: "",
+          draft_version_id: "",
+          draft_hash: "",
+          claim_id: `docx-heading-${headingIndex}`,
+          claim_text: "DOCX_ACCESSIBILITY: Heading hierarchy violation.",
+          start: 0,
+          end: 0,
+          category: "ACCESSIBILITY",
+          evidence_status: "CONFLICT",
+          severity: "HIGH",
+          blocking_for_review: true,
+          explanation: `DOCX_ACCESSIBILITY: Heading hierarchy violation. Heading level ${level} directly follows Heading level ${lastHeadingLevel} without intervening Heading level ${lastHeadingLevel + 1}.`,
+          source_evidence: [],
+          created_at: now,
+        });
+      }
+      lastHeadingLevel = level;
+    }
+  }
+
+  return findings;
+}
+
+export async function inspectPdfTagStructure(
+  pdfInput: Buffer | Uint8Array
+): Promise<Finding[]> {
+  const bytes = pdfInput instanceof Uint8Array ? pdfInput : new Uint8Array(pdfInput);
+  const now = new Date().toISOString();
+
+  // Decode binary content to text to check PDF structure tree dictionary in Catalog
+  const text = new TextDecoder("latin1").decode(bytes);
+
+  // In PDF (ISO 32000-1), a Tagged PDF defines a logical structure tree root: /StructTreeRoot
+  const hasStructTreeRoot = /\/StructTreeRoot\b/.test(text);
+
+  if (!hasStructTreeRoot) {
+    return [
+      {
+        finding_id: `finding-pdf-untagged-${Date.now()}`,
+        review_id: "",
+        draft_id: "",
+        draft_version_id: "",
+        draft_hash: "",
+        claim_id: "pdf-untagged-structure",
+        claim_text: "Document structure cannot be assessed (untagged PDF)",
+        start: 0,
+        end: 0,
+        category: "ACCESSIBILITY",
+        evidence_status: "NEEDS_HUMAN",
+        severity: "REVIEW",
+        blocking_for_review: true,
+        explanation: "Document structure cannot be assessed (untagged PDF)",
+        source_evidence: [],
+        created_at: now,
+      },
+    ];
+  }
+
+  // Tagged PDF: emits 0 false claims of compliance
+  return [];
+}
+
 async function extractDocx(file: File) {
   const { unzipSync } = await import("fflate");
   const data = new Uint8Array(await file.arrayBuffer());
@@ -75,12 +273,7 @@ async function extractDocx(file: File) {
   });
   const documentXml = archive["word/document.xml"];
   if (!foundDocumentXml || !documentXml) throw new Error("This Word file could not be read. Check that it is a valid .docx document.");
-  const xml = new DOMParser().parseFromString(new TextDecoder().decode(documentXml), "application/xml");
-  if (xml.querySelector("parsererror")) throw new Error("This Word document contains invalid text data and could not be read.");
-  const paragraphs = [...xml.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "p")]
-    .map((paragraph) => [...paragraph.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "t")]
-      .map((text) => text.textContent ?? "").join(""))
-    .filter(Boolean);
+  const paragraphs = extractParagraphsFromDocumentXml(documentXml);
   return limitText(paragraphs.join("\n"));
 }
 
@@ -357,10 +550,29 @@ export async function extractUploadedFileDetailed(file: File, progress: Extracti
   const extension = file.name.split(".").pop()?.toLowerCase();
   const isVideo = ["mp4", "webm"].includes(extension ?? "");
   if (file.size > (isVideo ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) throw new Error(isVideo ? "Videos must be 50 MB or smaller." : "Files must be 10 MB or smaller.");
-  if (extension === "docx") return { text: await extractDocx(file), method: "DIRECT" };
+  if (extension === "docx") {
+    const text = await extractDocx(file);
+    const data = new Uint8Array(await file.arrayBuffer());
+    const accessibilityFindings = await inspectDocxAccessibility(data);
+    return {
+      text,
+      method: "DIRECT",
+      accessibilityFindings,
+      disclosures: accessibilityFindings.map((f) => f.explanation),
+    };
+  }
   else if (extension === "pptx") return { text: await extractPptx(file), method: "DIRECT" };
   else if (extension === "xlsx") return { text: await extractXlsx(file), method: "DIRECT" };
-  else if (extension === "pdf") return await extractPdf(file, progress);
+  else if (extension === "pdf") {
+    const result = await extractPdf(file, progress);
+    const data = new Uint8Array(await file.arrayBuffer());
+    const accessibilityFindings = await inspectPdfTagStructure(data);
+    return {
+      ...result,
+      accessibilityFindings,
+      disclosures: accessibilityFindings.map((f) => f.explanation),
+    };
+  }
   else if (isVideo) return await extractVideo(file, progress);
   else if (["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"].includes(extension ?? "")) return await extractImage(file, progress);
   else if (["txt", "md", "markdown", "html", "htm", "csv"].includes(extension ?? "")) return { text: limitText(await file.text()), method: "DIRECT" };

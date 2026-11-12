@@ -1,0 +1,242 @@
+[
+  {
+    "id": "CASE-01",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "FORBIDDEN_TERM",
+    "rationale": "Marketing social post deploys explicitly forbidden buzzwords ('miracle', 'guilt-free', 'guaranteed') in violation of brand voice guidelines."
+  },
+  {
+    "id": "CASE-02",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "UNSUPPORTED_CLAIM",
+    "rationale": "Social media copy asserts unapproved clinical cognitive enhancement claims ('scientifically proven to improve focus and memory') violating claim restrictions."
+  },
+  {
+    "id": "CASE-03",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "STALE_CITATION",
+    "rationale": "Influencer marketing post lacks mandatory commercial sponsorship disclosure (#ad or Paid Partnership) required by statutory guidelines."
+  },
+  {
+    "id": "CASE-04",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "HALLUCINATION",
+    "rationale": "Promotional web copy hallucinates non-existent ingredients (Himalayan Pink Salt, Madagascar Vanilla, organic almond butter) absent from verified product specs."
+  },
+  {
+    "id": "CASE-05",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 2,
+    "primaryViolation": "FORBIDDEN_TERM",
+    "rationale": "Email newsletter contains two severe blocking violations: false 'sugar-free' claim (product has 4g added sugar) and illegal disease prevention claim."
+  },
+  {
+    "id": "CASE-06",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "STALE_CITATION",
+    "rationale": "Promotional social post cites obsolete quantity terms from superseded campaign brief (6 jars instead of current approved 4 jars)."
+  },
+  {
+    "id": "CASE-07",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "UNSUPPORTED_CLAIM",
+    "rationale": "Marketing copy targets children with prohibited cognitive growth and developmental promises in direct violation of claims register."
+  },
+  {
+    "id": "CASE-08",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "CONTRADICTED_METRIC",
+    "rationale": "Packaging panel contains a direct nutritional contradiction: states 10 g protein per 30 g serving when certified lab specification is 6 g."
+  },
+  {
+    "id": "CASE-09",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "UNSUPPORTED_CLAIM",
+    "rationale": "Product packaging asserts the snack serves as a complete meal replacement, violating explicit statutory claim restrictions."
+  },
+  {
+    "id": "CASE-10",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "STALE_CITATION",
+    "rationale": "E-commerce product specification asserts a revoked 100% nut-free claim, creating severe consumer allergy safety hazards."
+  },
+  {
+    "id": "CASE-11",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "HALLUCINATION",
+    "rationale": "Packaging copy hallucinates count and net weight (12 bites / 100 g) conflicting with certified manufacturing specs (6 bites / 60 g)."
+  },
+  {
+    "id": "CASE-12",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "CONTRADICTED_METRIC",
+    "rationale": "Product catalog understates sugar content as 1 g when verified lab tests certify 4 g added sugar per serving."
+  },
+  {
+    "id": "CASE-13",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "FORBIDDEN_TERM",
+    "rationale": "Packaging claims USDA Organic and Non-GMO Project Verified seals that are unapproved and pending certification."
+  },
+  {
+    "id": "CASE-14",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "UNSUPPORTED_CLAIM",
+    "rationale": "Comparative nutrition claim without naming the comparison brand, basis, or substantiating evidence. Violates FTC and brand claim restriction in SRC-CLAIMS-01."
+  },
+  {
+    "id": "CASE-15",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "HALLUCINATION",
+    "rationale": "Corporate press release draft hallucinates a non-existent $150M Series C funding round and fabricated venture capital investors."
+  },
+  {
+    "id": "CASE-16",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Classified as an internal engineering workflow memo rather than public-facing brand copy, so standard customer claim rules do not apply."
+  },
+  {
+    "id": "CASE-17",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "UNSUPPORTED_CLAIM",
+    "rationale": "Commercial RFP response makes an unauthorized 99.999% delivery SLA guarantee exceeding contractual logistics capacity (98.5%)."
+  },
+  {
+    "id": "CASE-18",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "STALE_CITATION",
+    "rationale": "Investor presentation cites expired 2024 carbon neutrality credentials as active, misleading stakeholders."
+  },
+  {
+    "id": "CASE-19",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "FORBIDDEN_TERM",
+    "rationale": "Corporate release uses rejected trademark mark (SuperOat™) and banned superlative ('miracle') in violation of trademark and voice registers."
+  },
+  {
+    "id": "CASE-20",
+    "annotator": "Siddhesh Songare",
+    "verdict": "NON_COMPLIANT",
+    "blockingFindingsCount": 1,
+    "primaryViolation": "HALLUCINATION",
+    "rationale": "Enterprise vendor portal publishes fictitious ISO 22000 certification and misidentifies safety rating level and auditing registrar."
+  },
+  {
+    "id": "CASE-21",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Marketing social post strictly adheres to approved claim register ('cocoa oat snack for everyday moments', 'made with wholegrain oats') and approved voice."
+  },
+  {
+    "id": "CASE-22",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Website headline and copy accurately reflect certified serving size, protein content (6 g), and added sugar (4 g) from approved specifications."
+  },
+  {
+    "id": "CASE-23",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Social ad highlights approved bite count (six bites per pack) and aligns with approved target audience and tone."
+  },
+  {
+    "id": "CASE-24",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Email newsletter uses approved claim '6 g protein per 30 g serving' with compliant, non-absolute lifestyle framing."
+  },
+  {
+    "id": "CASE-25",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Product packaging front-panel copy incorporates approved allergen disclosure, flavor identifier, and serving size."
+  },
+  {
+    "id": "CASE-26",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "E-commerce product specification page accurately lists ingredients and approved nutritional facts."
+  },
+  {
+    "id": "CASE-27",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Retail packaging back-panel text includes verified claim registry statements with zero unauthorized embellishments."
+  },
+  {
+    "id": "CASE-28",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Corporate press release describes regional retail distribution expansion in neutral, factual, and verified terms."
+  },
+  {
+    "id": "CASE-29",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "B2B wholesale partner portal accurately specifies case pack configurations and unit net weights from operational inventory facts."
+  },
+  {
+    "id": "CASE-30",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Internal compliance bulletin reaffirms verified corporate accessibility policy and approved disclosure procedures."
+  }
+]

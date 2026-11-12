@@ -14,6 +14,16 @@ export const memberships = pgTable("memberships", {
   displayName: text("display_name").notNull(),
 }, (table) => [primaryKey({ columns: [table.organizationId, table.userId] })]);
 
+export const profiles = pgTable("profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  email: text("email"),
+  displayName: text("display_name"),
+  avatarUrl: text("avatar_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const sources = pgTable("sources", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
@@ -131,3 +141,50 @@ export const auditEvents = pgTable("audit_events", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const assets = pgTable("assets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  phash: text("phash").notNull(),
+  mimeType: text("mime_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  approvalState: varchar("approval_state", { length: 24 }).notNull().default("APPROVED"),
+  allowedUsage: text("allowed_usage"),
+  uploadedBy: text("uploaded_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Aliases matching alternative naming conventions
+export const reviewDecisions = decisions;
+export const draft_versions = draftVersions;
+export const audit_events = auditEvents;
+
+// Inferred TypeScript types from Drizzle schema definitions
+export type Organization = typeof organizations.$inferSelect;
+export type NewOrganization = typeof organizations.$inferInsert;
+export type Membership = typeof memberships.$inferSelect;
+export type NewMembership = typeof memberships.$inferInsert;
+export type Profile = typeof profiles.$inferSelect;
+export type NewProfile = typeof profiles.$inferInsert;
+export type SourceRecord = typeof sources.$inferSelect;
+export type NewSourceRecord = typeof sources.$inferInsert;
+export type FactRecord = typeof facts.$inferSelect;
+export type NewFactRecord = typeof facts.$inferInsert;
+export type DraftRecord = typeof drafts.$inferSelect;
+export type NewDraftRecord = typeof drafts.$inferInsert;
+export type DraftVersionRecord = typeof draftVersions.$inferSelect;
+export type NewDraftVersionRecord = typeof draftVersions.$inferInsert;
+export type ReviewRecord = typeof reviews.$inferSelect;
+export type NewReviewRecord = typeof reviews.$inferInsert;
+export type FindingRecord = typeof findings.$inferSelect;
+export type NewFindingRecord = typeof findings.$inferInsert;
+export type CommentRecord = typeof comments.$inferSelect;
+export type NewCommentRecord = typeof comments.$inferInsert;
+export type DecisionRecord = typeof decisions.$inferSelect;
+export type NewDecisionRecord = typeof decisions.$inferInsert;
+export type AuditEventRecord = typeof auditEvents.$inferSelect;
+export type NewAuditEventRecord = typeof auditEvents.$inferInsert;
+export type AssetRecordDB = typeof assets.$inferSelect;
+export type NewAssetRecordDB = typeof assets.$inferInsert;

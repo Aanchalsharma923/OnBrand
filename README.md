@@ -90,6 +90,14 @@ npm run dev
 
 Open `http://localhost:3000`. Optional model settings are in `.env.example`. Without `OPENAI_API_KEY`, reviews run in disclosed deterministic mode. `OPENAI_BASE_URL` and `OPENAI_MODEL` are optional. Do not commit secrets. `DATABASE_URL` is only a reserved configuration for the planned database path and does not activate persistence in this prototype.
 
+## Round 3 Architecture & Environment Setup
+
+Round 3 advances OnBrand into an enterprise multi-tenant brand governance platform:
+- **Development Branch:** `round3-dev` (created from clean baseline tag `round2-final`).
+- **Environment Configuration:** See `.env.example` for the complete configuration matrix per PROJECT.md § 5.5, including Supabase PostgreSQL connection strings (`DATABASE_URL`, `DIRECT_URL`), client & admin Supabase keys (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), hosted model settings (`OPENAI_API_KEY`, `OPENAI_MODEL`), and deployment URL (`NEXT_PUBLIC_APP_URL`).
+- **Interface Contracts:** Programmatic DTOs and repository contracts are defined in `src/lib/types.ts` (`TenantContext`, `OnBrandRepository`, `ModelGateway`, `VisualAnalysisEngine`).
+- **Pure Core Invariant:** `src/lib/onbrand.ts` is strictly isolated from database, network, and external API calls. All persistent and AI integrations interface at the API and repository layers.
+
 ## Team responsibilities
 
 | Member | Primary ownership | Shared work |
