@@ -4,7 +4,7 @@ import { z } from "zod";
 import { resolveTenantContext } from "../../../lib/server/auth";
 import { getRepository } from "../../../lib/server/repository";
 import { databaseConfigured } from "../../../lib/server/db";
-import { modelConfigured, modelDescriptor, runAgentPanel, verifySemanticEvidence } from "../../../lib/server/model";
+import { analyzeDocumentWithHostedLLM, modelConfigured, runAgentPanel } from "../../../lib/server/model";
 import { checkAndIncrementModelQuota } from "../../../lib/server/model-limits";
 
 const factSchema = z.object({ id: z.string().max(120), subject: z.string().max(240), attribute: z.string().max(160), value: z.string().max(500), unit: z.string().max(40).optional(), statement: z.string().max(800), sourceId: z.string().max(120) });
@@ -74,13 +74,30 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "OCR text needs a manual correction and proofread confirmation before review." }, { status: 409 });
       }
     }
+    const ctx = await resolveTenantContext(request);
+    const repo = getRepository();
+
     const sources = body.sources as Source[] | undefined;
     // Never trust caller-supplied hashes: the server recomputes the content fingerprint.
     const safeDraft = createDraft(draft.content, { ...draft });
-    // Demo fixtures belong only to the canonical demo workspace. An explicitly
-    // empty source list for a customer workspace means there is no evidence.
     const isDemoWorkspace = draft.id === initialDraft.id;
-    const submittedSources = sources ?? (isDemoWorkspace ? seedSources : []);
+
+    // Requirement 3: Retrieve relevant approved brand guidelines, facts and evidence from the organisation's database
+    let submittedSources = sources;
+    if (submittedSources === undefined) {
+      try {
+        const dbSources = await repo.getSources(ctx);
+        if (dbSources && dbSources.length > 0) {
+          submittedSources = dbSources;
+        }
+      } catch {
+        // Fall back to seed sources if database retrieval unavailable
+      }
+    }
+    if (submittedSources === undefined) {
+      submittedSources = isDemoWorkspace ? seedSources : [];
+    }
+
     const quarantinedSources = submittedSources.filter((source) => sourceInjectionWarnings(source).length > 0);
     const quarantinedIds = new Set(quarantinedSources.map((source) => source.id));
     // The API must not trust a browser-supplied APPROVED flag for instruction-bearing content.
@@ -99,10 +116,9 @@ export async function POST(request: Request) {
     }
 
     let finalReview = review;
-    const ctx = await resolveTenantContext(request);
-    const repo = getRepository();
+    let telemetry = null;
 
-    // Round 3: Hosted model activation when enabled by environment and requested
+    // Hosted model activation strictly server-gated by explicit environment flag
     const isHostedModelEnabled = process.env.ENABLE_HOSTED_MODEL === "true";
     let modelDisclosure = "Deterministic mode is active. No model call was made.";
 
@@ -113,8 +129,11 @@ export async function POST(request: Request) {
         modelDisclosure = `Deterministic fallback active: ${quotaCheck.reason || "Quota limit reached"}.`;
       } else {
         try {
-          const semanticResult = await verifySemanticEvidence(finalReview, safeDraft, approvedSources);
-          finalReview = semanticResult.review;
+          const result = await analyzeDocumentWithHostedLLM(safeDraft, finalReview, approvedSources);
+          finalReview = result.review;
+          telemetry = result.telemetry;
+          modelDisclosure = result.modelDisclosure;
+
           const agentNotes = await runAgentPanel(safeDraft, finalReview, approvedSources);
           if (agentNotes) {
             finalReview.agentNotes = [
@@ -124,18 +143,8 @@ export async function POST(request: Request) {
               { agent: "Policy & Risk", summary: agentNotes.policyRisk },
             ];
           }
-          if (semanticResult.state === "needs-human") {
-            finalReview.engineMode = "deterministic-preview";
-            modelDisclosure = `Hosted verification could not reach consensus on ${semanticResult.unresolvedCount} claim(s); routed safely to NEEDS_HUMAN.`;
-          } else if (semanticResult.candidateCount > 0 || agentNotes) {
-            finalReview.engineMode = "model-assisted";
-            modelDisclosure = `Hosted verification verified via ${modelDescriptor()}. Two-pass entailment and advisory panel complete.`;
-          } else {
-            finalReview.engineMode = "deterministic-preview";
-            modelDisclosure = "Deterministic mode is active. All claims verified via deterministic rules.";
-          }
         } catch {
-          // Invariant 2: Failure degrades safely to deterministic fallback
+          // Failure degrades safely to deterministic fallback
           finalReview.engineMode = "deterministic-preview";
           modelDisclosure = "Hosted model call failed safely. Review evaluated under deterministic fallback rules.";
           for (const finding of finalReview.findings) {
@@ -194,6 +203,7 @@ export async function POST(request: Request) {
       review: finalReview,
       engine: finalReview.engineMode,
       modelDisclosure,
+      telemetry,
     });
   } catch (error) {
     const message = error instanceof z.ZodError ? "Invalid review request." : "Review failed safely. Check the draft and try again.";
