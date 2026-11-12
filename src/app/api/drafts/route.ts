@@ -13,6 +13,16 @@ const draftSchema = z.object({
   audience: z.string().max(200),
   publicationDate: z.string().date().optional(),
   version: z.number().int().positive().optional(),
+  originalDocumentKey: z.string().optional(),
+  originalDocumentName: z.string().optional(),
+  originalDocumentType: z.string().optional(),
+  extraction: z.object({
+    method: z.literal("OCR"),
+    quality: z.enum(["RELIABLE", "NEEDS_PROOFREAD", "UNREADABLE"]),
+    confidence: z.number(),
+    rawTextHash: z.string(),
+    reviewedTextHash: z.string().optional(),
+  }).optional(),
 });
 
 export async function GET(request: Request) {
@@ -40,6 +50,10 @@ export async function POST(request: Request) {
       audience: body.audience,
       publicationDate: body.publicationDate,
       version: body.version,
+      originalDocumentKey: body.originalDocumentKey,
+      originalDocumentName: body.originalDocumentName,
+      originalDocumentType: body.originalDocumentType,
+      extraction: body.extraction,
     });
 
     const repo = getRepository();

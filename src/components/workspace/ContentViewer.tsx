@@ -23,6 +23,7 @@ export interface ContentViewerProps {
   onUpdateContent: (updated: string) => void;
   actionableRanges: Array<{ id: string; start: number; end: number; classification?: string }>;
   enrichedList: EnrichedFinding[];
+  directFile?: File | Blob;
 }
 
 export function ContentViewer({
@@ -36,6 +37,7 @@ export function ContentViewer({
   onUpdateContent,
   actionableRanges,
   enrichedList: _enrichedList,
+  directFile,
 }: ContentViewerProps) {
   const draftEditorRef = useRef<HTMLTextAreaElement>(null);
   const findingsMap = React.useMemo(() => new Map(findings.map((f) => [f.finding_id, f])), [findings]);
@@ -55,6 +57,7 @@ export function ContentViewer({
           currentReview={hasCurrentReview}
           structuralData={structuralData}
           onUpdateContent={onUpdateContent}
+          directFile={directFile}
         />
       ) : editorMode === "raw" ? (
         /* 2. Raw Text Copy Editor */

@@ -20,7 +20,8 @@ import {
 } from "@/lib/onbrand";
 import { extractUploadedFile, extractUploadedFileDetailed } from "@/lib/file-extraction";
 import { roleInitials, roleLabel, sanitizeReviewAttribution } from "@/lib/identity";
-import { saveOriginalDocument } from "@/lib/document-store";
+import { saveOriginalDocument, cacheOriginalDocumentInMemory } from "@/lib/document-store";
+import { validateUploadFile } from "@/lib/format-registry";
 import type { StructuralDocumentData } from "@/lib/multimodal-workspace";
 import {
   consolidateFindings,
@@ -136,6 +137,7 @@ export default function Home() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
   const [structuralData, setStructuralData] = useState<StructuralDocumentData | undefined>(undefined);
+  const [uploadedFile, setUploadedFile] = useState<File | Blob | null>(null);
 
   // Verified authentication and backend health state
   const [supabaseSession, setSupabaseSession] = useState<{ user: { email?: string; id: string }; accessToken: string } | null>(null);
@@ -532,8 +534,47 @@ export default function Home() {
     const input = event.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+
+    // 1. Upload & 2. Validate file (binary magic bytes & size)
+    const headerBytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+    const validation = validateUploadFile(file, headerBytes);
+    if (!validation.valid) {
+      announce(validation.error || "Unsupported file format.");
+      input.value = "";
+      return;
+    }
+
+    const format = validation.format;
+    const originalDocumentKey = crypto.randomUUID();
+
+    // 3. Open appropriate viewer & 4. Display original content immediately (0ms lag)
+    cacheOriginalDocumentInMemory(originalDocumentKey, file);
+    setUploadedFile(file);
+    setEditorMode("original");
+    setSelectedFinding(null);
+    setLastDecision("");
+
+    const nextVersion = Math.max(...versions.map((item) => item.version), draft.version) + 1;
+    const initialFileDraft = createDraft("Analyzing document structure & content in background…", {
+      ...draft,
+      title: file.name,
+      version: nextVersion,
+      originalDocumentKey,
+      originalDocumentName: file.name,
+      originalDocumentType: file.type || format.mimeTypes[0],
+    });
+    setDraft(initialFileDraft);
+    setVersions((current) => [...current, initialFileDraft]);
+
+    // Persist file bytes in local IndexedDB & server
+    saveOriginalDocument(originalDocumentKey, file).catch((err) => {
+      console.warn("Background file persistence notice:", err);
+    });
+
+    // 5. Extract content in background
     setIsExtracting(true);
-    setExtractionStatus("Preparing file locally…");
+    setExtractionStatus(`Inspecting ${format.displayName}…`);
+
     try {
       const extracted = await extractUploadedFileDetailed(file, setExtractionStatus);
       const extractedText = extracted.text;
@@ -543,41 +584,39 @@ export default function Home() {
         confidence: extracted.ocrQuality.confidence,
         rawTextHash: stableHash(extractedText),
       } : undefined;
-      const originalDocumentKey = crypto.randomUUID();
-      let originalSaved = false;
-      try {
-        await saveOriginalDocument(originalDocumentKey, file);
-        originalSaved = true;
-      } catch {
-        // Keep the extracted draft usable, but make the failed original retention visible.
-      }
-      const nextVersion = Math.max(...versions.map((item) => item.version), draft.version) + 1;
-      const nextDraft = createDraft(extractedText, { ...draft, title: file.name, version: nextVersion,
-        originalDocumentKey: originalSaved ? originalDocumentKey : undefined,
-        originalDocumentName: originalSaved ? file.name : undefined,
-        originalDocumentType: originalSaved ? file.type : undefined, extraction });
-      setDraft(nextDraft);
-      setVersions((current) => [...current, nextDraft]);
-      setStructuralData(extracted.structuralData);
-      setSelectedFinding(null);
-      setLastDecision("");
-      setEditorMode("original");
 
-      // Persist uploaded document to PostgreSQL database
+      const finalizedDraft = createDraft(extractedText, {
+        ...initialFileDraft,
+        originalDocumentKey,
+        originalDocumentName: file.name,
+        originalDocumentType: file.type || format.mimeTypes[0],
+        extraction,
+      });
+
+      setDraft(finalizedDraft);
+      setVersions((current) => current.map((v) => (v.version === nextVersion ? finalizedDraft : v)));
+      setStructuralData(extracted.structuralData);
+
+      // Persist draft to PostgreSQL database
       fetch("/api/drafts", {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(nextDraft),
+        body: JSON.stringify(finalizedDraft),
       }).catch((err) => {
         console.error("Failed to persist uploaded document draft:", err);
       });
+
       const qualityNote = extracted.ocrQuality ? ` OCR analyzed (${extracted.ocrQuality.confidence}% confidence).` : "";
       setExtractionStatus(`${file.name} · original file preserved.${qualityNote}`);
-      announce("Original file uploaded. Interactive review workspace ready.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "This file could not be read.";
-      setExtractionStatus(message);
-      announce(message);
+      announce(`${format.displayName} loaded. Document viewer active.`);
+
+      // 6. Run review in background & 7. Overlay highlights & 8. Display findings in right panel
+      runReview();
+    } catch (extractError) {
+      // Even if extraction fails, original document MUST still remain visible!
+      const message = extractError instanceof Error ? extractError.message : "Text extraction could not complete.";
+      setExtractionStatus(`${file.name} displayed in viewer. Note: ${message}`);
+      announce(`Document loaded in viewer. ${message}`);
     } finally {
       setIsExtracting(false);
       input.value = "";
@@ -1246,6 +1285,7 @@ export default function Home() {
                 }}
                 actionableRanges={actionableRanges}
                 enrichedList={enrichedList}
+                directFile={uploadedFile ?? undefined}
               />
 
               {/* Review Context & Channel Metadata */}

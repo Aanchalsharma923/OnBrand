@@ -20,8 +20,13 @@ describe("Multimodal Workspace — Format Registry & Validation", () => {
     expect(resolveFormat("poster.png").formatId).toBe("image");
     expect(resolveFormat("promo.mp4").formatId).toBe("video");
     expect(resolveFormat("podcast.mp3").formatId).toBe("audio");
-    expect(resolveFormat("data.csv").formatId).toBe("structured_text");
-    expect(resolveFormat("notes.txt").formatId).toBe("structured_text");
+    expect(resolveFormat("data.csv").formatId).toBe("csv");
+    expect(resolveFormat("notes.txt").formatId).toBe("txt");
+    expect(resolveFormat("readme.md").formatId).toBe("md");
+    expect(resolveFormat("page.html").formatId).toBe("html");
+    expect(resolveFormat("old.doc").formatId).toBe("doc");
+    expect(resolveFormat("old.xls").formatId).toBe("xls");
+    expect(resolveFormat("old.ppt").formatId).toBe("ppt");
   });
 
   it("enforces format-specific size limits and provides clear rejection reasons", () => {

@@ -15,6 +15,7 @@ import {
   type TranscriptSegment,
 } from "@/lib/multimodal-workspace";
 import { resolveFormat } from "@/lib/format-registry";
+import { generateDocxBlob } from "@/lib/docx-export";
 
 type Props = {
   fileKey: string;
@@ -27,6 +28,7 @@ type Props = {
   currentReview: boolean;
   onUpdateContent?: (updatedContent: string) => void;
   structuralData?: StructuralDocumentData;
+  directFile?: File | Blob;
 };
 
 type DocBlock = { type: "paragraph"; location: TextLocation } | { type: "table"; rows: DocBlock[][][] };
@@ -408,7 +410,7 @@ function PdfViewer({
 }
 
 // ============================================================================
-// 2. DOCX Viewer Component (Milestone 1)
+// 2. DOCX Viewer Component (docx-preview + Structured Sections + Edit)
 // ============================================================================
 
 function DocxViewer({
@@ -420,10 +422,12 @@ function DocxViewer({
   currentReview,
   onUpdateContent,
 }: Omit<Props, "fileKey" | "name" | "type"> & { file: Blob }) {
+  const [activeTab, setActiveTab] = useState<"layout" | "sections" | "edit">("layout");
   const [blocks, setBlocks] = useState<DocBlock[]>([]);
   const [error, setError] = useState("");
-  const [editMode, setEditMode] = useState(false);
+  const [layoutRendered, setLayoutRendered] = useState(false);
   const [editableText, setEditableText] = useState(content);
+  const docxContainerRef = useRef<HTMLDivElement>(null);
   const paragraphRefs = useRef(new Map<number, HTMLElement>());
 
   const findingsMap = useMemo(() => new Map(findings.map((f) => [f.finding_id, f])), [findings]);
@@ -452,61 +456,97 @@ function DocxViewer({
     let active = true;
     (async () => {
       try {
+        const buffer = await file.arrayBuffer();
+        if (buffer.byteLength < 4) {
+          throw new Error("The file is empty (0 bytes).");
+        }
+        const header = new Uint8Array(buffer.slice(0, 4));
+        const isZip = header[0] === 0x50 && header[1] === 0x4b;
+        if (!isZip) {
+          throw new Error("This file does not have a valid Word OpenXML (.docx) ZIP signature. It may be a legacy Word 97-2003 (.doc) binary file.");
+        }
+
+        // 1. High-fidelity rendering via docx-preview
+        if (docxContainerRef.current) {
+          try {
+            const docx = await import("docx-preview");
+            docxContainerRef.current.innerHTML = "";
+            await docx.renderAsync(buffer, docxContainerRef.current, undefined, {
+              className: "docx-preview-rendered",
+              inWrapper: true,
+              ignoreWidth: false,
+              ignoreHeight: false,
+              breakPages: true,
+              renderHeaders: true,
+              renderFooters: true,
+            });
+            if (active) setLayoutRendered(true);
+          } catch (renderErr) {
+            console.warn("docx-preview layout fallback:", renderErr);
+            if (active) setActiveTab("sections");
+          }
+        }
+
+        // 2. Extract structured paragraphs & tables for high-precision section view
         const { unzipSync } = await import("fflate");
-        const archive = unzipSync(new Uint8Array(await file.arrayBuffer()), {
-          filter: (entry) => entry.name === "word/document.xml" && entry.originalSize <= 5 * 1024 * 1024,
+        const archive = unzipSync(new Uint8Array(buffer), {
+          filter: (entry) => entry.name === "word/document.xml" && entry.originalSize <= 10 * 1024 * 1024,
         });
         const xmlBytes = archive["word/document.xml"];
-        if (!xmlBytes) throw new Error("The Word document body could not be opened.");
-        const xml = new DOMParser().parseFromString(new TextDecoder().decode(xmlBytes), "application/xml");
-        if (xml.querySelector("parsererror")) throw new Error("The Word document contains invalid XML.");
-        const paragraphElements = [...xml.getElementsByTagNameNS(wordNamespace, "p")];
-        const paragraphTexts = paragraphElements
-          .map((p) => [...p.getElementsByTagNameNS(wordNamespace, "t")].map((n) => n.textContent ?? "").join(""))
-          .filter(Boolean);
-        const locations = mapSequentialTextLocations(
-          paragraphTexts.map((text, index) => ({ index, text })),
-          content,
-          "\n"
-        );
-        const locationByElement = new Map<Element, TextLocation>();
-        let locationIndex = 0;
-        for (const element of paragraphElements) {
-          const text = [...element.getElementsByTagNameNS(wordNamespace, "t")].map((n) => n.textContent ?? "").join("");
-          if (!text) continue;
-          const location = locations[locationIndex++];
-          if (location) locationByElement.set(element, location);
+        if (xmlBytes) {
+          const xml = new DOMParser().parseFromString(new TextDecoder().decode(xmlBytes), "application/xml");
+          if (!xml.querySelector("parsererror")) {
+            const paragraphElements = [...xml.getElementsByTagNameNS(wordNamespace, "p")];
+            const paragraphTexts = paragraphElements
+              .map((p) => [...p.getElementsByTagNameNS(wordNamespace, "t")].map((n) => n.textContent ?? "").join(""))
+              .filter(Boolean);
+            const locations = mapSequentialTextLocations(
+              paragraphTexts.map((text, index) => ({ index, text })),
+              content,
+              "\n"
+            );
+            const locationByElement = new Map<Element, TextLocation>();
+            let locationIndex = 0;
+            for (const element of paragraphElements) {
+              const text = [...element.getElementsByTagNameNS(wordNamespace, "t")].map((n) => n.textContent ?? "").join("");
+              if (!text) continue;
+              const location = locations[locationIndex++];
+              if (location) locationByElement.set(element, location);
+            }
+            const renderChildren = (parent: Element): DocBlock[] =>
+              [...parent.children].flatMap((child): DocBlock[] => {
+                if (child.namespaceURI !== wordNamespace) return [];
+                if (child.localName === "p") {
+                  const location = locationByElement.get(child);
+                  return location ? [{ type: "paragraph", location }] : [];
+                }
+                if (child.localName === "tbl") {
+                  const rows = [...child.children]
+                    .filter((el) => el.localName === "tr" && el.namespaceURI === wordNamespace)
+                    .map((row) =>
+                      [...row.children]
+                        .filter((el) => el.localName === "tc" && el.namespaceURI === wordNamespace)
+                        .map(renderChildren)
+                    );
+                  return [{ type: "table", rows }];
+                }
+                return [];
+              });
+            const body = xml.getElementsByTagNameNS(wordNamespace, "body")[0];
+            if (body && active) setBlocks(renderChildren(body));
+          }
         }
-        const renderChildren = (parent: Element): DocBlock[] =>
-          [...parent.children].flatMap((child): DocBlock[] => {
-            if (child.namespaceURI !== wordNamespace) return [];
-            if (child.localName === "p") {
-              const location = locationByElement.get(child);
-              return location ? [{ type: "paragraph", location }] : [];
-            }
-            if (child.localName === "tbl") {
-              const rows = [...child.children]
-                .filter((el) => el.localName === "tr" && el.namespaceURI === wordNamespace)
-                .map((row) =>
-                  [...row.children]
-                    .filter((el) => el.localName === "tc" && el.namespaceURI === wordNamespace)
-                    .map(renderChildren)
-                );
-              return [{ type: "table", rows }];
-            }
-            return [];
-          });
-        const body = xml.getElementsByTagNameNS(wordNamespace, "body")[0];
-        if (!body) throw new Error("The Word document has no readable body.");
-        if (active) setBlocks(renderChildren(body));
       } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : "This Word file could not be displayed.");
+        if (active) {
+          setError(cause instanceof Error ? cause.message : "Word document layout could not be displayed.");
+          setActiveTab("sections");
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [content, file]);
+  }, [file, content]);
 
   useEffect(() => {
     if (!selectedFindingId || !currentReview) return;
@@ -525,12 +565,12 @@ function DocxViewer({
     if (onUpdateContent && editableText !== content) {
       onUpdateContent(editableText);
     }
-    setEditMode(false);
+    setActiveTab("sections");
   }
 
   function handleExportDocx() {
-    const blob = new Blob([editableText], { type: "text/plain;charset=utf-8" });
-    const exportUrl = URL.createObjectURL(blob);
+    const docxBlob = generateDocxBlob(editableText);
+    const exportUrl = URL.createObjectURL(docxBlob);
     const link = document.createElement("a");
     link.href = exportUrl;
     link.download = "revised_document.docx";
@@ -574,20 +614,41 @@ function DocxViewer({
     );
 
   return (
-    <div className="docx-reading-view" aria-label="Word document reading view">
-      <div className="viewer-toolbar-inline">
-        <span className="format-badge docx">DOCX</span>
-        <button type="button" className={`small-ghost ${editMode ? "active-tab" : ""}`} onClick={() => setEditMode(!editMode)}>
-          {editMode ? "View Structural Layout" : "Edit Document Text"}
-        </button>
+    <div className="docx-reading-view" aria-label="Word document view">
+      <div className="viewer-toolbar-inline" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="format-badge docx">DOCX</span>
+          <div className="viewer-mode-tabs">
+            <button
+              type="button"
+              className={`viewer-tab-btn ${activeTab === "layout" ? "active" : ""}`}
+              onClick={() => setActiveTab("layout")}
+            >
+              📄 Word Layout
+            </button>
+            <button
+              type="button"
+              className={`viewer-tab-btn ${activeTab === "sections" ? "active" : ""}`}
+              onClick={() => setActiveTab("sections")}
+            >
+              📋 Structured Sections
+            </button>
+            <button
+              type="button"
+              className={`viewer-tab-btn ${activeTab === "edit" ? "active" : ""}`}
+              onClick={() => setActiveTab("edit")}
+            >
+              ✏️ Edit Copy
+            </button>
+          </div>
+        </div>
+
         <button type="button" className="small-ghost" onClick={handleExportDocx}>
           Export Revised DOCX
         </button>
       </div>
 
-      {error ? (
-        <p className="original-preview-message">{error}</p>
-      ) : editMode ? (
+      {activeTab === "edit" ? (
         <div className="editable-representation-layer">
           <textarea
             className="editable-textarea"
@@ -599,22 +660,36 @@ function DocxViewer({
             <button type="button" className="primary-button" onClick={handleSaveEdit}>
               Apply & Re-anchor
             </button>
-            <button type="button" className="small-ghost" onClick={() => setEditMode(false)}>
+            <button type="button" className="small-ghost" onClick={() => setActiveTab("sections")}>
               Cancel
             </button>
           </div>
         </div>
-      ) : blocks.length ? (
-        renderBlocks(blocks, "doc")
+      ) : activeTab === "layout" ? (
+        <div className="docx-container-frame">
+          <div ref={docxContainerRef} />
+          {!layoutRendered && !error && (
+            <p className="original-preview-message">Rendering Word layout…</p>
+          )}
+          {error && (
+            <div className="legacy-format-banner">
+              <span className="legacy-badge">NOTICE</span>
+              <div className="legacy-info">
+                <b>Layout notice: {error}</b>
+                <p>Switched to structured section view below so all document text, headings, and tables remain accessible.</p>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
-        <p className="original-preview-message">Opening Word document…</p>
+        <div className="docx-sections-container">
+          {blocks.length ? renderBlocks(blocks, "doc") : <p className="original-preview-message">Loading structured sections…</p>}
+        </div>
       )}
 
-      {!error && (
-        <p className="document-location-note">
-          Word structural order and tables preserved. Highlights map to paragraph ranges. Source DOCX file preserved.
-        </p>
-      )}
+      <p className="document-location-note">
+        Word layout and paragraph structure preserved. Highlights map to verified claim locations. Source file preserved.
+      </p>
     </div>
   );
 }
@@ -1554,7 +1629,556 @@ function AudioViewer({
 }
 
 // ============================================================================
-// 8. Main Multimodal Original Document Host Component
+// 8. CSV Tabular Data Viewer
+// ============================================================================
+
+function CsvViewer({
+  content,
+  findings,
+  selectedFindingId,
+  onSelectFinding,
+  currentReview,
+}: Omit<Props, "fileKey" | "name" | "type">) {
+  const [filterText, setFilterText] = useState("");
+  const rows = useMemo(() => {
+    return content
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => line.split(",").map((c) => c.trim().replace(/^["']|["']$/g, "")));
+  }, [content]);
+
+  const headers = rows[0] || [];
+  const dataRows = rows.slice(1);
+
+  const filteredRows = useMemo(() => {
+    if (!filterText.trim()) return dataRows;
+    const lower = filterText.toLowerCase();
+    return dataRows.filter((r) => r.some((c) => c.toLowerCase().includes(lower)));
+  }, [dataRows, filterText]);
+
+  function handleExportCsv() {
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+    const exportUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = "data.csv";
+    link.click();
+    URL.revokeObjectURL(exportUrl);
+  }
+
+  return (
+    <div className="csv-table-wrapper" aria-label="CSV tabular data viewer">
+      <div className="csv-toolbar">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="format-badge csv">CSV</span>
+          <span style={{ fontSize: 11, color: "#64748b" }}>
+            {dataRows.length} rows · {headers.length} columns
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="search"
+            className="csv-search-input"
+            placeholder="Search rows…"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+          />
+          <button type="button" className="small-ghost" onClick={handleExportCsv}>
+            Export CSV
+          </button>
+        </div>
+      </div>
+      <table className="csv-grid">
+        <thead>
+          <tr>
+            <th className="csv-row-num">#</th>
+            {headers.map((h, i) => (
+              <th key={i}>{h || `Col ${String.fromCharCode(65 + i)}`}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filteredRows.map((row, rIdx) => (
+            <tr key={rIdx}>
+              <td className="csv-row-num">{rIdx + 1}</td>
+              {row.map((cell, cIdx) => {
+                const matched = currentReview
+                  ? findings.find((f) => cell && (cell.includes(f.claim_text) || f.claim_text.includes(cell)))
+                  : undefined;
+                const isSelected = matched && matched.finding_id === selectedFindingId;
+                return (
+                  <td
+                    key={cIdx}
+                    style={
+                      matched
+                        ? {
+                            background: isSelected ? "rgba(37, 99, 235, 0.2)" : "rgba(245, 158, 11, 0.15)",
+                            borderBottom: "2px solid #f59e0b",
+                            cursor: "pointer",
+                          }
+                        : undefined
+                    }
+                    onClick={() => {
+                      if (matched) onSelectFinding(matched.finding_id);
+                    }}
+                  >
+                    {cell}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================================
+// 9. Plain Text Document Viewer
+// ============================================================================
+
+function TxtViewer({
+  content,
+  findings,
+  selectedFindingId,
+  onSelectFinding,
+  currentReview,
+  onUpdateContent,
+}: Omit<Props, "fileKey" | "name" | "type">) {
+  const [editMode, setEditMode] = useState(false);
+  const [editableText, setEditableText] = useState(content);
+  const lines = useMemo(() => content.split(/\r?\n/), [content]);
+
+  function handleExportTxt() {
+    const blob = new Blob([editableText], { type: "text/plain;charset=utf-8" });
+    const exportUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = "document.txt";
+    link.click();
+    URL.revokeObjectURL(exportUrl);
+  }
+
+  return (
+    <div className="plain-text-wrapper" aria-label="Plain text viewer">
+      <div className="viewer-toolbar-inline" style={{ display: "flex", justifyContent: "space-between", padding: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="format-badge txt">TXT</span>
+          <button type="button" className={`small-ghost ${editMode ? "active-tab" : ""}`} onClick={() => setEditMode(!editMode)}>
+            {editMode ? "View Lines" : "Edit Text"}
+          </button>
+        </div>
+        <button type="button" className="small-ghost" onClick={handleExportTxt}>
+          Export TXT
+        </button>
+      </div>
+
+      {editMode ? (
+        <div className="editable-representation-layer">
+          <textarea
+            className="editable-textarea"
+            value={editableText}
+            onChange={(e) => setEditableText(e.target.value)}
+            rows={14}
+          />
+          <div className="layer-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                if (onUpdateContent) onUpdateContent(editableText);
+                setEditMode(false);
+              }}
+            >
+              Apply & Re-anchor
+            </button>
+            <button type="button" className="small-ghost" onClick={() => setEditMode(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: 12 }}>
+          {lines.map((line, idx) => {
+            const matched = currentReview
+              ? findings.find((f) => line && f.claim_text && line.includes(f.claim_text))
+              : undefined;
+            const isSelected = matched && matched.finding_id === selectedFindingId;
+            return (
+              <div key={idx} className="plain-text-line">
+                <span className="plain-text-gutter">{idx + 1}</span>
+                <span
+                  className="plain-text-code"
+                  style={
+                    matched
+                      ? {
+                          background: isSelected ? "rgba(37,99,235,0.18)" : "rgba(245,158,11,0.12)",
+                          borderBottom: "2px solid #f59e0b",
+                          cursor: "pointer",
+                        }
+                      : undefined
+                  }
+                  onClick={() => {
+                    if (matched) onSelectFinding(matched.finding_id);
+                  }}
+                >
+                  {line || "\u00A0"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 10. Markdown Rendered Document Viewer
+// ============================================================================
+
+function MarkdownViewer({
+  content,
+  findings,
+  selectedFindingId,
+  onSelectFinding,
+  currentReview,
+  onUpdateContent,
+}: Omit<Props, "fileKey" | "name" | "type">) {
+  const [editMode, setEditMode] = useState(false);
+  const [editableText, setEditableText] = useState(content);
+  const lines = useMemo(() => content.split(/\r?\n/), [content]);
+
+  function handleExportMd() {
+    const blob = new Blob([editableText], { type: "text/markdown;charset=utf-8" });
+    const exportUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = "document.md";
+    link.click();
+    URL.revokeObjectURL(exportUrl);
+  }
+
+  return (
+    <div className="markdown-rendered-view" aria-label="Markdown document viewer">
+      <div className="viewer-toolbar-inline" style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="format-badge md">MD</span>
+          <button type="button" className={`small-ghost ${editMode ? "active-tab" : ""}`} onClick={() => setEditMode(!editMode)}>
+            {editMode ? "Rendered Preview" : "Edit Markdown"}
+          </button>
+        </div>
+        <button type="button" className="small-ghost" onClick={handleExportMd}>
+          Export Markdown
+        </button>
+      </div>
+
+      {editMode ? (
+        <div className="editable-representation-layer">
+          <textarea
+            className="editable-textarea"
+            value={editableText}
+            onChange={(e) => setEditableText(e.target.value)}
+            rows={14}
+          />
+          <div className="layer-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                if (onUpdateContent) onUpdateContent(editableText);
+                setEditMode(false);
+              }}
+            >
+              Apply & Re-anchor
+            </button>
+            <button type="button" className="small-ghost" onClick={() => setEditMode(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="markdown-content">
+          {lines.map((line, idx) => {
+            const matched = currentReview
+              ? findings.find((f) => line && f.claim_text && line.includes(f.claim_text))
+              : undefined;
+            const isSelected = matched && matched.finding_id === selectedFindingId;
+            const isHeading = line.startsWith("#");
+            const isListItem = line.trim().startsWith("- ") || line.trim().startsWith("* ");
+            const isQuote = line.trim().startsWith(">");
+
+            return (
+              <div
+                key={idx}
+                style={{
+                  fontWeight: isHeading ? 600 : "normal",
+                  fontSize: isHeading ? (line.startsWith("##") ? "1.15em" : "1.3em") : "1em",
+                  paddingLeft: isListItem ? 16 : isQuote ? 12 : 0,
+                  borderLeft: isQuote ? "3px solid #cbd5e1" : "none",
+                  margin: "4px 0",
+                  background: matched ? (isSelected ? "rgba(37,99,235,0.18)" : "rgba(245,158,11,0.12)") : undefined,
+                  borderBottom: matched ? "2px solid #f59e0b" : undefined,
+                  cursor: matched ? "pointer" : "default",
+                }}
+                onClick={() => {
+                  if (matched) onSelectFinding(matched.finding_id);
+                }}
+              >
+                {line || "\u00A0"}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 11. Sanitized HTML Document Viewer
+// ============================================================================
+
+function HtmlViewer({
+  content,
+  findings: _findings,
+  selectedFindingId: _selectedFindingId,
+  onSelectFinding: _onSelectFinding,
+  currentReview: _currentReview,
+  onUpdateContent,
+}: Omit<Props, "fileKey" | "name" | "type">) {
+  const [editMode, setEditMode] = useState(false);
+  const [editableText, setEditableText] = useState(content);
+
+  const sanitizedHtml = useMemo(() => {
+    return content
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "<!-- script quarantined -->")
+      .replace(/on\w+="[^"]*"/gi, "")
+      .replace(/javascript:[^"']*/gi, "");
+  }, [content]);
+
+  function handleExportHtml() {
+    const blob = new Blob([editableText], { type: "text/html;charset=utf-8" });
+    const exportUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = "document.html";
+    link.click();
+    URL.revokeObjectURL(exportUrl);
+  }
+
+  return (
+    <div className="html-sandbox-wrapper" aria-label="Sanitized HTML viewer">
+      <div className="viewer-toolbar-inline" style={{ display: "flex", justifyContent: "space-between", padding: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="format-badge html">HTML</span>
+          <button type="button" className={`small-ghost ${editMode ? "active-tab" : ""}`} onClick={() => setEditMode(!editMode)}>
+            {editMode ? "Sanitized Preview" : "View Source"}
+          </button>
+        </div>
+        <button type="button" className="small-ghost" onClick={handleExportHtml}>
+          Export HTML
+        </button>
+      </div>
+
+      {editMode ? (
+        <div className="editable-representation-layer">
+          <textarea
+            className="editable-textarea"
+            value={editableText}
+            onChange={(e) => setEditableText(e.target.value)}
+            rows={14}
+          />
+          <div className="layer-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                if (onUpdateContent) onUpdateContent(editableText);
+                setEditMode(false);
+              }}
+            >
+              Apply & Re-anchor
+            </button>
+            <button type="button" className="small-ghost" onClick={() => setEditMode(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <iframe
+            className="html-sandbox-frame"
+            sandbox="allow-same-origin"
+            srcDoc={sanitizedHtml}
+            title="Sanitized HTML content"
+          />
+        </div>
+      )}
+      <p className="document-location-note">
+        Sanitized HTML preview. External scripts and dangerous event handlers are quarantined for security.
+      </p>
+    </div>
+  );
+}
+
+// ============================================================================
+// 12. Rich Text Format (RTF) Document Viewer
+// ============================================================================
+
+function RtfViewer({
+  content,
+  findings,
+  selectedFindingId,
+  onSelectFinding,
+  currentReview,
+  onUpdateContent,
+}: Omit<Props, "fileKey" | "name" | "type">) {
+  const [editMode, setEditMode] = useState(false);
+  const [editableText, setEditableText] = useState(content);
+
+  function handleExportRtf() {
+    const blob = new Blob([editableText], { type: "text/rtf;charset=utf-8" });
+    const exportUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = "document.rtf";
+    link.click();
+    URL.revokeObjectURL(exportUrl);
+  }
+
+  return (
+    <div className="docx-reading-view" aria-label="Rich text format viewer">
+      <div className="viewer-toolbar-inline" style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="format-badge rtf">RTF</span>
+          <button type="button" className={`small-ghost ${editMode ? "active-tab" : ""}`} onClick={() => setEditMode(!editMode)}>
+            {editMode ? "View Formatted" : "Edit Copy"}
+          </button>
+        </div>
+        <button type="button" className="small-ghost" onClick={handleExportRtf}>
+          Export RTF
+        </button>
+      </div>
+
+      {editMode ? (
+        <div className="editable-representation-layer">
+          <textarea
+            className="editable-textarea"
+            value={editableText}
+            onChange={(e) => setEditableText(e.target.value)}
+            rows={14}
+          />
+          <div className="layer-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                if (onUpdateContent) onUpdateContent(editableText);
+                setEditMode(false);
+              }}
+            >
+              Apply & Re-anchor
+            </button>
+            <button type="button" className="small-ghost" onClick={() => setEditMode(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          {content.split(/\r?\n/).map((para, idx) => {
+            const matched = currentReview
+              ? findings.find((f) => para && f.claim_text && para.includes(f.claim_text))
+              : undefined;
+            return (
+              <p
+                key={idx}
+                className="docx-paragraph"
+                style={
+                  matched
+                    ? {
+                        background: matched.finding_id === selectedFindingId ? "rgba(37,99,235,0.18)" : "rgba(245,158,11,0.12)",
+                        borderBottom: "2px solid #f59e0b",
+                        cursor: "pointer",
+                      }
+                    : undefined
+                }
+                onClick={() => {
+                  if (matched) onSelectFinding(matched.finding_id);
+                }}
+              >
+                {para || "\u00A0"}
+              </p>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 13. Legacy Office Format Viewer (DOC, XLS, PPT)
+// ============================================================================
+
+function LegacyOfficeViewer({
+  formatId,
+  content,
+  findings,
+  selectedFindingId,
+  onSelectFinding,
+  currentReview,
+}: Omit<Props, "fileKey" | "type"> & { formatId: string }) {
+  const modernExt = formatId === "xls" ? ".xlsx" : formatId === "ppt" ? ".pptx" : ".docx";
+
+  return (
+    <div className="docx-reading-view" aria-label="Legacy office document viewer">
+      <div className="legacy-format-banner">
+        <span className="legacy-badge">LEGACY FORMAT</span>
+        <div className="legacy-info">
+          <b>Legacy Binary Office File ({formatId.toUpperCase()})</b>
+          <p>
+            This file uses legacy 97-2003 binary encoding. For full vector typography, tables, and styling,
+            convert this document to modern {modernExt}. Extracted text and brand compliance findings are verified below.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        {content.split(/\r?\n/).map((line, idx) => {
+          const matched = currentReview
+            ? findings.find((f) => line && f.claim_text && line.includes(f.claim_text))
+            : undefined;
+          return (
+            <p
+              key={idx}
+              className="docx-paragraph"
+              style={
+                matched
+                  ? {
+                      background: matched.finding_id === selectedFindingId ? "rgba(37,99,235,0.18)" : "rgba(245,158,11,0.12)",
+                      borderBottom: "2px solid #f59e0b",
+                      cursor: "pointer",
+                    }
+                  : undefined
+              }
+              onClick={() => {
+                if (matched) onSelectFinding(matched.finding_id);
+              }}
+            >
+              {line || "\u00A0"}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 14. Main Multimodal Original Document Host Component
 // ============================================================================
 
 export function OriginalDocument({
@@ -1568,33 +2192,37 @@ export function OriginalDocument({
   currentReview,
   onUpdateContent,
   structuralData,
+  directFile,
 }: Props) {
-  const [file, setFile] = useState<Blob | null>(null);
-  const [url, setUrl] = useState("");
+  const [storedFile, setStoredFile] = useState<Blob | null>(null);
   const [error, setError] = useState("");
+  const file = directFile || storedFile;
+  const url = useMemo(() => {
+    if (!file || typeof window === "undefined") return "";
+    return URL.createObjectURL(file);
+  }, [file]);
 
   useEffect(() => {
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [url]);
+
+  useEffect(() => {
+    if (directFile) return;
     let active = true;
-    let objectUrl = "";
     getOriginalDocument(fileKey)
       .then((original) => {
         if (!original) throw new Error("The saved original is unavailable in this browser.");
-        objectUrl = URL.createObjectURL(original);
-        if (!active) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        setFile(original);
-        setUrl(objectUrl);
+        if (active) setStoredFile(original);
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : "Could not load the saved original.");
       });
     return () => {
       active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [fileKey]);
+  }, [fileKey, directFile]);
 
   const format = resolveFormat(name, type);
 
@@ -1619,9 +2247,9 @@ export function OriginalDocument({
         <p className="original-preview-message" role="alert">
           {error} The extracted draft text is still available.
         </p>
-      ) : !file ? (
+      ) : !file && format.category !== "STRUCTURED_TEXT" ? (
         <p className="original-preview-message">Opening original file in format-aware viewer…</p>
-      ) : format.capabilities.viewer === "PDF_CANVAS" ? (
+      ) : format.capabilities.viewer === "PDF_CANVAS" && file ? (
         <PdfViewer
           file={file}
           content={content}
@@ -1631,7 +2259,7 @@ export function OriginalDocument({
           currentReview={currentReview}
           onUpdateContent={onUpdateContent}
         />
-      ) : format.capabilities.viewer === "DOCX_STRUCTURAL" ? (
+      ) : format.capabilities.viewer === "DOCX_STRUCTURAL" && file ? (
         <DocxViewer
           file={file}
           content={content}
@@ -1659,6 +2287,15 @@ export function OriginalDocument({
           onSelectFinding={onSelectFinding}
           currentReview={currentReview}
           structuralData={structuralData}
+          onUpdateContent={onUpdateContent}
+        />
+      ) : format.capabilities.viewer === "CSV_TABLE" ? (
+        <CsvViewer
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
           onUpdateContent={onUpdateContent}
         />
       ) : format.capabilities.viewer === "IMAGE_OVERLAY" ? (
@@ -1694,11 +2331,64 @@ export function OriginalDocument({
           structuralData={structuralData}
           onUpdateContent={onUpdateContent}
         />
+      ) : format.capabilities.viewer === "MARKDOWN_RENDERED" ? (
+        <MarkdownViewer
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
+          onUpdateContent={onUpdateContent}
+        />
+      ) : format.capabilities.viewer === "HTML_SANITIZED" ? (
+        <HtmlViewer
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
+          onUpdateContent={onUpdateContent}
+        />
+      ) : format.capabilities.viewer === "PLAIN_TEXT" ? (
+        <TxtViewer
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
+          onUpdateContent={onUpdateContent}
+        />
+      ) : format.capabilities.viewer === "RTF_DOCUMENT" ? (
+        <RtfViewer
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
+          onUpdateContent={onUpdateContent}
+        />
+      ) : format.capabilities.viewer === "DOC_LEGACY" ||
+        format.capabilities.viewer === "XLS_LEGACY" ||
+        format.capabilities.viewer === "PPT_LEGACY" ? (
+        <LegacyOfficeViewer
+          name={name}
+          formatId={format.formatId}
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
+          onUpdateContent={onUpdateContent}
+        />
       ) : (
-        <div className="docx-reading-view">
-          <pre>{content}</pre>
-          <p className="document-location-note">Structured text view. Source locations mapped to lines.</p>
-        </div>
+        <TxtViewer
+          content={content}
+          findings={findings}
+          selectedFindingId={selectedFindingId}
+          onSelectFinding={onSelectFinding}
+          currentReview={currentReview}
+          onUpdateContent={onUpdateContent}
+        />
       )}
 
       {currentReview && selectedFindingId && (

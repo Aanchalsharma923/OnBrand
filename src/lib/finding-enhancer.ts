@@ -9,6 +9,7 @@ import type { Finding, Source } from "./onbrand";
 export type FindingClassification =
   | "CONFIRMED_VIOLATION"
   | "UNSUPPORTED_CLAIM"
+  | "BRAND_INCONSISTENCY"
   | "NEEDS_HUMAN"
   | "INFORMATIONAL";
 
@@ -107,6 +108,15 @@ export function normalizeCategory(category: string, claimText: string, explanati
  * Maps evidence status to disciplined 4-state classification.
  * "Never automatically classify uncertainty as a confirmed violation."
  */
+const PROMOTIONAL_SUPERLATIVE_PATTERNS = [
+  /\b(best|#1|greatest|unmatched|revolutionary|miracle|guaranteed|cures|prevents|100%|clinical|proven|award-winning|leading)\b/i,
+  /\b(health benefits?|cure|miraculous|breakthrough|risk-free)\b/i,
+];
+
+const BRAND_TONE_PATTERNS = [
+  /\b(voice|tone|casual|formal|wording|style|typography|palette|color)\b/i,
+];
+
 export function classifyFinding(finding: Finding): {
   classification: FindingClassification;
   severity: FindingSeverity;
@@ -116,6 +126,8 @@ export function classifyFinding(finding: Finding): {
   const isSecurity = finding.category === "SOURCE_SECURITY";
   const isVisual = finding.category === "VISUAL";
   const isA11y = finding.category === "ACCESSIBILITY";
+  const text = (finding.claim_text || "").toLowerCase();
+  const expl = (finding.explanation || "").toLowerCase();
 
   if (isSecurity) {
     return {
@@ -125,6 +137,7 @@ export function classifyFinding(finding: Finding): {
     };
   }
 
+  // 1. Confirmed contradiction (evidence directly refutes claim)
   if (status === "CONTRADICTED" || status === "CONFLICT") {
     return {
       classification: "CONFIRMED_VIOLATION",
@@ -133,11 +146,31 @@ export function classifyFinding(finding: Finding): {
     };
   }
 
+  // 2. Needs approved evidence -> check if promotional/superlative claim vs brand inconsistency vs informational
   if (status === "NO_APPROVED_EVIDENCE") {
+    const isPromotional = PROMOTIONAL_SUPERLATIVE_PATTERNS.some((p) => p.test(text) || p.test(expl));
+    if (isPromotional || finding.category === "PROMOTIONAL_COMPLIANCE") {
+      return {
+        classification: "UNSUPPORTED_CLAIM",
+        severity: finding.blocking_for_review ? "High" : "Medium",
+        confidence: 88,
+      };
+    }
+
+    const isToneStyle = BRAND_TONE_PATTERNS.some((p) => p.test(text) || p.test(expl)) || finding.category === "BRAND_CONSISTENCY";
+    if (isToneStyle) {
+      return {
+        classification: "BRAND_INCONSISTENCY",
+        severity: "Medium",
+        confidence: 84,
+      };
+    }
+
+    // Ordinary phrase or general statement without contradiction
     return {
-      classification: "UNSUPPORTED_CLAIM",
-      severity: finding.blocking_for_review ? "High" : "Medium",
-      confidence: 88,
+      classification: "INFORMATIONAL",
+      severity: "Low",
+      confidence: 85,
     };
   }
 
@@ -230,6 +263,8 @@ export function deriveNextAction(classification: FindingClassification, _categor
       return "Apply the suggested correction or rewrite the passage to conform with the cited approved source.";
     case "UNSUPPORTED_CLAIM":
       return "Add an approved study/document to the knowledge library, or remove the ungrounded assertion.";
+    case "BRAND_INCONSISTENCY":
+      return "Align wording and tone with approved brand voice guidelines and terminology.";
     case "NEEDS_HUMAN":
       return "Review the context with an authorised human reviewer before approving publication.";
     case "INFORMATIONAL":
