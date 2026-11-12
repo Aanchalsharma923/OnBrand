@@ -251,3 +251,4 @@ export function validateUploadFile(file: { name: string; size: number; type: str
   }
   return { valid: true, format };
 }
+

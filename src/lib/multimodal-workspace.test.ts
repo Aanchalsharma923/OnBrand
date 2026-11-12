@@ -268,6 +268,167 @@ describe("Multimodal Workspace — Format-Aware Coordinate Mapping", () => {
     expect(annotations[0].locationType).toBe("IMAGE_BBOX");
     expect(annotations[0].boundingBox).toEqual({ x: 20, y: 55, width: 60, height: 15, unit: "percent" });
   });
+
+  it("maps findings on real-world poster (NovaBio CardioShield) accurately using word and line boxes", () => {
+    const novabioFindings: Finding[] = [
+      {
+        finding_id: "F-NOVABIO-1",
+        review_id: "rev-nova",
+        draft_id: "d-nova",
+        draft_version_id: "d-nova-v1",
+        draft_hash: "hash1",
+        claim_id: "c-1",
+        claim_text: "Doctor Recommended & Research-Backed",
+        start: 0,
+        end: 36,
+        category: "PROHIBITED_CLAIM",
+        evidence_status: "CONTRADICTED",
+        severity: "HIGH",
+        blocking_for_review: true,
+        explanation: "Absolute medical endorsement claim.",
+        source_evidence: [],
+        suggestion: "Researched by Clinical Specialists",
+        created_at: new Date().toISOString(),
+      },
+      {
+        finding_id: "F-NOVABIO-2",
+        review_id: "rev-nova",
+        draft_id: "d-nova",
+        draft_version_id: "d-nova-v1",
+        draft_hash: "hash1",
+        claim_id: "c-2",
+        claim_text: "Clinically demonstrated in double-blind trials",
+        start: 38,
+        end: 84,
+        category: "FACT_CONFLICT",
+        evidence_status: "NO_APPROVED_EVIDENCE",
+        severity: "HIGH",
+        blocking_for_review: true,
+        explanation: "Unsubstantiated clinical trials claim.",
+        source_evidence: [],
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    const novabioStructuralData: StructuralDocumentData = {
+      frames: [
+        {
+          frameId: "novabio-poster",
+          timestampSeconds: 0,
+          ocrText: "NovaBio CardioShield\nClinically demonstrated in double-blind trials\nDoctor Recommended & Research-Backed",
+          lineBoxes: [
+            { text: "Clinically demonstrated in double-blind trials", bbox: { x: 6.8, y: 45.0, width: 58.0, height: 6.5, unit: "percent" } },
+            { text: "Doctor Recommended & Research-Backed", bbox: { x: 6.8, y: 96.0, width: 65.2, height: 2.5, unit: "percent" } },
+          ],
+          wordBoxes: [
+            { text: "Doctor", bbox: { x: 6.8, y: 96.0, width: 10.2, height: 2.5, unit: "percent" } },
+            { text: "Recommended", bbox: { x: 18.0, y: 96.0, width: 23.0, height: 2.5, unit: "percent" } },
+            { text: "&", bbox: { x: 42.0, y: 96.0, width: 2.0, height: 2.5, unit: "percent" } },
+            { text: "Research-Backed", bbox: { x: 45.0, y: 96.0, width: 27.0, height: 2.5, unit: "percent" } },
+          ],
+        },
+      ],
+    };
+
+    const annotations = mapFindingsToAnnotations(novabioFindings, "", novabioStructuralData, "png");
+    expect(annotations).toHaveLength(2);
+
+    // Finding 1: Doctor Recommended mapped to bottom
+    expect(annotations[0].locationType).toBe("IMAGE_BBOX");
+    expect(annotations[0].boundingBox?.y).toBe(96.0);
+    expect(annotations[0].boundingBox?.x).toBe(6.8);
+    expect(annotations[0].isActionable).toBe(true);
+    expect(annotations[0].suggestedCorrection).toBe("Researched by Clinical Specialists");
+
+    // Finding 2: Clinically demonstrated mapped to middle
+    expect(annotations[1].locationType).toBe("IMAGE_BBOX");
+    expect(annotations[1].boundingBox?.y).toBe(45.0);
+    expect(annotations[1].boundingBox?.x).toBe(6.8);
+    expect(annotations[1].isActionable).toBe(true);
+  });
+
+  it("never assigns fake bounding boxes to findings with unmeasured/unmatched coordinates", () => {
+    const unmeasuredFinding: Finding[] = [
+      {
+        finding_id: "F-GENERAL",
+        review_id: "rev-1",
+        draft_id: "d-1",
+        draft_version_id: "d-1-v1",
+        draft_hash: "hash1",
+        claim_id: "c-general",
+        claim_text: "General brand voice lacks enthusiasm",
+        start: 0,
+        end: 37,
+        category: "BRAND_IDENTITY",
+        evidence_status: "CONFLICT",
+        severity: "LOW",
+        blocking_for_review: false,
+        explanation: "Overall tone guideline violation.",
+        source_evidence: [],
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    const structuralData: StructuralDocumentData = {
+      frames: [
+        {
+          frameId: "img-main",
+          timestampSeconds: 0,
+          ocrText: "Specific Product Name Here",
+          wordBoxes: [
+            { text: "Product", bbox: { x: 10, y: 10, width: 20, height: 5, unit: "percent" } },
+          ],
+        },
+      ],
+    };
+
+    const annotations = mapFindingsToAnnotations(unmeasuredFinding, "", structuralData, "png");
+    expect(annotations).toHaveLength(1);
+    // Location remains TEXT_OFFSET and boundingBox is undefined (never fake)
+    expect(annotations[0].boundingBox).toBeUndefined();
+    expect(annotations[0].locationType).toBe("TEXT_OFFSET");
+  });
+
+  it("a compliant poster with 0 violations produces 0 actionable bounding box highlights", () => {
+    const compliantFinding: Finding[] = [
+      {
+        finding_id: "F-COMPLIANT",
+        review_id: "rev-ok",
+        draft_id: "d-ok",
+        draft_version_id: "d-ok-v1",
+        draft_hash: "hash-ok",
+        claim_id: "c-ok",
+        claim_text: "Made with 100% wholegrain oats",
+        start: 0,
+        end: 30,
+        category: "APPROVED_CLAIM",
+        evidence_status: "SUPPORTED",
+        severity: "LOW",
+        blocking_for_review: false,
+        explanation: "Approved product claim.",
+        source_evidence: [],
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    const structuralData: StructuralDocumentData = {
+      frames: [
+        {
+          frameId: "poster-ok",
+          timestampSeconds: 0,
+          ocrText: "Made with 100% wholegrain oats",
+          lineBoxes: [{ text: "Made with 100% wholegrain oats", bbox: { x: 15, y: 20, width: 70, height: 8, unit: "percent" } }],
+        },
+      ],
+    };
+
+    const annotations = mapFindingsToAnnotations(compliantFinding, "", structuralData, "png");
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].isActionable).toBe(false); // Not actionable!
+    // Visible highlights in viewer filter out non-actionable findings
+    const visibleHighlights = annotations.filter((ann) => ann.isActionable && ann.boundingBox);
+    expect(visibleHighlights).toHaveLength(0);
+  });
 });
 
 describe("Multimodal Workspace — Dynamic Re-anchoring on Text Edit", () => {

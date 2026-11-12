@@ -920,6 +920,7 @@ function ImageViewer({
   selectedFindingId,
   onSelectFinding,
   content,
+  structuralData,
   onUpdateContent,
 }: {
   url: string;
@@ -928,79 +929,300 @@ function ImageViewer({
   selectedFindingId: string | null;
   onSelectFinding: (findingId: string) => void;
   content: string;
+  structuralData?: StructuralDocumentData;
   onUpdateContent?: (updatedContent: string) => void;
 }) {
-  const [showDrawer, setShowDrawer] = useState(false);
-  const [editableOcr, setEditableOcr] = useState(content);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [viewTab, setViewTab] = useState<"poster" | "correction" | "extracted">("poster");
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
+  const [correctionOverrides, setCorrectionOverrides] = useState<Record<string, string>>({});
+  const [editableOcr, setEditableOcr] = useState(content);
+  const [exportNotice, setExportNotice] = useState("");
 
-  // Map findings to image bounding boxes
+  // Map findings to image bounding boxes using actual OCR word & line coordinates
   const annotations = useMemo(() => {
-    return mapFindingsToAnnotations(findings, content, undefined, "png");
-  }, [findings, content]);
+    return mapFindingsToAnnotations(findings, content, structuralData, "png");
+  }, [findings, content, structuralData]);
+
+  // Selective highlighting: only actionable findings with real measured bounding boxes
+  const actionableAnnotations = useMemo(() => {
+    return annotations.filter((ann) => ann.isActionable && ann.boundingBox);
+  }, [annotations]);
 
   const findingsMap = useMemo(() => new Map(findings.map((f) => [f.finding_id, f])), [findings]);
+
+  // Unplaced findings (cannot be established reliably to image coordinates)
+  const unplacedCount = findings.filter((f) => isActionableFinding(f)).length - actionableAnnotations.length;
+
+  function handleExportRevisedImage() {
+    const img = imgRef.current;
+    if (!img) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || img.width || 1200;
+    canvas.height = img.naturalHeight || img.height || 1600;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Draw original image at native resolution
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    // Overlay corrections
+    let appliedCount = 0;
+    for (const ann of actionableAnnotations) {
+      if (!ann.boundingBox) continue;
+      const text = correctionOverrides[ann.findingId] ?? ann.suggestedCorrection;
+      if (!text) continue;
+
+      const px = (ann.boundingBox.x / 100) * canvas.width;
+      const py = (ann.boundingBox.y / 100) * canvas.height;
+      const pw = (ann.boundingBox.width / 100) * canvas.width;
+      const ph = (ann.boundingBox.height / 100) * canvas.height;
+
+      // Draw replacement patch
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.002));
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, ph, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // Render replacement text
+      ctx.fillStyle = "#1e293b";
+      const fontSize = Math.max(14, Math.round(ph * 0.45));
+      ctx.font = `600 ${fontSize}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, px + pw / 2, py + ph / 2, pw - 12);
+      appliedCount++;
+    }
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${name.replace(/\.[^/.]+$/, "")}_revised.png`;
+      link.click();
+      URL.revokeObjectURL(downloadUrl);
+      setExportNotice(`Exported revised poster with ${appliedCount} correction overlay${appliedCount === 1 ? "" : "s"}. Original image preserved.`);
+    }, "image/png");
+  }
 
   return (
     <div className="image-viewer-container" aria-label="Image and poster review workspace">
       <div className="viewer-toolbar-inline">
-        <span className="format-badge image">IMAGE</span>
-        <button type="button" className={`small-ghost ${showDrawer ? "active-tab" : ""}`} onClick={() => setShowDrawer(!showDrawer)}>
-          {showDrawer ? "Hide OCR Overlay" : "Edit Extracted Copy"}
-        </button>
-      </div>
+        <div className="toolbar-left-group">
+          <span className="format-badge image">POSTER</span>
+          <span className="image-filename" title={name}>{name}</span>
+          <span className="ocr-status-chip" title="OCR extraction performed locally in browser">
+            <span className="status-dot green" />
+            OCR Analyzed
+          </span>
+        </div>
 
-      <div className="image-overlay-wrapper">
-        <img className="original-image-responsive" src={url} alt={`Original content: ${name}`} />
+        <div className="toolbar-right-group">
+          <div className="zoom-controls" role="group" aria-label="Image zoom">
+            <button
+              type="button"
+              className="zoom-btn"
+              onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.2) * 10) / 10))}
+              title="Zoom out"
+              disabled={zoom <= 0.6}
+            >
+              −
+            </button>
+            <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              className="zoom-btn"
+              onClick={() => setZoom((z) => Math.min(2.0, Math.round((z + 0.2) * 10) / 10))}
+              title="Zoom in"
+              disabled={zoom >= 2.0}
+            >
+              +
+            </button>
+            {zoom !== 1 && (
+              <button type="button" className="zoom-reset-btn" onClick={() => setZoom(1)}>
+                Reset
+              </button>
+            )}
+          </div>
 
-        {/* SVG/HTML Interactive Bounding Box Overlay */}
-        <div className="bounding-box-layer">
-          {annotations.map((ann) => {
-            const bbox = ann.boundingBox || { x: 10, y: 15, width: 80, height: 25, unit: "percent" };
-            const isSelected = selectedFindingId === ann.findingId;
-            const visualClass = getAnnotationVisualClass(ann.evidenceStatus, ann.severity);
-            const finding = findingsMap.get(ann.findingId);
-
-            return (
-              <div
-                key={ann.id}
-                className={`image-bounding-box ${visualClass}${isSelected ? " selected" : ""}`}
-                style={{
-                  left: `${bbox.x}%`,
-                  top: `${bbox.y}%`,
-                  width: `${bbox.width}%`,
-                  height: `${bbox.height}%`,
-                }}
-                onClick={() => onSelectFinding(ann.findingId)}
-                onMouseEnter={() => setHoveredFindingId(ann.findingId)}
-                onMouseLeave={() => setHoveredFindingId(null)}
-                tabIndex={0}
-                role="button"
-                aria-label={`Region with finding: ${ann.claimText}`}
-              >
-                <span className="bounding-box-badge">
-                  {ann.category.slice(0, 10)}
-                </span>
-                {hoveredFindingId === ann.findingId && finding && (
-                  <AnnotationTooltip finding={finding} onInspect={() => onSelectFinding(ann.findingId)} />
-                )}
-              </div>
-            );
-          })}
+          <div className="view-tab-buttons">
+            <button
+              type="button"
+              className={`small-ghost ${viewTab === "poster" ? "active-tab" : ""}`}
+              onClick={() => setViewTab("poster")}
+            >
+              🖼 Poster & Highlights
+            </button>
+            <button
+              type="button"
+              className={`small-ghost ${viewTab === "correction" ? "active-tab" : ""}`}
+              onClick={() => setViewTab("correction")}
+            >
+              ✍ Correction & Export
+            </button>
+            <button
+              type="button"
+              className={`small-ghost ${viewTab === "extracted" ? "active-tab" : ""}`}
+              onClick={() => setViewTab("extracted")}
+            >
+              📄 Extracted Copy
+            </button>
+          </div>
         </div>
       </div>
 
-      {showDrawer && (
+      {exportNotice && (
+        <div className="export-success-banner" role="status">
+          <span>✓ {exportNotice}</span>
+          <button type="button" className="banner-dismiss" onClick={() => setExportNotice("")}>×</button>
+        </div>
+      )}
+
+      {/* Mode 1: Main Original Poster View with Responsive Bounding Box Overlays */}
+      {viewTab === "poster" && (
+        <div className="image-viewport-scroll-area">
+          <div
+            className="image-overlay-wrapper"
+            style={{
+              width: `${zoom * 100}%`,
+              transition: "width 0.15s ease",
+            }}
+          >
+            <img
+              ref={imgRef}
+              className="original-image-responsive"
+              src={url}
+              alt={`Original poster: ${name}`}
+            />
+
+            {/* SVG/HTML Interactive Bounding Box Overlay */}
+            <div className="bounding-box-layer" aria-label="Poster issue highlights">
+              {actionableAnnotations.map((ann) => {
+                const bbox = ann.boundingBox!;
+                const isSelected = selectedFindingId === ann.findingId;
+                const visualClass = getAnnotationVisualClass(ann.evidenceStatus, ann.severity);
+                const finding = findingsMap.get(ann.findingId);
+
+                return (
+                  <div
+                    key={ann.id}
+                    className={`image-bounding-box ${visualClass}${isSelected ? " selected" : ""}`}
+                    style={{
+                      left: `${bbox.x}%`,
+                      top: `${bbox.y}%`,
+                      width: `${bbox.width}%`,
+                      height: `${bbox.height}%`,
+                    }}
+                    onClick={() => onSelectFinding(ann.findingId)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectFinding(ann.findingId);
+                      }
+                    }}
+                    onMouseEnter={() => setHoveredFindingId(ann.findingId)}
+                    onMouseLeave={() => setHoveredFindingId(null)}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Flagged issue: ${ann.category} - ${ann.claimText}`}
+                  >
+                    <span className="bounding-box-badge">
+                      {ann.category.replaceAll("_", " ")}
+                    </span>
+                    {hoveredFindingId === ann.findingId && finding && (
+                      <AnnotationTooltip finding={finding} onInspect={() => onSelectFinding(ann.findingId)} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mode 2: Correction & Export (Honest Editing Workflow) */}
+      {viewTab === "correction" && (
+        <div className="image-correction-panel">
+          <div className="panel-header">
+            <div>
+              <h3>Correction Overlay & Image Export</h3>
+              <p>Apply context-preserving corrections over flagged poster regions. Generates a revised image export without modifying original source pixels.</p>
+            </div>
+            <button
+              type="button"
+              className="primary-button export-revised-btn"
+              onClick={handleExportRevisedImage}
+            >
+              ⬇ Generate Revised Image Export (.png)
+            </button>
+          </div>
+
+          <div className="correction-items-list">
+            {actionableAnnotations.length === 0 ? (
+              <p className="empty-notice">No actionable findings detected on this image.</p>
+            ) : (
+              actionableAnnotations.map((ann) => {
+                const currentVal = correctionOverrides[ann.findingId] ?? ann.suggestedCorrection ?? "";
+                return (
+                  <div key={ann.id} className="correction-item-card">
+                    <div className="item-meta">
+                      <span className={`finding-cat ${ann.severity.toLowerCase()}`}>{ann.category}</span>
+                      <span className="item-claim">&ldquo;{ann.claimText}&rdquo;</span>
+                    </div>
+                    <p className="item-explanation">{ann.explanation}</p>
+                    <div className="replacement-row">
+                      <label htmlFor={`replace-${ann.id}`}>Replacement Text Overlay:</label>
+                      <input
+                        id={`replace-${ann.id}`}
+                        type="text"
+                        className="replacement-input"
+                        value={currentVal}
+                        placeholder={ann.suggestedCorrection || "Enter replacement wording…"}
+                        onChange={(e) =>
+                          setCorrectionOverrides((prev) => ({ ...prev, [ann.findingId]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <small className="honest-disclosure-note">
+            Honest Workflow: Original image file is permanently preserved. Revised export applies styled text patches over detected bounding boxes.
+          </small>
+        </div>
+      )}
+
+      {/* Mode 3: Extracted Text Inspector (Secondary / Advanced) */}
+      {viewTab === "extracted" && (
         <div className="editable-representation-layer">
           <div className="layer-header">
-            <b>OCR Text Overlay & Correction Drawer</b>
-            <small>Correct OCR text directly. Flattened image pixels are preserved.</small>
+            <div>
+              <b>Extracted OCR Copy (Internal Analysis Layer)</b>
+              <small>OCR output used to detect claims and bounding boxes. The original image remains the primary view.</small>
+            </div>
+            <button
+              type="button"
+              className="small-ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(editableOcr).catch(() => {});
+                setExportNotice("Extracted text copied to clipboard.");
+              }}
+            >
+              Copy Extracted Text
+            </button>
           </div>
           <textarea
             className="editable-textarea"
             value={editableOcr}
             onChange={(e) => setEditableOcr(e.target.value)}
-            rows={8}
+            rows={10}
           />
           <div className="layer-actions">
             <button
@@ -1008,21 +1230,24 @@ function ImageViewer({
               className="primary-button"
               onClick={() => {
                 if (onUpdateContent) onUpdateContent(editableOcr);
-                setShowDrawer(false);
+                setViewTab("poster");
               }}
             >
-              Update Extracted Text
+              Save Text to Draft
             </button>
-            <button type="button" className="small-ghost" onClick={() => setShowDrawer(false)}>
-              Close
+            <button type="button" className="small-ghost" onClick={() => setViewTab("poster")}>
+              Return to Poster View
             </button>
           </div>
         </div>
       )}
 
-      <p className="document-location-note">
-        Original raster image preserved. Bounding boxes indicate localized issues. Click box to inspect findings.
-      </p>
+      <div className="image-viewer-footer">
+        <p className="document-location-note">
+          Original poster layout, typography and colors preserved. {actionableAnnotations.length} issue{actionableAnnotations.length === 1 ? "" : "s"} highlighted with verified bounding boxes.
+          {unplacedCount > 0 && ` (${unplacedCount} additional general finding${unplacedCount === 1 ? "" : "s"} in side panel)`}
+        </p>
+      </div>
     </div>
   );
 }
@@ -1211,6 +1436,7 @@ function AudioViewer({
   selectedFindingId,
   onSelectFinding,
   content,
+  structuralData,
   onUpdateContent,
 }: {
   url: string;
@@ -1219,6 +1445,7 @@ function AudioViewer({
   selectedFindingId: string | null;
   onSelectFinding: (findingId: string) => void;
   content: string;
+  structuralData?: StructuralDocumentData;
   onUpdateContent?: (updatedContent: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -1226,11 +1453,14 @@ function AudioViewer({
   const [editableTranscript, setEditableTranscript] = useState(content);
 
   const segments = useMemo(() => {
+    if (structuralData?.transcriptSegments && structuralData.transcriptSegments.length > 0) {
+      return structuralData.transcriptSegments;
+    }
     return [
       { id: "a-1", startSeconds: 0, endSeconds: 4, text: content.slice(0, 120), speaker: "Speaker 1" },
       { id: "a-2", startSeconds: 4, endSeconds: 10, text: content.slice(120), speaker: "Speaker 1" },
     ];
-  }, [content]);
+  }, [content, structuralData]);
 
   function seekTo(seconds: number) {
     if (audioRef.current) {
@@ -1439,6 +1669,7 @@ export function OriginalDocument({
           selectedFindingId={selectedFindingId}
           onSelectFinding={onSelectFinding}
           content={content}
+          structuralData={structuralData}
           onUpdateContent={onUpdateContent}
         />
       ) : format.capabilities.viewer === "VIDEO_TIMELINE" ? (
@@ -1460,6 +1691,7 @@ export function OriginalDocument({
           selectedFindingId={selectedFindingId}
           onSelectFinding={onSelectFinding}
           content={content}
+          structuralData={structuralData}
           onUpdateContent={onUpdateContent}
         />
       ) : (

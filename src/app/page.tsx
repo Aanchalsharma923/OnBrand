@@ -124,7 +124,7 @@ export default function Home() {
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [review, setReview] = useState<Review | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<string | null>(null);
-  const [editorMode, setEditorMode] = useState<"reading" | "raw">("reading");
+  const [editorMode, setEditorMode] = useState<"original" | "reading" | "raw">("original");
   const [productFilter, setProductFilter] = useState<string>("all");
   const [dismissedFindingIds, setDismissedFindingIds] = useState<string[]>([]);
   const [activeOccurrenceMap, setActiveOccurrenceMap] = useState<Record<string, number>>({});
@@ -364,10 +364,7 @@ export default function Home() {
     return findings.find((f) => f.finding_id === selectedEnriched.rawFindingId) ?? null;
   }, [selectedEnriched, findings]);
 
-  const currentExtractionHash = draft.extraction ? stableHash(draft.content) : "";
-  const extractionBlocked = Boolean(draft.extraction && draft.extraction.quality !== "RELIABLE"
-    && (draft.extraction.rawTextHash === currentExtractionHash || draft.extraction.reviewedTextHash !== currentExtractionHash));
-  const hasCurrentReview = Boolean(!extractionBlocked && review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
+  const hasCurrentReview = Boolean(review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
   const hasCurrentDecision = Boolean(hasCurrentReview && review?.decision && review.decision.draftHash === draft.hash && review.decision.sourceSnapshotHash === review.sourceSnapshotHash);
 
   const actionableRanges = useMemo(() => {
@@ -393,11 +390,10 @@ export default function Home() {
     unsupported: findings.filter((f) => f.evidence_status === "NO_APPROVED_EVIDENCE").length,
   }), [findings]);
   const approvalDisabledReason = role !== "reviewer" ? "Switch to Reviewer to record the human decision."
-    : extractionBlocked ? "Proofread and confirm the corrected OCR text before review."
-      : !review ? "Run a review before recording a decision."
-        : !hasCurrentReview ? "This report is stale. Run a fresh review before deciding."
-          : counts.blocking > 0 ? `Resolve or escalate ${counts.blocking} blocking finding${counts.blocking === 1 ? "" : "s"} before approval.`
-            : counts.unsupported > 0 ? `Add approved evidence or revise ${counts.unsupported} unverified claim${counts.unsupported === 1 ? "" : "s"} before approval.` : "";
+    : !review ? "Run a review before recording a decision."
+      : !hasCurrentReview ? "This report is stale. Run a fresh review before deciding."
+        : counts.blocking > 0 ? `Resolve or escalate ${counts.blocking} blocking finding${counts.blocking === 1 ? "" : "s"} before approval.`
+          : counts.unsupported > 0 ? `Add approved evidence or revise ${counts.unsupported} unverified claim${counts.unsupported === 1 ? "" : "s"} before approval.` : "";
   const currentWorkflowStep = !draft.content.trim() ? 0 : !hasCurrentReview ? 1 : counts.blocking > 0 ? 2 : !hasCurrentDecision ? 3 : 4;
   const currentProfileSource = sources.find((source) => source.id === "SRC-VOICE" && !source.revokedAt);
   const profileValue = (attribute: string, fallback: string) => currentProfileSource?.facts.find((fact) => fact.attribute === attribute)?.value ?? fallback;
@@ -576,6 +572,7 @@ export default function Home() {
       setStructuralData(extracted.structuralData);
       setSelectedFinding(null);
       setLastDecision("");
+      setEditorMode("original");
 
       // Persist uploaded document to PostgreSQL database
       fetch("/api/drafts", {
@@ -585,9 +582,9 @@ export default function Home() {
       }).catch((err) => {
         console.error("Failed to persist uploaded document draft:", err);
       });
-      const qualityNote = extracted.ocrQuality ? ` OCR ${extracted.ocrQuality.status.toLowerCase().replaceAll("_", " ")} (${extracted.ocrQuality.confidence}% confidence).` : "";
-      setExtractionStatus(`${file.name} · text extracted on this device.${qualityNote}${originalSaved ? " Original preserved in this browser." : " Original could not be preserved."}`);
-      announce(extraction && extraction.quality !== "RELIABLE" ? "OCR text needs correction and proofread confirmation before review." : "File text added as a new draft version. Inspect it before review.");
+      const qualityNote = extracted.ocrQuality ? ` OCR analyzed (${extracted.ocrQuality.confidence}% confidence).` : "";
+      setExtractionStatus(`${file.name} · original file preserved.${qualityNote}`);
+      announce("Original file uploaded. Interactive review workspace ready.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "This file could not be read.";
       setExtractionStatus(message);
@@ -596,15 +593,6 @@ export default function Home() {
       setIsExtracting(false);
       input.value = "";
     }
-  }
-
-  function confirmOcrProofread() {
-    if (!draft.extraction || !draft.content.trim() || stableHash(draft.content) === draft.extraction.rawTextHash) {
-      announce("Correct the extracted text before confirming the proofread.");
-      return;
-    }
-    updateDraftMetadata({ extraction: { ...draft.extraction, reviewedTextHash: stableHash(draft.content) } });
-    announce("Corrected OCR text marked as proofread. Run the evidence review when ready.");
   }
 
   function saveVersion(): typeof draft {
@@ -648,10 +636,6 @@ export default function Home() {
   }
 
   async function runReview() {
-    if (extractionBlocked) {
-      announce("Correct the OCR text and confirm that you proofread it before running review.");
-      return;
-    }
     setIsReviewing(true);
     await new Promise((resolve) => window.setTimeout(resolve, 450));
     try {
@@ -1182,7 +1166,7 @@ export default function Home() {
         {view === "review" ? <>
           <div className="page-heading">
             <div><div className="eyebrow"><span className="eyebrow-dot" /> PRE-PUBLICATION CHECK</div><h1>{review ? `Review: ${draft.title} v${draft.version}` : "Review workspace"}</h1><p>One calm, evidence-led pass before your content goes live.</p></div>
-            <div className="heading-actions"><button className="quiet-button" onClick={() => setShowAudit((v) => !v)}><span className="history-icon">◷</span> {showAudit ? "Hide history" : "Version history"}</button><button className="primary-button" onClick={runReview} disabled={isReviewing || extractionBlocked} title={extractionBlocked ? "Correct the OCR text and confirm your proofread first." : undefined}>{isReviewing ? <><span className="spinner" /> Checking evidence…</> : <><span className="sparkle">✳</span> Run review</>}</button></div>
+            <div className="heading-actions"><button className="quiet-button" onClick={() => setShowAudit((v) => !v)}><span className="history-icon">◷</span> {showAudit ? "Hide history" : "Version history"}</button><button className="primary-button" onClick={runReview} disabled={isReviewing}>{isReviewing ? <><span className="spinner" /> Checking evidence…</> : <><span className="sparkle">✳</span> Run review</>}</button></div>
           </div>
           <ol className="workflow-stepper" aria-label="Review progress">
             {["Draft", "Check evidence", "Fix & recheck", "Human decision"].map((label, index) => {
@@ -1196,7 +1180,7 @@ export default function Home() {
           {showAudit && <div className="history-strip"><b>Version history</b>{versions.slice().reverse().map((item) => <span key={`${item.id}-${item.version}-${item.hash}`} className={item.hash === draft.hash && item.version === draft.version ? "history-current" : ""}>v{item.version} · {item.hash.slice(0, 10)}</span>)}{review && <span>Last review · {new Date(review.createdAt).toLocaleString()}</span>}</div>}
 
           <section className="summary-strip" aria-label="Review overview">
-            <div className="summary-title"><span className="summary-icon">◉</span><div><b>{extractionBlocked ? "Proofread extracted text" : review ? hasCurrentReview ? "Review ready" : "Review out of date" : "Draft ready for review"}</b><small>{extractionBlocked ? "Correct the OCR text below and confirm your proofread before checking claims." : review ? hasCurrentReview ? `${findings.length} claims checked · evidence snapshot locked` : "Refresh the report before a decision" : "Add or edit content, then run an evidence check"}</small></div></div>
+            <div className="summary-title"><span className="summary-icon">◉</span><div><b>{review ? hasCurrentReview ? "Review ready" : "Review out of date" : "Draft ready for review"}</b><small>{review ? hasCurrentReview ? `${findings.length} claims checked · evidence snapshot locked` : "Refresh the report before a decision" : "Add or edit content, then run an evidence check"}</small></div></div>
             <div className="summary-metric"><b>{findings.length || "—"}</b><small>CLAIMS CHECKED</small></div><div className="summary-metric"><b className={counts.blocking ? "metric-warn" : ""}>{review ? counts.blocking : "—"}</b><small>NEEDS ATTENTION</small></div><div className="summary-metric"><b>{review ? `${counts.supported}/${findings.length}` : "—"}</b><small>EVIDENCE-ALIGNED</small></div>
           </section>
 
@@ -1210,6 +1194,17 @@ export default function Home() {
                 <button className="text-button" onClick={() => updateDraftContent("")}>Clear draft</button>
               </div>
               <div className="editor-mode-tabs" role="tablist" aria-label="Editor view mode">
+                {draft.originalDocumentKey && draft.originalDocumentName ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={editorMode === "original"}
+                    className={`mode-tab ${editorMode === "original" ? "active" : ""}`}
+                    onClick={() => setEditorMode("original")}
+                  >
+                    👁 Original Media & Overlays
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   role="tab"
@@ -1217,7 +1212,7 @@ export default function Home() {
                   className={`mode-tab ${editorMode === "reading" ? "active" : ""}`}
                   onClick={() => setEditorMode("reading")}
                 >
-                  👁 Document View (Selective Highlights)
+                  {draft.originalDocumentKey ? "📄 Extracted Reading Pane" : "👁 Document View (Selective Highlights)"}
                 </button>
                 <button
                   type="button"
@@ -1226,15 +1221,41 @@ export default function Home() {
                   className={`mode-tab ${editorMode === "raw" ? "active" : ""}`}
                   onClick={() => setEditorMode("raw")}
                 >
-                  ✎ Edit Content
+                  ✎ Edit Copy
                 </button>
               </div>
               <div className="draft-meta">
                 <span className="meta-chip"><span className="tiny-icon">▣</span>{draft.channel}</span>
                 <span className="meta-chip"><span className="tiny-icon">◌</span>{draft.product}</span>
                 <span className="meta-chip"><span className="tiny-icon">◷</span>{draft.audience}</span>
+                {draft.extraction && (
+                  <span className="meta-chip ocr-quality-chip" title={`OCR confidence: ${draft.extraction.confidence}%`}>
+                    <span className="tiny-icon">◈</span>
+                    {draft.extraction.quality === "RELIABLE"
+                      ? `OCR Analyzed (${draft.extraction.confidence}%)`
+                      : `OCR Analyzed (${draft.extraction.confidence}%${draft.extraction.confidence < 60 ? " · Extraction uncertain in some areas" : ""})`}
+                  </span>
+                )}
               </div>
-              {editorMode === "raw" ? (
+
+              {/* Primary Content View: Format-Aware Original Document Viewer (Default when file uploaded) */}
+              {editorMode === "original" && draft.originalDocumentKey && draft.originalDocumentName ? (
+                <OriginalDocument
+                  fileKey={draft.originalDocumentKey}
+                  name={draft.originalDocumentName}
+                  type={draft.originalDocumentType ?? ""}
+                  content={draft.content}
+                  findings={findings}
+                  selectedFindingId={selected?.finding_id ?? null}
+                  onSelectFinding={setSelectedFinding}
+                  currentReview={hasCurrentReview}
+                  structuralData={structuralData}
+                  onUpdateContent={(updated) => {
+                    updateDraftContent(updated);
+                    announce("Document content updated in interactive viewer.");
+                  }}
+                />
+              ) : editorMode === "raw" ? (
                 <>
                   <label className="sr-only" htmlFor="draft-content">Draft content</label>
                   <textarea
@@ -1280,6 +1301,7 @@ export default function Home() {
                   )}
                 </div>
               )}
+
               <div className="draft-upload-row">
                 <label className="primary-button import-button draft-upload-button">
                   <Icon name="upload" />
@@ -1293,40 +1315,10 @@ export default function Home() {
                   />
                 </label>
                 <div aria-live="polite">
-                  {extractionStatus || "Choose a document (PDF, DOCX), presentation (PPTX), spreadsheet (XLSX, CSV), creative asset (PNG, JPG, WebP), video reel (MP4, WebM) or audio file."}
+                  {extractionStatus || "Choose a creative asset (PNG, JPG, WebP), presentation (PPTX), document (PDF, DOCX), spreadsheet (XLSX, CSV) or media reel."}
                   <small>Multimodal review with format-aware viewers, OCR bounding boxes, video keyframes, slide decks, spreadsheet cells and audio transcripts.</small>
                 </div>
               </div>
-              {draft.extraction && (
-                <div className={`ocr-review-notice ${extractionBlocked ? "needs-proofread" : "proofread-done"}`} role="status">
-                  <div>
-                    <b>{extractionBlocked ? `OCR needs proofreading · ${draft.extraction.confidence}% confidence` : "OCR text proofread"}</b>
-                    <small>{extractionBlocked ? "Recognition quality is uncertain. Correct the editable text above; the original file remains available below." : "The reviewed text is ready for an evidence check."}</small>
-                  </div>
-                  {extractionBlocked && (
-                    <button type="button" className="quiet-button" onClick={confirmOcrProofread} disabled={!draft.content.trim() || currentExtractionHash === draft.extraction.rawTextHash}>
-                      I corrected and checked the text
-                    </button>
-                  )}
-                </div>
-              )}
-              {draft.originalDocumentKey && draft.originalDocumentName && (
-                <OriginalDocument
-                  fileKey={draft.originalDocumentKey}
-                  name={draft.originalDocumentName}
-                  type={draft.originalDocumentType ?? ""}
-                  content={draft.content}
-                  findings={findings}
-                  selectedFindingId={selected?.finding_id ?? null}
-                  onSelectFinding={setSelectedFinding}
-                  currentReview={hasCurrentReview}
-                  structuralData={structuralData}
-                  onUpdateContent={(updated) => {
-                    updateDraftContent(updated);
-                    announce("Document content updated in interactive viewer.");
-                  }}
-                />
-              )}
               <div className="editor-footer">
                 <span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} words · v{draft.version}</span>
                 <button className="save-version-button" onClick={saveVersion} disabled={versions[versions.length - 1]?.hash === draft.hash}>

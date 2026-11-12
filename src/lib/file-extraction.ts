@@ -35,6 +35,7 @@ type OcrPass = {
   confidence: number;
   quality: OcrQuality;
   wordBoxes?: Array<{ text: string; bbox: BoundingBox }>;
+  lineBoxes?: Array<{ text: string; bbox: BoundingBox }>;
 };
 
 function limitText(text: string) {
@@ -390,29 +391,88 @@ async function createOcrWorker(progress: ExtractionProgress) {
 }
 
 async function recognizeOcr(worker: Awaited<ReturnType<typeof createOcrWorker>>, image: HTMLCanvasElement, progress: ExtractionProgress, passes = 2) {
-  const modes = passes > 1 ? ["11", "3"] : ["11"];
+  const modes = passes > 1 ? ["3", "11"] : ["3"];
   let best: OcrPass | undefined;
   for (const mode of modes) {
     await worker.setParameters({ tessedit_pageseg_mode: mode as import("tesseract.js").PSM, preserve_interword_spaces: "1" });
-    const recognized = await worker.recognize(image);
-    const text = normalizeText(recognized.data.text);
+    const recognized = await worker.recognize(image, {}, { blocks: true, text: true });
+    
+    // Extract structured blocks, lines, and words from Tesseract data
+    const extractedWords: Array<{ text: string; bbox: BoundingBox }> = [];
+    const extractedLines: Array<{ text: string; bbox: BoundingBox }> = [];
+    const cleanLines: string[] = [];
+
+    const blocks = ((recognized.data as unknown as { blocks?: Array<{
+      paragraphs?: Array<{
+        lines?: Array<{
+          text?: string;
+          bbox?: { x0: number; y0: number; x1: number; y1: number };
+          words?: Array<{
+            text?: string;
+            bbox?: { x0: number; y0: number; x1: number; y1: number };
+          }>;
+        }>;
+      }>;
+    }> }).blocks) || [];
+
+    for (const b of blocks) {
+      for (const p of b.paragraphs || []) {
+        for (const l of p.lines || []) {
+          const rawLineText = (l.text || "").replace(/[\r\n]+/g, " ").trim();
+          // Filter noise characters and pure symbol artifacts
+          const cleanLineText = rawLineText.replace(/^[|~_€£$§\\\/<>\-–\s]+|[|~_€£$§\\\/<>\-–\s]+$/g, "").trim();
+          if (cleanLineText.length > 1 && /[a-zA-Z0-9]/.test(cleanLineText)) {
+            cleanLines.push(cleanLineText);
+          }
+
+          if (l.bbox) {
+            extractedLines.push({
+              text: cleanLineText || rawLineText,
+              bbox: {
+                x: Math.round(((l.bbox.x0 ?? 0) / Math.max(1, image.width)) * 1000) / 10,
+                y: Math.round(((l.bbox.y0 ?? 0) / Math.max(1, image.height)) * 1000) / 10,
+                width: Math.round((((l.bbox.x1 ?? 0) - (l.bbox.x0 ?? 0)) / Math.max(1, image.width)) * 1000) / 10,
+                height: Math.round((((l.bbox.y1 ?? 0) - (l.bbox.y0 ?? 0)) / Math.max(1, image.height)) * 1000) / 10,
+                unit: "percent",
+              },
+            });
+          }
+
+          for (const w of l.words || []) {
+            const rawWord = (w.text || "").trim();
+            const cleanWord = rawWord.replace(/^[|~_€£$§\\\/<>\-–\s]+|[|~_€£$§\\\/<>\-–\s]+$/g, "").trim();
+            if (cleanWord && w.bbox) {
+              extractedWords.push({
+                text: cleanWord,
+                bbox: {
+                  x: Math.round(((w.bbox.x0 ?? 0) / Math.max(1, image.width)) * 1000) / 10,
+                  y: Math.round(((w.bbox.y0 ?? 0) / Math.max(1, image.height)) * 1000) / 10,
+                  width: Math.round((((w.bbox.x1 ?? 0) - (w.bbox.x0 ?? 0)) / Math.max(1, image.width)) * 1000) / 10,
+                  height: Math.round((((w.bbox.y1 ?? 0) - (w.bbox.y0 ?? 0)) / Math.max(1, image.height)) * 1000) / 10,
+                  unit: "percent",
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const reconstructedText = cleanLines.length > 0 ? cleanLines.join("\n\n") : normalizeText(recognized.data.text);
+    const text = normalizeText(reconstructedText);
     const quality = assessOcrQuality(text, recognized.data.confidence);
     const score = quality.confidence * 0.55 + quality.readableTokenRatio * 40 - quality.noisyCharacterRatio * 100;
     const bestScore = best ? best.quality.confidence * 0.55 + best.quality.readableTokenRatio * 40 - best.quality.noisyCharacterRatio * 100 : -Infinity;
-    const rawWords = ((recognized.data as unknown as { words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> }).words) || [];
-    const wordBoxes = rawWords
-      .filter((w) => Boolean(w.text && w.text.trim()))
-      .map((w) => ({
-        text: w.text!.trim(),
-        bbox: {
-          x: Math.round(((w.bbox?.x0 ?? 0) / Math.max(1, image.width)) * 1000) / 10,
-          y: Math.round(((w.bbox?.y0 ?? 0) / Math.max(1, image.height)) * 1000) / 10,
-          width: Math.round((((w.bbox?.x1 ?? 0) - (w.bbox?.x0 ?? 0)) / Math.max(1, image.width)) * 1000) / 10,
-          height: Math.round((((w.bbox?.y1 ?? 0) - (w.bbox?.y0 ?? 0)) / Math.max(1, image.height)) * 1000) / 10,
-          unit: "percent" as const,
-        },
-      }));
-    if (!best || score > bestScore) best = { text, confidence: quality.confidence, quality, wordBoxes };
+
+    if (!best || score > bestScore) {
+      best = {
+        text,
+        confidence: quality.confidence,
+        quality,
+        wordBoxes: extractedWords,
+        lineBoxes: extractedLines,
+      };
+    }
     if (quality.status === "RELIABLE") break;
     progress("Checking a second text layout to improve recognition…");
   }
@@ -519,6 +579,7 @@ async function extractImage(file: File, progress: ExtractionProgress): Promise<U
             timestampSeconds: 0,
             ocrText: result.text,
             wordBoxes: result.wordBoxes,
+            lineBoxes: result.lineBoxes,
           }],
         },
       };

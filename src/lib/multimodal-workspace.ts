@@ -76,6 +76,7 @@ export interface PageData {
   pageNumber: number;
   text: string;
   wordBoxes?: Array<{ text: string; bbox: BoundingBox }>;
+  lineBoxes?: Array<{ text: string; bbox: BoundingBox }>;
 }
 
 export interface SlideData {
@@ -108,6 +109,7 @@ export interface MediaFrameData {
   thumbnailUrl?: string;
   ocrText?: string;
   wordBoxes?: Array<{ text: string; bbox: BoundingBox }>;
+  lineBoxes?: Array<{ text: string; bbox: BoundingBox }>;
   dominantColors?: string[];
 }
 
@@ -339,15 +341,58 @@ export function mapFindingsToAnnotations(
 
     // 5. Image bounding box mapping
     else if (["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"].includes(ext)) {
-      baseAnn.locationType = "IMAGE_BBOX";
-      // Bounding box estimated or derived from OCR coordinates
-      if (structuralData?.frames?.[0]?.wordBoxes) {
-        const box = structuralData.frames[0].wordBoxes.find((b) => finding.claim_text.includes(b.text));
-        if (box) baseAnn.boundingBox = box.bbox;
+      const frame = structuralData?.frames?.[0];
+      if (frame) {
+        // First check lineBoxes for exact or substring matches
+        if (frame.lineBoxes && frame.lineBoxes.length > 0) {
+          const matchedLine = frame.lineBoxes.find((l) => {
+            const cleanL = l.text.toLowerCase().replace(/[^\w\s]/g, "").trim();
+            const cleanClaim = finding.claim_text.toLowerCase().replace(/[^\w\s]/g, "").trim();
+            return cleanL.length > 2 && (cleanL.includes(cleanClaim) || cleanClaim.includes(cleanL));
+          });
+          if (matchedLine) {
+            baseAnn.locationType = "IMAGE_BBOX";
+            baseAnn.boundingBox = matchedLine.bbox;
+          }
+        }
+
+        // If not matched to a single line, match constituent words in wordBoxes and compute union bounding box
+        if (!baseAnn.boundingBox && frame.wordBoxes && frame.wordBoxes.length > 0) {
+          const claimWords = finding.claim_text
+            .toLowerCase()
+            .replace(/[^\w\s-]/g, "")
+            .split(/\s+/)
+            .filter((w) => w.length > 2);
+
+          const matchedBoxes = frame.wordBoxes.filter((wb) => {
+            const cleanWord = wb.text.toLowerCase().replace(/[^\w\s-]/g, "");
+            return claimWords.some((cw) => cleanWord === cw || cleanWord.includes(cw) || cw.includes(cleanWord));
+          });
+
+          if (matchedBoxes.length === 1) {
+            baseAnn.locationType = "IMAGE_BBOX";
+            baseAnn.boundingBox = matchedBoxes[0].bbox;
+          } else if (matchedBoxes.length > 1) {
+            const minX = Math.max(0, Math.min(...matchedBoxes.map((b) => b.bbox.x)));
+            const minY = Math.max(0, Math.min(...matchedBoxes.map((b) => b.bbox.y)));
+            const maxX = Math.min(100, Math.max(...matchedBoxes.map((b) => b.bbox.x + b.bbox.width)));
+            const maxY = Math.min(100, Math.max(...matchedBoxes.map((b) => b.bbox.y + b.bbox.height)));
+            baseAnn.locationType = "IMAGE_BBOX";
+            baseAnn.boundingBox = {
+              x: Math.round(minX * 10) / 10,
+              y: Math.round(minY * 10) / 10,
+              width: Math.round((maxX - minX) * 10) / 10,
+              height: Math.round((maxY - minY) * 10) / 10,
+              unit: "percent",
+            };
+          }
+        }
       }
+
+      // If coordinates cannot be established reliably, do NOT fabricate fake highlights.
+      // Leave boundingBox undefined and keep locationType as TEXT_OFFSET.
       if (!baseAnn.boundingBox) {
-        // Default sensible region if word-level coordinates were unmeasured
-        baseAnn.boundingBox = { x: 10, y: 15, width: 80, height: 25, unit: "percent" };
+        baseAnn.locationType = "TEXT_OFFSET";
       }
     }
 

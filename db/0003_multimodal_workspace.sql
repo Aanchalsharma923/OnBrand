@@ -170,3 +170,4 @@ CREATE POLICY editable_representations_tenant_isolation ON editable_representati
 
 CREATE POLICY exported_revisions_tenant_isolation ON exported_revisions FOR ALL
   USING (organization_id = NULLIF(current_setting('app.organization_id', true), '')::uuid);
+
