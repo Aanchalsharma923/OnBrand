@@ -20,6 +20,10 @@ export interface FindingsPanelProps {
     unsupported: number;
     needsHuman: number;
     dismissed: number;
+    confirmedIssues?: number;
+    unsupportedClaims?: number;
+    suggestionsCount?: number;
+    noIssuesCount?: number;
   };
 }
 
@@ -33,14 +37,19 @@ export function FindingsPanel({
   onSetFilter,
   summaryCounts,
 }: FindingsPanelProps) {
+  const confirmedCount = summaryCounts.confirmedIssues ?? (summaryCounts.critical + summaryCounts.high);
+  const unsupportedCount = summaryCounts.unsupportedClaims ?? summaryCounts.unsupported;
+  const needsHumanCount = summaryCounts.needsHuman;
+  const suggestionsCount = summaryCounts.suggestionsCount ?? 0;
+  const noIssuesCount = summaryCounts.noIssuesCount ?? 0;
+
   const filterPills = [
     { id: "all", label: `All Actionable (${actionableList.length})` },
-    ...(summaryCounts.critical > 0 ? [{ id: "critical", label: `Critical (${summaryCounts.critical})` }] : []),
-    ...(summaryCounts.high > 0 ? [{ id: "high", label: `High (${summaryCounts.high})` }] : []),
-    ...(summaryCounts.medium > 0 ? [{ id: "medium", label: `Medium (${summaryCounts.medium})` }] : []),
-    ...(summaryCounts.low > 0 ? [{ id: "low", label: `Low (${summaryCounts.low})` }] : []),
-    ...(summaryCounts.unsupported > 0 ? [{ id: "needs_evidence", label: `Needs Evidence (${summaryCounts.unsupported})` }] : []),
-    ...(summaryCounts.needsHuman > 0 ? [{ id: "needs_human", label: `Needs Human (${summaryCounts.needsHuman})` }] : []),
+    ...(confirmedCount > 0 ? [{ id: "confirmed", label: `Confirmed Issues (${confirmedCount})` }] : []),
+    ...(unsupportedCount > 0 ? [{ id: "unsupported", label: `Unsupported Claims (${unsupportedCount})` }] : []),
+    ...(needsHumanCount > 0 ? [{ id: "needs_human", label: `Needs Human (${needsHumanCount})` }] : []),
+    ...(suggestionsCount > 0 ? [{ id: "suggestions", label: `Suggestions (${suggestionsCount})` }] : []),
+    ...(noIssuesCount > 0 ? [{ id: "no_issues", label: `No Issues (${noIssuesCount})` }] : []),
     ...(summaryCounts.dismissed > 0 ? [{ id: "resolved", label: `Resolved (${summaryCounts.dismissed})` }] : []),
   ];
 
@@ -50,42 +59,69 @@ export function FindingsPanel({
       <div className="findings-panel-header">
         <span className="panel-kicker">GOVERNANCE AUDIT</span>
         <div className="title-row">
-          <h3>Issues Found</h3>
+          <h3>Findings &amp; Analysis</h3>
           <span className="findings-count-pill">
             {filteredList.length} / {actionableList.length} actionable
           </span>
         </div>
       </div>
 
-      {/* Summary Stat Chips */}
-      <div className="summary-stat-chips" aria-label="Findings breakdown">
-        <span className="stat-chip warn">
-          <b>{summaryCounts.totalActionable}</b> Actionable
-        </span>
-        {(summaryCounts.critical > 0 || summaryCounts.high > 0) && (
-          <span className="stat-chip critical">
-            <b>{summaryCounts.critical + summaryCounts.high}</b> High/Critical
+      {/* 5-Category Summary Stat Chips */}
+      <div className="summary-stat-chips" aria-label="Findings breakdown by verification category">
+        {confirmedCount > 0 && (
+          <span
+            className="stat-chip critical"
+            onClick={() => onSetFilter("confirmed")}
+            style={{ cursor: "pointer" }}
+            title="Confirmed contradictions and guideline conflicts"
+          >
+            <b>{confirmedCount}</b> Confirmed
           </span>
         )}
-        {summaryCounts.unsupported > 0 && (
-          <span className="stat-chip amber">
-            <b>{summaryCounts.unsupported}</b> Needs Evidence
+        {unsupportedCount > 0 && (
+          <span
+            className="stat-chip amber"
+            onClick={() => onSetFilter("unsupported")}
+            style={{ cursor: "pointer" }}
+            title="Claims requiring approved evidence citations"
+          >
+            <b>{unsupportedCount}</b> Unsupported
           </span>
         )}
-        {summaryCounts.needsHuman > 0 && (
-          <span className="stat-chip purple">
-            <b>{summaryCounts.needsHuman}</b> Needs Human
+        {needsHumanCount > 0 && (
+          <span
+            className="stat-chip purple"
+            onClick={() => onSetFilter("needs_human")}
+            style={{ cursor: "pointer" }}
+            title="High-risk or ambiguous claims requiring human judgment"
+          >
+            <b>{needsHumanCount}</b> Needs Human
           </span>
         )}
-        {summaryCounts.dismissed > 0 && (
-          <span className="stat-chip green">
-            <b>{summaryCounts.dismissed}</b> Resolved
+        {suggestionsCount > 0 && (
+          <span
+            className="stat-chip teal"
+            onClick={() => onSetFilter("suggestions")}
+            style={{ cursor: "pointer", background: "rgba(20, 184, 166, 0.12)", color: "#14b8a6", borderColor: "rgba(20, 184, 166, 0.3)" }}
+            title="Actionable suggested corrections available"
+          >
+            <b>{suggestionsCount}</b> Suggestions
+          </span>
+        )}
+        {noIssuesCount > 0 && (
+          <span
+            className="stat-chip green"
+            onClick={() => onSetFilter("no_issues")}
+            style={{ cursor: "pointer" }}
+            title="Compliant statements and brand identifiers"
+          >
+            <b>{noIssuesCount}</b> No Issues
           </span>
         )}
       </div>
 
       {/* Filter Tabs */}
-      <div className="filter-pills" role="tablist" aria-label="Filter findings by category or severity">
+      <div className="filter-pills" role="tablist" aria-label="Filter findings by category or verification outcome">
         {filterPills.map((pill) => (
           <button
             key={pill.id}
@@ -105,25 +141,65 @@ export function FindingsPanel({
         {filteredList.length === 0 ? (
           <div className="empty-findings-box">
             <span className="empty-icon">✓</span>
-            <b>No issues in this filter</b>
-            <small>Content passes current governance checks.</small>
+            <b>No items in this filter</b>
+            <small>Content satisfies all selected governance rules.</small>
           </div>
         ) : (
           filteredList.map((f) => {
             const isSelected = selectedFindingId === f.finding_id || selectedFindingId === f.rawFindingId;
             const severityCls = f.severity.toLowerCase();
 
+            // Explicit visual treatment mapping
+            const isContradiction =
+              f.classification === "CONFIRMED_VIOLATION" ||
+              f.evidence_status === "CONTRADICTED" ||
+              f.evidence_status === "CONFLICT";
+            const isUnsupported =
+              f.classification === "UNSUPPORTED_CLAIM" ||
+              f.evidence_status === "NO_APPROVED_EVIDENCE" ||
+              (f.evidence_status as string) === "UNSUPPORTED";
+            const isNeedsHuman =
+              f.classification === "NEEDS_HUMAN" || f.evidence_status === "NEEDS_HUMAN";
+            const isNoIssue =
+              f.classification === "INFORMATIONAL" ||
+              f.evidence_status === "SUPPORTED" ||
+              (f.evidence_status as string) === "NO_ISSUE";
+
+            const cardOutcomeClass = isContradiction
+              ? "outcome-contradiction"
+              : isUnsupported
+              ? "outcome-unsupported"
+              : isNeedsHuman
+              ? "outcome-needs-human"
+              : isNoIssue
+              ? "outcome-no-issue"
+              : "";
+
             return (
               <button
                 key={f.finding_id}
                 type="button"
-                className={`finding-card-row ${severityCls}${isSelected ? " selected" : ""}${f.dismissed ? " dismissed" : ""}`}
+                className={`finding-card-row ${severityCls} ${cardOutcomeClass}${isSelected ? " selected" : ""}${f.dismissed ? " dismissed" : ""}`}
                 onClick={() => onSelectFinding(f)}
                 aria-pressed={isSelected}
               >
                 <div className="finding-row-top">
                   <div className="tags-cluster">
-                    <span className={`severity-badge ${severityCls}`}>{f.severity}</span>
+                    {isContradiction ? (
+                      <span className="severity-badge critical">⚠ Confirmed</span>
+                    ) : isUnsupported ? (
+                      <span className="severity-badge high" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", borderColor: "rgba(245, 158, 11, 0.35)" }}>
+                        ❓ Unsupported
+                      </span>
+                    ) : isNeedsHuman ? (
+                      <span className="severity-badge medium" style={{ background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", borderColor: "rgba(168, 85, 247, 0.35)" }}>
+                        👤 Review
+                      </span>
+                    ) : (
+                      <span className="severity-badge low" style={{ background: "rgba(34, 197, 94, 0.15)", color: "#4ade80", borderColor: "rgba(34, 197, 94, 0.35)" }}>
+                        ✓ Compliant
+                      </span>
+                    )}
                     <span className="category-label">{f.category.replaceAll("_", " ")}</span>
                   </div>
                   {f.occurrenceCount > 1 && (

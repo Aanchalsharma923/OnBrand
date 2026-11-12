@@ -305,24 +305,65 @@ export default function Home() {
     return enrichedList.filter((f) => f.classification !== "INFORMATIONAL" && !f.dismissed);
   }, [enrichedList]);
 
-  const summaryCounts = useMemo(() => ({
-    total: actionableList.length,
-    totalActionable: actionableList.length,
-    critical: actionableList.filter((f) => f.severity === "Critical").length,
-    high: actionableList.filter((f) => f.severity === "High").length,
-    medium: actionableList.filter((f) => f.severity === "Medium").length,
-    low: actionableList.filter((f) => f.severity === "Low").length,
-    criticalHigh: actionableList.filter((f) => f.severity === "Critical" || f.severity === "High").length,
-    needsEvidence: actionableList.filter((f) => f.classification === "UNSUPPORTED_CLAIM").length,
-    unsupported: actionableList.filter((f) => f.classification === "UNSUPPORTED_CLAIM").length,
-    needsHuman: actionableList.filter((f) => f.classification === "NEEDS_HUMAN").length,
-    resolved: enrichedList.filter((f) => f.dismissed).length,
-    dismissed: enrichedList.filter((f) => f.dismissed).length,
-    aligned: enrichedList.filter((f) => f.classification === "INFORMATIONAL").length,
-  }), [actionableList, enrichedList]);
+  const summaryCounts = useMemo(() => {
+    const confirmedCount = actionableList.filter(
+      (f) => f.classification === "CONFIRMED_VIOLATION" || f.evidence_status === "CONTRADICTED" || f.evidence_status === "CONFLICT"
+    ).length;
+    const unsupportedCount = actionableList.filter(
+      (f) => f.classification === "UNSUPPORTED_CLAIM" || f.evidence_status === "NO_APPROVED_EVIDENCE" || (f.evidence_status as string) === "UNSUPPORTED"
+    ).length;
+    const needsHumanCount = actionableList.filter(
+      (f) => f.classification === "NEEDS_HUMAN" || f.evidence_status === "NEEDS_HUMAN"
+    ).length;
+    const suggestionsCount = enrichedList.filter(
+      (f) => Boolean(f.suggestedCorrection || f.suggestion)
+    ).length;
+    const noIssuesCount = enrichedList.filter(
+      (f) => f.classification === "INFORMATIONAL" || f.evidence_status === "SUPPORTED" || (f.evidence_status as string) === "NO_ISSUE"
+    ).length;
+
+    return {
+      total: actionableList.length,
+      totalActionable: actionableList.length,
+      confirmedIssues: confirmedCount,
+      unsupportedClaims: unsupportedCount,
+      critical: actionableList.filter((f) => f.severity === "Critical").length,
+      high: actionableList.filter((f) => f.severity === "High").length,
+      medium: actionableList.filter((f) => f.severity === "Medium").length,
+      low: actionableList.filter((f) => f.severity === "Low").length,
+      criticalHigh: actionableList.filter((f) => f.severity === "Critical" || f.severity === "High").length,
+      needsEvidence: unsupportedCount,
+      unsupported: unsupportedCount,
+      needsHuman: needsHumanCount,
+      suggestionsCount,
+      noIssuesCount,
+      resolved: enrichedList.filter((f) => f.dismissed).length,
+      dismissed: enrichedList.filter((f) => f.dismissed).length,
+      aligned: noIssuesCount,
+    };
+  }, [actionableList, enrichedList]);
 
   const filteredEnrichedList = useMemo(() => {
     switch (productFilter) {
+      case "confirmed":
+        return actionableList.filter(
+          (f) => f.classification === "CONFIRMED_VIOLATION" || f.evidence_status === "CONTRADICTED" || f.evidence_status === "CONFLICT"
+        );
+      case "unsupported":
+      case "needs_evidence":
+        return actionableList.filter(
+          (f) => f.classification === "UNSUPPORTED_CLAIM" || f.evidence_status === "NO_APPROVED_EVIDENCE" || (f.evidence_status as string) === "UNSUPPORTED"
+        );
+      case "needs_human":
+        return actionableList.filter(
+          (f) => f.classification === "NEEDS_HUMAN" || f.evidence_status === "NEEDS_HUMAN"
+        );
+      case "suggestions":
+        return enrichedList.filter((f) => Boolean(f.suggestedCorrection || f.suggestion));
+      case "no_issues":
+        return enrichedList.filter(
+          (f) => f.classification === "INFORMATIONAL" || f.evidence_status === "SUPPORTED" || (f.evidence_status as string) === "NO_ISSUE"
+        );
       case "critical":
         return actionableList.filter((f) => f.severity === "Critical");
       case "high":
@@ -331,10 +372,6 @@ export default function Home() {
         return actionableList.filter((f) => f.severity === "Medium");
       case "low":
         return actionableList.filter((f) => f.severity === "Low");
-      case "needs_evidence":
-        return actionableList.filter((f) => f.classification === "UNSUPPORTED_CLAIM");
-      case "needs_human":
-        return actionableList.filter((f) => f.classification === "NEEDS_HUMAN");
       case "resolved":
         return enrichedList.filter((f) => f.dismissed);
       case "all_including_compliant":

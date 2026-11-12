@@ -4,9 +4,15 @@ export type EvidenceStatus =
   | "PARTIALLY_SUPPORTED"
   | "CONTRADICTED"
   | "NO_APPROVED_EVIDENCE"
+  | "UNSUPPORTED"
   | "CONFLICT"
-  | "NEEDS_HUMAN";
+  | "NEEDS_HUMAN"
+  | "NO_ISSUE"
+  | "NOT_APPLICABLE";
 export type Severity = "LOW" | "MEDIUM" | "HIGH" | "REVIEW";
+
+import { classifyClaim, shouldSkipNonClaim } from "./claim-classifier";
+import { generateSpecificExplanation } from "./finding-explanations";
 export type ExtractionReview = {
   method: "OCR";
   quality: "RELIABLE" | "NEEDS_PROOFREAD" | "UNREADABLE";
@@ -514,7 +520,7 @@ export function reviewDraft(input: {
     const raw = sentence[0];
     const base = sentence.index ?? 0;
     const sentenceWithoutLeadIn = normalize(raw.replace(/^\s*meet\s+/i, "").replace(/[.!?\s]+$/g, ""));
-    if (sentenceWithoutLeadIn === normalize(draft.product)) return [];
+    if (sentenceWithoutLeadIn === normalize(draft.product) || shouldSkipNonClaim(raw, draft.product)) return [];
     const metricPattern = /\b\d+(?:\.\d+)?\s*(?:g|grams?|mg|ml|months?|jars?|bites?)\s+(?:serving|protein|added\s+sugar|sugar|calories|jars?|bites?)\b/gi;
     const metrics = [...raw.matchAll(metricPattern)];
     if (metrics.length < 2) {
@@ -526,7 +532,7 @@ export function reviewDraft(input: {
         const leading = segment.length - segment.trimStart().length;
         segments.push({ text, start: base + from + leading, end: base + from + leading + text.length });
       };
-      const predicateBoundary = /\b(?:and|but|while)\s+(?=(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b)/gi;
+      const predicateBoundary = /(?:\s*—\s*|\s*\|\s*|;\s*|\b(?:and|but|while)\s+(?=(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b))/gi;
       let segmentStart = 0;
       for (const boundary of raw.matchAll(predicateBoundary)) {
         const boundaryStart = boundary.index ?? segmentStart;
@@ -536,12 +542,14 @@ export function reviewDraft(input: {
       addSegment(segmentStart, raw.length);
       const firstPredicate = raw.match(/\b(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b/i);
       const subjectContext = firstPredicate?.index === undefined ? "" : raw.slice(0, firstPredicate.index).trim();
-      return segments.map((segment, index) => ({
-        ...segment,
-        context: raw,
-        retrievalText: index > 0 && subjectContext ? `${subjectContext} ${segment.text}` : segment.text,
-        coverageGap: false as const,
-      }));
+      return segments
+        .filter((seg) => !shouldSkipNonClaim(seg.text, draft.product))
+        .map((segment, index) => ({
+          ...segment,
+          context: raw,
+          retrievalText: index > 0 && subjectContext ? `${subjectContext} ${segment.text}` : segment.text,
+          coverageGap: false as const,
+        }));
     }
     const metricClaims = metrics.map((metric) => ({ text: metric[0].trim(), start: base + (metric.index ?? 0), end: base + (metric.index ?? 0) + metric[0].length, context: raw, retrievalText: metric[0].trim(), coverageGap: false as const }));
     const segments: Array<{ text: string; start: number; end: number }> = [];
@@ -552,7 +560,7 @@ export function reviewDraft(input: {
       const leading = segment.length - segment.trimStart().length;
       segments.push({ text, start: base + from + leading, end: base + from + leading + text.length });
     };
-    const predicateBoundary = /\b(?:and|but|while)\s+(?=(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b)/gi;
+    const predicateBoundary = /(?:\s*—\s*|\s*\|\s*|;\s*|\b(?:and|but|while)\s+(?=(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b))/gi;
     let segmentStart = 0;
     for (const boundary of raw.matchAll(predicateBoundary)) {
       const boundaryStart = boundary.index ?? segmentStart;
@@ -561,6 +569,7 @@ export function reviewDraft(input: {
     }
     addSegment(segmentStart, raw.length);
     const uncoveredFacts = segments.filter((segment) => {
+      if (shouldSkipNonClaim(segment.text, draft.product)) return false;
       const hasFactualPredicate = /\b(?:is|are|was|were|contains?|includes?|include|has|have|made|provides?|delivers?|supports?|improves?|prevents?|treats?|cures?|helps?|offers?|comes?)\b/i.test(segment.text);
       const overlapsMetric = metricClaims.some((metric) => segment.start < metric.end && segment.end > metric.start);
       return hasFactualPredicate && !overlapsMetric;
@@ -651,7 +660,7 @@ export function reviewDraft(input: {
       explanation = "A retrieved citation failed its source, version, scope or exact-quote check. The citation was excluded; a reviewer must inspect this claim.";
     } else if (conflict) {
       status = "CONFLICT"; severity = "HIGH";
-      explanation = "Eligible approved sources at the same authority level disagree. The system will not choose a value automatically.";
+      explanation = `Eligible approved sources at the same authority level disagree. The system will not choose a value automatically.${best ? ` One source states: “${best.fact.statement}”.` : ""} Commercial offer terms and quantities must be reconciled before publication.`;
     } else if (rule) {
       const restricted = /sugar free|zero sugar|no sugar|prevent|cure|treat|children grow|smarter|meal replacement/i.test(claimText);
       if (!rule.evidence?.length && /children grow|smarter/i.test(claimText)) {
@@ -661,13 +670,24 @@ export function reviewDraft(input: {
       } else {
         status = restricted ? "CONTRADICTED" : (best ? "PARTIALLY_SUPPORTED" : "NO_APPROVED_EVIDENCE");
         severity = rule.severity;
-        explanation = rule.evidence?.length
-          ? `${rule.label}. Applicable approved policy says: “${rule.evidence[0].quote}”`
-          : `${rule.label}. The applicable restriction is recorded in the review rules, but no approved quotation was retrieved; a reviewer should verify the policy basis.`;
+        if (/sugar free|zero sugar|no sugar/i.test(claimText) && sugarFact && servingFact) {
+          explanation = `Under FDA 21 CFR 101.60(c), 'Sugar Free' requires <0.5 g sugars per serving. Approved specification (SRC-PRODUCT) establishes ${sugarFact.fact.value} ${sugarFact.fact.unit ?? "g"} added sugar per ${servingFact.fact.value} ${servingFact.fact.unit ?? "g"} serving. Because this exceeds the statutory threshold, the claim contradicts the approved product formulation and violates mandatory nutrient content claim regulations.`;
+        } else {
+          explanation = rule.evidence?.length
+            ? `${rule.label}. Applicable approved policy says: “${rule.evidence[0].quote}”`
+            : `${rule.label}. The applicable restriction is recorded in the review rules, but no approved quotation was retrieved; a reviewer should verify the policy basis.`;
+        }
       }
     } else if (!best || best.score < 0.2) {
-      status = "NO_APPROVED_EVIDENCE"; severity = "REVIEW";
-      explanation = "No applicable approved source was found. This means unverified, not proven false.";
+      status = "NO_APPROVED_EVIDENCE"; severity = isRisk ? "HIGH" : "REVIEW";
+      const classified = classifyClaim(claimText, claim.context, draft.product);
+      const specific = generateSpecificExplanation({
+        exactWords: claimText,
+        claimType: classified.claimType,
+        outcome: "UNSUPPORTED",
+        product: draft.product,
+      });
+      explanation = specific.summaryText;
     } else if (claimQuantities.length && evidenceQuantity && !quantityMatches && claimQuantities.some((q) => q.unit[0] === evidenceQuantity.unit[0])) {
       status = "CONTRADICTED"; severity = "HIGH";
       explanation = `The draft states ${claimQuantities.map((q) => `${q.number} ${q.unit}`).join(", ")}; the highest-precedence approved source states ${evidenceQuantity.number} ${evidenceQuantity.unit}.`;

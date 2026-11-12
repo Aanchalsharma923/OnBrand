@@ -147,9 +147,9 @@ export function classifyFinding(finding: Finding): {
   }
 
   // 2. Needs approved evidence -> check if promotional/superlative claim vs brand inconsistency vs informational
-  if (status === "NO_APPROVED_EVIDENCE") {
+  if (status === "NO_APPROVED_EVIDENCE" || (status as string) === "UNSUPPORTED") {
     const isPromotional = PROMOTIONAL_SUPERLATIVE_PATTERNS.some((p) => p.test(text) || p.test(expl));
-    if (isPromotional || finding.category === "PROMOTIONAL_COMPLIANCE") {
+    if (isPromotional || finding.category === "PROMOTIONAL_COMPLIANCE" || finding.category === "PRODUCT_FACT") {
       return {
         classification: "UNSUPPORTED_CLAIM",
         severity: finding.blocking_for_review ? "High" : "Medium",
@@ -220,11 +220,16 @@ export function deriveFindingTitle(finding: Finding, category: FindingCategory, 
     if (statusIsContradiction(finding)) return "Factual Discrepancy with Approved Specification";
     return "Factual Statement Requiring Approved Source";
   }
-  if (text.includes("miracle") || text.includes("guilt-free")) return "Brand Voice: Prohibited Terminology";
+  if (text.includes("miracle") || text.includes("guilt-free") || text.includes("guaranteed")) return "Brand Voice: Prohibited Terminology";
+  if (/bundle|delivery|jars|offer|price|\$/i.test(text)) return "Commercial Offer Verification Required";
+  if (/protein|sugar|serving|calories|fat/i.test(text)) return "Nutrition Claim Requiring Certified Panel";
+  if (/made with|contains|wholegrain|oats|ingredients/i.test(text)) return "Ingredient Statement Requiring Approved Specification";
+  if (/children grow|smarter|brain|health|cure|prevent/i.test(text)) return "Health Claim Requiring Clinical Substantiation";
+
   return classification === "CONFIRMED_VIOLATION"
     ? "Brand Guideline Conflict"
     : classification === "UNSUPPORTED_CLAIM"
-    ? "Unverified Brand Assertion"
+    ? "Unverified Copy Assertion"
     : "Guideline Assessment Needed";
 }
 
@@ -242,7 +247,13 @@ export function deriveWhyItMatters(category: FindingCategory, _classification?: 
     case "FACTUAL_ACCURACY":
       return "Publishing conflicting or out-of-date product specifications erodes customer trust and causes operational confusion across sales, customer support, and packaging.";
     case "BRAND_CONSISTENCY":
-      return "Inconsistent voice, unauthorised taglines, or prohibited terminology weakens market positioning and fragments corporate brand equity.";
+      if (_text && /miracle|guilt-free|guaranteed/i.test(_text)) {
+        return "Using prohibited superlatives or unauthorized promotional claims undermines brand credibility and breaches enterprise style guidelines.";
+      }
+      if (_text && /bundle|delivery|jars|offer/i.test(_text)) {
+        return "Commercial package contents and delivery terms must match active e-commerce offers to prevent customer fulfillment disputes.";
+      }
+      return "Marketing copy must align with approved brand guidelines and tone standards to maintain cohesive customer communication.";
     case "VISUAL_IDENTITY":
       return "Off-palette colors and inconsistent visual assets degrade brand recognition and violate published enterprise visual design tokens.";
     case "ACCESSIBILITY":
@@ -257,12 +268,24 @@ export function deriveWhyItMatters(category: FindingCategory, _classification?: 
 /**
  * Derives actionable guidance on what the creator or reviewer should do next.
  */
-export function deriveNextAction(classification: FindingClassification, _category?: FindingCategory): string {
+export function deriveNextAction(classification: FindingClassification, _category?: FindingCategory, text?: string): string {
+  if (text && /bundle|delivery|jars|offer/i.test(text)) {
+    return "Verify bundle configuration and delivery terms with the e-commerce team or link the approved commercial promotional sheet.";
+  }
+  if (text && /protein|sugar|serving|calories/i.test(text)) {
+    return "Attach the certified nutrition panel for this product variant or adjust the claim to match the specification.";
+  }
+  if (text && /made with|wholegrain|ingredients/i.test(text)) {
+    return "Attach the approved ingredient formulation sheet or supplier specification.";
+  }
+  if (text && /children grow|smarter|brain/i.test(text)) {
+    return "Escalate to legal and regulatory compliance for mandatory human review; provide clinical study documentation.";
+  }
   switch (classification) {
     case "CONFIRMED_VIOLATION":
       return "Apply the suggested correction or rewrite the passage to conform with the cited approved source.";
     case "UNSUPPORTED_CLAIM":
-      return "Add an approved study/document to the knowledge library, or remove the ungrounded assertion.";
+      return "Add the approved source document to the knowledge library, or remove the ungrounded assertion.";
     case "BRAND_INCONSISTENCY":
       return "Align wording and tone with approved brand voice guidelines and terminology.";
     case "NEEDS_HUMAN":
