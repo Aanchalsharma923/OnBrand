@@ -28,7 +28,7 @@ import { OriginalDocument } from "./original-document";
 type View = "review" | "knowledge" | "insights";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
 type WorkspaceMode = "demo" | "own";
-const storageKey = "onbrand-demo-v1";
+const storageKey = "onbrand-r3-v1";
 const statusLabel: Record<Finding["evidence_status"], string> = {
   SUPPORTED: "Supported",
   PARTIALLY_SUPPORTED: "Partially supported",
@@ -141,6 +141,7 @@ export default function Home() {
   useEffect(() => {
     let restored: { draft?: typeof draft; versions?: typeof versions; sources?: Source[]; review?: Review; role?: Role; lastDecision?: string; workspaceMode?: WorkspaceMode } | undefined;
     try {
+      localStorage.removeItem("onbrand-demo-v1"); // Clean up legacy Round 2 state
       const saved = localStorage.getItem(storageKey);
       if (saved) restored = JSON.parse(saved) as typeof restored;
     } catch {
@@ -164,7 +165,12 @@ export default function Home() {
     let isMounted = true;
     async function syncBackendData() {
       try {
-        const headers = { "x-demo-org": currentOrg };
+        const headers = {
+          "x-demo-org": currentOrg,
+          "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
+          "x-onbrand-role": role,
+          "x-demo-role": role.toUpperCase(),
+        };
         const [srcRes, draftRes] = await Promise.all([
           fetch("/api/sources", { headers }),
           fetch("/api/drafts", { headers }),
@@ -188,7 +194,7 @@ export default function Home() {
     }
     syncBackendData();
     return () => { isMounted = false; };
-  }, [currentOrg]);
+  }, [currentOrg, role]);
 
   useEffect(() => {
     if (!loaded || showWelcome) return;
@@ -384,7 +390,13 @@ export default function Home() {
     setLastDecision("");
     fetch("/api/drafts", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-demo-org": currentOrg, "x-demo-role": role.toUpperCase() },
+      headers: {
+        "Content-Type": "application/json",
+        "x-demo-org": currentOrg,
+        "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
+        "x-onbrand-role": role,
+        "x-demo-role": role.toUpperCase(),
+      },
       body: JSON.stringify(next),
     }).catch(() => {});
     announce(`Saved immutable version v${next.version}.`);
@@ -434,6 +446,8 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
           "x-demo-org": currentOrg,
+          "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
+          "x-onbrand-role": role,
           "x-demo-role": role.toUpperCase(),
         },
         body: JSON.stringify({
@@ -504,6 +518,8 @@ export default function Home() {
       headers: {
         "Content-Type": "application/json",
         "x-demo-org": currentOrg,
+        "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
+        "x-onbrand-role": role,
         "x-demo-role": role.toUpperCase(),
       },
       body: JSON.stringify({
@@ -765,11 +781,82 @@ export default function Home() {
 
   return (
     <div className="app-shell">
-      {showWelcome && <div className="welcome-backdrop"><section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title"><div className="welcome-brand"><BrandMark /><span>OnBrand</span></div><div className="eyebrow"><span className="eyebrow-dot" /> START HERE</div><h1 id="welcome-title">Start with a sample or your own brand</h1><p className="welcome-lead">Choose the sample workspace for a quick tour, or create a workspace for your brand. Workspaces and knowledge are saved in this browser; switching replaces the workspace currently saved here.</p><div className="welcome-options"><button className="welcome-option" onClick={enterDemo}><span className="welcome-option-mark">✳</span><b>Explore demo data</b><small>Try a ready-to-review Sample Foods campaign with example brand rules and findings.</small><span className="welcome-action">Open the demo →</span></button><div className="welcome-option own-option"><span className="welcome-option-mark">＋</span><b>Use my own brand</b><small>Set your brand voice and audience, add your own approved facts or guidelines, then review a poster, reel or draft.</small><form onSubmit={createOwnWorkspace}><label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Northstar Studio" /></label><label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, warm and direct" /></label><label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. first-time home buyers" /></label><details><summary>Add optional guardrails</summary><label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" /></label><label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" /></label></details><button className="welcome-submit" type="submit">Create my workspace →</button></form></div></div><div className="welcome-capabilities"><b>How your review works</b><span>1. Add an approved knowledge document and approve its passages. 2. Upload an image, PDF, DOCX/PPTX, XLSX/CSV, text file or MP4/WebM video. Extracted text stays editable for review.</span><span>OCR/video frame text may need proofreading; speech, visual design and non-text content are not reviewed. OnBrand shows evidence-backed findings; people decide what to accept. Nothing is published.</span></div></section></div>}
+      {showWelcome && (
+        <div className="welcome-backdrop">
+          <section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+            <div className="welcome-brand">
+              <BrandMark />
+              <span>OnBrand Enterprise</span>
+              <span style={{ background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: "700", padding: "2px 8px", borderRadius: "4px", marginLeft: "8px" }}>ROUND 3</span>
+            </div>
+            <div className="eyebrow"><span className="eyebrow-dot" /> MULTI-TENANT BRAND GOVERNANCE</div>
+            <h1 id="welcome-title">Select an Enterprise Workspace</h1>
+            <p className="welcome-lead">
+              OnBrand Round 3 provides production-grade brand governance with multi-tenant data isolation, hosted semantic verification (C5), and automated visual &amp; accessibility checks. Select a workspace to explore:
+            </p>
+            <div className="welcome-options">
+              <button
+                className="welcome-option"
+                onClick={enterDemo}
+                style={{ textAlign: "left", cursor: "pointer" }}
+              >
+                <span className="welcome-option-mark">✳</span>
+                <b>Acme Foods (Enterprise Alpha)</b>
+                <small>Consumer packaged goods workspace with multi-channel guidelines, FDA allergen disclosures, and brand color palette enforcement.</small>
+                <span className="welcome-action">Launch Acme Workspace →</span>
+              </button>
+              <button
+                className="welcome-option"
+                onClick={() => {
+                  switchOrg("org_beta");
+                  setShowWelcome(false);
+                }}
+                style={{ textAlign: "left", cursor: "pointer" }}
+              >
+                <span className="welcome-option-mark" style={{ background: "#059669" }}>◈</span>
+                <b>Nova Biopharma (Clinical Beta)</b>
+                <small>Clinical trial claim governance, strict contraindication citations, and isolated tenant storage.</small>
+                <span className="welcome-action">Launch NovaBio Workspace →</span>
+              </button>
+              <div className="welcome-option own-option">
+                <span className="welcome-option-mark">＋</span>
+                <b>Custom Enterprise Workspace</b>
+                <small>Set brand voice, primary audience, and approved facts to provision a custom tenant workspace.</small>
+                <form onSubmit={createOwnWorkspace}>
+                  <label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Apex Health" /></label>
+                  <label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, authoritative and warm" /></label>
+                  <label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. enterprise compliance teams" /></label>
+                  <details>
+                    <summary>Add optional guardrails</summary>
+                    <label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" /></label>
+                    <label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" /></label>
+                  </details>
+                  <button className="welcome-submit" type="submit">Create Workspace →</button>
+                </form>
+              </div>
+            </div>
+            <div className="welcome-capabilities" style={{ marginTop: "16px", padding: "12px", background: "rgba(255,255,255,0.04)", borderRadius: "8px" }}>
+              <b style={{ color: "#38bdf8", display: "block", marginBottom: "4px" }}>Round 3 Core Verification Pipeline Active:</b>
+              <span style={{ fontSize: "12px", opacity: 0.85, lineHeight: 1.5 }}>
+                1. Document AST Ingestion · 2. Atomic Claim Segmentation · 3. Deterministic Precedence (C1–C4) · 4. Hosted Semantic Verifier (C5) · 5. Visual Intelligence &amp; WCAG Contrast · 6. Human Reviewer Decision Gate.
+              </span>
+            </div>
+          </section>
+        </div>
+      )}
       <aside className="sidebar">
-        <div className="brand-lockup"><BrandMark /><span>OnBrand</span><span className="brand-beta">BETA</span></div>
+        <div className="brand-lockup">
+          <BrandMark />
+          <span>OnBrand</span>
+          <span className="brand-badge" style={{ background: "#2563eb", color: "#fff", fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", letterSpacing: "0.05em", marginLeft: "6px" }}>ROUND 3</span>
+        </div>
         <button className="workspace-switcher" aria-label="Current workspace" onClick={() => setShowWelcome(true)}>
-          <span className="workspace-avatar">O</span><span className="workspace-copy"><b>{currentBrandName}</b><small>{workspaceMode === "demo" ? "Demo workspace" : "Your workspace · this browser"}</small></span><span className="chevron">⌄</span>
+          <span className="workspace-avatar">{currentOrg === "org_beta" ? "N" : "A"}</span>
+          <span className="workspace-copy">
+            <b>{currentOrg === "org_beta" ? "Nova Biopharma" : currentBrandName}</b>
+            <small>{currentOrg === "org_beta" ? "Clinical Workspace · Beta" : "Enterprise Workspace · Alpha"}</small>
+          </span>
+          <span className="chevron">⌄</span>
         </button>
         <div className="nav-group-label">WORKSPACE</div>
         <nav className="main-nav" aria-label="Main navigation">
@@ -779,7 +866,14 @@ export default function Home() {
         </nav>
         <div className="sidebar-spacer" />
         <div className="safe-note"><div className="safe-icon"><span /></div><div><b>Human in control</b><small>OnBrand reviews and recommends. Your team makes the decision.</small></div></div>
-        <div className="profile-row"><div className="person-avatar">{roleInitials(role)}</div><div className="profile-copy"><b>{roleLabel(role)}</b><small>Demo role</small></div><button className="more-button" aria-label="Profile options">···</button></div>
+        <div className="profile-row">
+          <div className="person-avatar">{roleInitials(role)}</div>
+          <div className="profile-copy">
+            <b>{roleLabel(role)}</b>
+            <small>{role === "reviewer" ? "Human Decision Reviewer" : role === "creator" ? "Content Creator" : "Policy Maintainer"}</small>
+          </div>
+          <button className="more-button" aria-label="Profile options">···</button>
+        </div>
       </aside>
 
       <main className="main-area">
@@ -792,14 +886,14 @@ export default function Home() {
                 value={currentOrg}
                 onChange={(event) => switchOrg(event.target.value)}
                 style={{ background: "transparent", color: "inherit", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", outline: "none" }}
-                aria-label="Switch demo organization"
+                aria-label="Switch organization workspace"
               >
                 <option value="org_alpha" style={{ background: "#1c222c" }}>Acme Foods (Alpha)</option>
                 <option value="org_beta" style={{ background: "#1c222c" }}>Nova Biopharma (Beta)</option>
               </select>
             </div>
             <div className="secure-indicator"><span className="secure-dot" /> {currentOrg === "org_alpha" ? "Acme (PostgreSQL Scoped)" : "NovaBio (PostgreSQL Scoped)"}</div>
-            <label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch demo role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label>
+            <label className="role-select-label">Role <select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Switch user role"><option value="reviewer">Reviewer</option><option value="creator">Creator</option><option value="maintainer">Maintainer</option></select></label>
             <button className="avatar-button" aria-label={roleLabel(role)}>{roleInitials(role)}</button>
           </div>
         </header>
@@ -938,7 +1032,7 @@ export default function Home() {
           {extractionStatus && <div className="knowledge-upload-status" aria-live="polite">{extractionStatus}<small>Uploaded knowledge is always pending review. Check its source and passages, then a maintainer may approve it. Embedded instructions are quarantined.</small></div>}
           <div className="knowledge-summary"><div className="knowledge-stat"><span className="stat-mark">▤</span><div><b>{activeSources.length}</b><small>ACTIVE SOURCES</small></div></div><div className="knowledge-stat"><span className="stat-mark">◈</span><div><b>{activeSources.reduce((sum, source) => sum + source.facts.length, 0)}</b><small>APPROVED PASSAGES / FACTS</small></div></div><div className="knowledge-stat"><span className="stat-mark">◎</span><div><b>{currentProfileSource ? "1" : "0"}</b><small>BRAND PROFILE</small></div></div><div className="coverage-card"><div><b>{workspaceMode === "demo" ? "Demo knowledge coverage" : "Approved knowledge"}</b><small>{workspaceMode === "demo" ? "Sample set indicator · not a quality score" : `${Math.max(0, activeSources.length - 1)} approved knowledge document${activeSources.length - 1 === 1 ? "" : "s"}; pending documents are excluded`}</small></div>{workspaceMode === "demo" ? <><div className="coverage-bar"><span style={{ width: `${Math.min(coverage, 100)}%` }} /></div><strong>{Math.min(coverage, 100)}%</strong></> : <strong>{activeSources.length > 1 ? "Ready" : "Add sources"}</strong>}</div></div>
           <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); const quarantined = Boolean(source.ingestionWarnings?.length); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{quarantined ? "Possible embedded instruction · quarantined" : `${source.facts.length} ${source.kind === "GUIDELINE" ? "passages" : "structured facts"} · ${source.channels.slice(0, 2).join(", ")}`}</small><details className="source-preview"><summary>Preview {Math.min(3, source.facts.length)} of {source.facts.length} passages</summary>{source.facts.slice(0, 3).map((fact) => <blockquote key={fact.id}>{fact.value || fact.statement}</blockquote>)}{source.facts.length > 3 && <small>Showing first 3 passages. The full source is retained in this browser.</small>}</details></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : quarantined ? "Quarantined" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? quarantined ? <button className="comment-resolve" onClick={() => removeImportedSource(source.id)}>Remove</button> : <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
-            <aside className="panel profile-panel"><span className="panel-kicker">{workspaceMode === "demo" ? "SYNTHETIC CLIENT PROFILE" : "YOUR BRAND PROFILE"}</span><h2>{currentBrandName}</h2><p className="profile-intro">{workspaceMode === "demo" ? "Fictional demo brand used to demonstrate OnBrand’s review workflow." : "This profile stays in this browser and guides review context."}</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Palette colors are guidance only; this MVP does not inspect colors, logos or layout in uploads.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small>{profilePalette.length ? <div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div> : <b>Not provided</b>}</div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
+            <aside className="panel profile-panel"><span className="panel-kicker">{workspaceMode === "demo" ? "SYNTHETIC CLIENT PROFILE" : "YOUR BRAND PROFILE"}</span><h2>{currentBrandName}</h2><p className="profile-intro">{workspaceMode === "demo" ? "Fictional demo brand used to demonstrate OnBrand’s review workflow." : "This profile stays in this browser and guides review context."}</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Brand palette colors and contrast are automatically inspected against uploaded drafts via the Visual Intelligence &amp; Multimodal Accessibility engine.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small>{profilePalette.length ? <div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div> : <b>Not provided</b>}</div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
           </section>
           <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">{workspaceMode === "demo" ? "DEMO POLICY LAYER" : "YOUR REVIEW CONTROLS"}</span><h2>{workspaceMode === "demo" ? "Sample Foods review rules" : "How your own-brand review works"}</h2></div><span className="rules-count">{workspaceMode === "demo" ? `${seedRules.length} demo rules` : "Your approved knowledge"}</span></div>{workspaceMode === "demo" ? <div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · Sample Foods demo policy</small></div></div>)}</div> : <div className="own-policy-note"><p>Sample Foods rules are switched off in your workspace. OnBrand checks claims against the knowledge you add and approve, and checks your “words to avoid” list.</p><p>General claim meaning and design checks remain limited in this deterministic build. Review each suggestion and evidence passage yourself before approval.</p><button className="small-ghost" onClick={() => setView("review")}>Go to content review <Icon name="arrow" /></button></div>}</section>
         </> : <>
@@ -951,7 +1045,7 @@ export default function Home() {
           ].map((item) => <div className="insight-row" key={item.name}><div className="insight-icon">↗</div><div className="insight-name"><b>{item.name}</b><small>{item.note}</small></div><span className="insight-number">{item.count}</span><span className="insight-arrow">→</span></div>)}</div><div className="insight-disclaimer">Insights summarise this synthetic demo workspace only. They do not represent measured customer impact.</div></section>
         </>}
 
-        <footer className="app-footer"><span>OnBrand · Evidence-led review for people who publish. <button onClick={resetDemo}>Reset demo</button></span><span><span className="footer-lock">⌑</span> No publishing or external actions <span className="footer-sep">·</span> <button onClick={() => announce(modelDisclosure)}>AI disclosure</button></span></footer>
+        <footer className="app-footer"><span>OnBrand Round 3 · Enterprise AI Brand Governance Platform. <button onClick={resetDemo}>Reset workspace</button></span><span><span className="footer-lock">⌑</span> Human in Control · Enforced Pre-Publication Gate <span className="footer-sep">·</span> <button onClick={() => announce(modelDisclosure)}>AI disclosure</button></span></footer>
       </main>
       {toast && <div className="toast" role="status"><span className="toast-mark">✓</span>{toast}</div>}
     </div>
