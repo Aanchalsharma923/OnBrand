@@ -231,41 +231,73 @@ export default function Home() {
     return headers;
   }, [currentOrg, role, supabaseSession]);
 
-  // Multi-tenant backend synchronization
+  const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
+  const [workspaceSyncError, setWorkspaceSyncError] = useState<string | null>(null);
+
+  // Multi-tenant backend synchronization from PostgreSQL
   useEffect(() => {
     let isMounted = true;
     async function syncBackendData() {
+      setIsWorkspaceLoading(true);
+      setWorkspaceSyncError(null);
       try {
         const headers = getAuthHeaders();
         const [srcRes, draftRes] = await Promise.all([
           fetch("/api/sources", { headers }),
           fetch("/api/drafts", { headers }),
         ]);
+
         if (srcRes.ok) {
           const sData = await srcRes.json();
           if (isMounted && Array.isArray(sData.sources) && sData.sources.length > 0) {
             setSources(sData.sources);
           }
         }
+
         if (draftRes.ok) {
           const dData = await draftRes.json();
           if (isMounted && Array.isArray(dData.drafts) && dData.drafts.length > 0) {
-            setDraft(dData.drafts[0]);
+            const activeDraft = dData.drafts[0];
+            setDraft(activeDraft);
             setVersions(dData.drafts);
+
+            // Fetch persisted review from database for this draft version
+            try {
+              const revRes = await fetch(`/api/reviews?draftId=${encodeURIComponent(activeDraft.id)}&version=${activeDraft.version}`, { headers });
+              if (revRes.ok) {
+                const rData = await revRes.json();
+                if (isMounted && rData.review) {
+                  setReview(sanitizeReviewAttribution(rData.review));
+                }
+              }
+            } catch {
+              // No prior review recorded
+            }
           }
         }
-      } catch {
-        // Fallback to local memory state safely
+      } catch (err) {
+        if (isMounted) {
+          setWorkspaceSyncError(err instanceof Error ? err.message : "Failed to sync with database.");
+        }
+      } finally {
+        if (isMounted) setIsWorkspaceLoading(false);
       }
     }
     syncBackendData();
     return () => { isMounted = false; };
   }, [currentOrg, role, getAuthHeaders]);
 
+  // Secondary local autosave only for uncommitted editor scratchpad text
   useEffect(() => {
-    if (!loaded || showWelcome) return;
-    localStorage.setItem(storageKey, JSON.stringify({ draft, versions, sources, review, role, lastDecision, workspaceMode }));
-  }, [draft, versions, sources, review, role, lastDecision, workspaceMode, loaded, showWelcome]);
+    if (!loaded) return;
+    try {
+      if (draft.content) {
+        localStorage.setItem(`onbrand_scratch_${currentOrg}`, draft.content);
+      }
+    } catch {
+      // Ignore storage write issues
+    }
+  }, [draft.content, currentOrg, loaded]);
 
   const findings = useMemo(() => review?.findings ?? [], [review]);
 
@@ -541,6 +573,15 @@ export default function Home() {
       setVersions((current) => [...current, nextDraft]);
       setSelectedFinding(null);
       setLastDecision("");
+
+      // Persist uploaded document to PostgreSQL database
+      fetch("/api/drafts", {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(nextDraft),
+      }).catch((err) => {
+        console.error("Failed to persist uploaded document draft:", err);
+      });
       const qualityNote = extracted.ocrQuality ? ` OCR ${extracted.ocrQuality.status.toLowerCase().replaceAll("_", " ")} (${extracted.ocrQuality.confidence}% confidence).` : "";
       setExtractionStatus(`${file.name} · text extracted on this device.${qualityNote}${originalSaved ? " Original preserved in this browser." : " Original could not be preserved."}`);
       announce(extraction && extraction.quality !== "RELIABLE" ? "OCR text needs correction and proofread confirmation before review." : "File text added as a new draft version. Inspect it before review.");
@@ -802,6 +843,11 @@ export default function Home() {
     }
     setSources((current) => current.map((source) => source.id === sourceId ? { ...source, approvalState: "APPROVED", version: source.version + 1 } : source));
     setReview(null);
+    fetch("/api/sources", {
+      method: "PATCH",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ id: sourceId, status: "APPROVED" }),
+    }).catch(() => {});
     announce("Source approved as a new version. Previous review decisions are invalidated.");
   }
 
@@ -810,7 +856,12 @@ export default function Home() {
     setSources((current) => current.filter((source) => source.id !== sourceId));
     setReview(null);
     setLastDecision("");
-    announce("Imported source removed from the demo workspace.");
+    fetch("/api/sources", {
+      method: "PATCH",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ id: sourceId, status: "REVOKED" }),
+    }).catch(() => {});
+    announce("Imported source removed from the workspace.");
   }
 
   async function handleKnowledgeDocument(event: ChangeEvent<HTMLInputElement>) {
@@ -853,6 +904,13 @@ export default function Home() {
       const withWarnings = { ...source, ingestionWarnings: sourceInjectionWarnings(source) };
       setSources((current) => [...current, withWarnings]);
       setReview(null);
+      if (!withWarnings.ingestionWarnings?.length) {
+        fetch("/api/sources", {
+          method: "POST",
+          headers: getAuthHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify(source),
+        }).catch((err) => console.error("Failed to persist source to database:", err));
+      }
       setExtractionStatus(`${file.name} · ${chunks.length} passage${chunks.length === 1 ? "" : "s"} extracted. Pending maintainer review.`);
       announce(withWarnings.ingestionWarnings?.length ? "Document quarantined for a possible embedded instruction. Review or remove it before approval." : "Knowledge added as pending review. A maintainer must verify it before use.");
     } catch (error) {
@@ -1058,6 +1116,16 @@ export default function Home() {
             <div className="secure-indicator" title={backendHealth?.persistence ? `Database Status: ${backendHealth.persistence}` : undefined}>
               <span className="secure-dot" /> {backendHealth?.persistence === "postgresql-ready" ? "PostgreSQL Scoped" : currentOrg === "org_alpha" ? "Acme (PostgreSQL Scoped)" : "NovaBio (PostgreSQL Scoped)"}
             </div>
+            {isWorkspaceLoading && (
+              <span className="sync-chip" style={{ fontSize: "11px", color: "#60a5fa", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(59,130,246,0.1)", padding: "2px 6px", borderRadius: "4px" }}>
+                <span className="spinner" style={{ width: "8px", height: "8px", borderWidth: "1.5px" }} /> Syncing DB…
+              </span>
+            )}
+            {workspaceSyncError && (
+              <span className="sync-chip" style={{ fontSize: "11px", color: "#f87171", background: "rgba(239,68,68,0.1)", padding: "2px 6px", borderRadius: "4px" }} title={workspaceSyncError}>
+                Sync Notice
+              </span>
+            )}
             {supabaseSession ? (
               <button
                 type="button"

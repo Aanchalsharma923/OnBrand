@@ -80,3 +80,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to save source." }, { status: 500 });
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const ctx = await resolveTenantContext(request);
+    requireRole(ctx, ["maintainer"]);
+
+    const body = z.object({
+      id: z.string().min(1),
+      status: z.enum(["APPROVED", "REVOKED"]),
+    }).parse(await request.json());
+
+    const repo = getRepository();
+    await repo.updateSourceStatus(ctx, body.id, body.status);
+
+    await repo.recordAuditEvent(ctx, {
+      actorId: ctx.actor.userId,
+      action: `SOURCE_STATUS_${body.status}`,
+      entityType: "SOURCE",
+      entityId: body.id,
+      metadata: { status: body.status },
+    });
+
+    return NextResponse.json({ ok: true, id: body.id, status: body.status });
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    return NextResponse.json({ error: "Failed to update source status." }, { status: 500 });
+  }
+}

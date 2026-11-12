@@ -50,3 +50,4 @@ VALUES
   ('00000000-0000-0000-0000-000000000001', '11111111-0000-0000-0000-000000000001', 'Sample Foods Oat Bites', 'allergen', 'contains oats', '', 'Sample Foods Oat Bites contains oats.'),
   ('00000000-0000-0000-0000-000000000001', '11111111-0000-0000-0000-000000000001', 'Sample Foods Oat Bites', 'allergen', 'may contain peanuts', '', 'Sample Foods Oat Bites may contain peanuts.')
 ON CONFLICT DO NOTHING;
+

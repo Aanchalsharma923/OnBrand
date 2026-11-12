@@ -3,6 +3,7 @@ import { createDraft, initialDraft, reviewDraft, seedSources, sourceInjectionWar
 import { z } from "zod";
 import { resolveTenantContext } from "../../../lib/server/auth";
 import { getRepository } from "../../../lib/server/repository";
+import { databaseConfigured } from "../../../lib/server/db";
 import { modelConfigured, modelDescriptor, runAgentPanel, verifySemanticEvidence } from "../../../lib/server/model";
 import { checkAndIncrementModelQuota } from "../../../lib/server/model-limits";
 
@@ -36,6 +37,28 @@ const reviewRequest = z.object({
   useAdvisoryModel: z.boolean().optional(),
   visualChecks: z.boolean().optional(),
 });
+
+export async function GET(request: Request) {
+  try {
+    const ctx = await resolveTenantContext(request);
+    const { searchParams } = new URL(request.url);
+    const draftVersionId = searchParams.get("draftVersionId") || searchParams.get("draftId");
+    if (!draftVersionId) {
+      return NextResponse.json({ error: "draftVersionId or draftId query parameter is required." }, { status: 400 });
+    }
+    const versionParam = searchParams.get("version");
+    const version = versionParam ? parseInt(versionParam, 10) : undefined;
+
+    const repo = getRepository();
+    const review = await repo.getReviewByDraftVersion(ctx, draftVersionId, version);
+    if (!review) {
+      return NextResponse.json({ review: null }, { status: 404 });
+    }
+    return NextResponse.json({ review, organizationId: ctx.organizationId });
+  } catch (_error) {
+    return NextResponse.json({ error: "Failed to fetch review from database." }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -129,7 +152,7 @@ export async function POST(request: Request) {
     finalReview.sourceSnapshotHash = sourceSnapshotHash(approvedSources);
 
     // Save review & audit trail to repository
-    try {
+    if (databaseConfigured()) {
       await repo.saveReview(ctx, finalReview);
       await repo.recordAuditEvent(ctx, {
         id: `AUDIT-REV-${stableHash(finalReview.id + Date.now()).slice(0, 16)}`,
@@ -145,8 +168,26 @@ export async function POST(request: Request) {
         },
         createdAt: new Date().toISOString(),
       });
-    } catch {
-      // Repository logging must not break review return
+    } else {
+      try {
+        await repo.saveReview(ctx, finalReview);
+        await repo.recordAuditEvent(ctx, {
+          id: `AUDIT-REV-${stableHash(finalReview.id + Date.now()).slice(0, 16)}`,
+          action: "REVIEW_COMPLETED",
+          actorId: ctx.userId,
+          organizationId: ctx.organizationId,
+          entityType: "review",
+          entityId: finalReview.id,
+          metadata: {
+            engineMode: finalReview.engineMode,
+            findingsCount: finalReview.findings.length,
+            hasBlocking: finalReview.findings.some((f) => f.blocking_for_review),
+          },
+          createdAt: new Date().toISOString(),
+        });
+      } catch {
+        // Offline demo/test fallback
+      }
     }
 
     return NextResponse.json({

@@ -51,3 +51,4 @@ describe("Server-Side Auth & Tenant Context Resolution", () => {
     expect(() => requireRole(reviewerCtx, ["reviewer", "maintainer"])).not.toThrow();
   });
 });
+

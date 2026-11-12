@@ -54,3 +54,4 @@ describe("Supabase Token Extraction and Configuration", () => {
     expect(typeof configured).toBe("boolean");
   });
 });
+
