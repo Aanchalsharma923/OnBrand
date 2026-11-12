@@ -22,6 +22,7 @@ import { extractUploadedFile, extractUploadedFileDetailed } from "@/lib/file-ext
 import { roleInitials, roleLabel, sanitizeReviewAttribution } from "@/lib/identity";
 import { saveOriginalDocument } from "@/lib/document-store";
 import { OriginalDocument, HighlightedText } from "./original-document";
+import type { StructuralDocumentData } from "@/lib/multimodal-workspace";
 import {
   consolidateFindings,
   type EnrichedFinding,
@@ -145,6 +146,7 @@ export default function Home() {
   const [modelDisclosure, setModelDisclosure] = useState("Deterministic mode active. Evidence statuses, citations and approval gates are code-generated.");
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
+  const [structuralData, setStructuralData] = useState<StructuralDocumentData | undefined>(undefined);
 
   // Verified authentication and backend health state
   const [supabaseSession, setSupabaseSession] = useState<{ user: { email?: string; id: string }; accessToken: string } | null>(null);
@@ -571,6 +573,7 @@ export default function Home() {
         originalDocumentType: originalSaved ? file.type : undefined, extraction });
       setDraft(nextDraft);
       setVersions((current) => [...current, nextDraft]);
+      setStructuralData(extracted.structuralData);
       setSelectedFinding(null);
       setLastDecision("");
 
@@ -1283,15 +1286,15 @@ export default function Home() {
                   {isExtracting ? "Reading file…" : "Upload document or creative asset"}
                   <input
                     type="file"
-                    accept=".docx,.pptx,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm,.csv,.mp4,.webm"
+                    accept=".docx,.pptx,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.mp4,.webm,.mov,.mp3,.wav,.m4a,.txt,.md,.markdown,.html,.htm,.csv,.json"
                     onChange={handleDraftFileUpload}
                     disabled={isExtracting}
-                    aria-label="Upload an image, video, document, presentation, spreadsheet or text file"
+                    aria-label="Upload an image, video, audio, document, presentation, spreadsheet or structured text file"
                   />
                 </label>
                 <div aria-live="polite">
-                  {extractionStatus || "Choose an image/video, PDF, DOCX/PPTX, XLSX/CSV or text file."}
-                  <small>Text review accepts image and scanned/text PDF OCR; DOCX/PPTX, XLSX/CSV, TXT, Markdown and HTML extraction; MP4/WebM frame text sampling. Structure and formatting preserved where supported.</small>
+                  {extractionStatus || "Choose a document (PDF, DOCX), presentation (PPTX), spreadsheet (XLSX, CSV), creative asset (PNG, JPG, WebP), video reel (MP4, WebM) or audio file."}
+                  <small>Multimodal review with format-aware viewers, OCR bounding boxes, video keyframes, slide decks, spreadsheet cells and audio transcripts.</small>
                 </div>
               </div>
               {draft.extraction && (
@@ -1317,6 +1320,11 @@ export default function Home() {
                   selectedFindingId={selected?.finding_id ?? null}
                   onSelectFinding={setSelectedFinding}
                   currentReview={hasCurrentReview}
+                  structuralData={structuralData}
+                  onUpdateContent={(updated) => {
+                    updateDraftContent(updated);
+                    announce("Document content updated in interactive viewer.");
+                  }}
                 />
               )}
               <div className="editor-footer">

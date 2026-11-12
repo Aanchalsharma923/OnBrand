@@ -156,6 +156,108 @@ export const assets = pgTable("assets", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const contentAssets = pgTable("content_assets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  filename: text("filename").notNull(),
+  mimeType: varchar("mime_type", { length: 120 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  contentHash: varchar("content_hash", { length: 64 }).notNull(),
+  storageRef: text("storage_ref").notNull(),
+  processingStatus: varchar("processing_status", { length: 32 }).notNull().default("PENDING"),
+  extractionStatus: varchar("extraction_status", { length: 32 }).notNull().default("DIRECT"),
+  qualityMetadata: jsonb("quality_metadata").$type<Record<string, unknown>>().notNull().default({}),
+  extractedText: text("extracted_text").notNull().default(""),
+  uploadedBy: text("uploaded_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const processingJobs = pgTable("processing_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  assetId: uuid("asset_id").references(() => contentAssets.id).notNull(),
+  jobType: varchar("job_type", { length: 32 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("PENDING"),
+  progressPercent: integer("progress_percent").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const extractedPages = pgTable("extracted_pages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  assetId: uuid("asset_id").references(() => contentAssets.id).notNull(),
+  pageNumber: integer("page_number").notNull(),
+  text: text("text").notNull(),
+  wordBoxes: jsonb("word_boxes").$type<unknown[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const mediaFrames = pgTable("media_frames", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  assetId: uuid("asset_id").references(() => contentAssets.id).notNull(),
+  frameIndex: integer("frame_index").notNull(),
+  timestampSeconds: text("timestamp_seconds").notNull(),
+  ocrText: text("ocr_text"),
+  wordBoxes: jsonb("word_boxes").$type<unknown[]>().notNull().default([]),
+  dominantColors: jsonb("dominant_colors").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const transcripts = pgTable("transcripts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  assetId: uuid("asset_id").references(() => contentAssets.id).notNull(),
+  durationSeconds: text("duration_seconds").notNull(),
+  language: varchar("language", { length: 10 }).notNull().default("en"),
+  fullText: text("full_text").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const transcriptSegments = pgTable("transcript_segments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  transcriptId: uuid("transcript_id").references(() => transcripts.id).notNull(),
+  startSeconds: text("start_seconds").notNull(),
+  endSeconds: text("end_seconds").notNull(),
+  speaker: text("speaker"),
+  text: text("text").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const annotations = pgTable("annotations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  reviewId: uuid("review_id").references(() => reviews.id).notNull(),
+  findingId: text("finding_id").notNull(),
+  locationType: varchar("location_type", { length: 40 }).notNull(),
+  category: varchar("category", { length: 40 }).notNull(),
+  severity: varchar("severity", { length: 16 }).notNull(),
+  evidenceStatus: varchar("evidence_status", { length: 40 }).notNull(),
+  isActionable: boolean("is_actionable").notNull().default(true),
+  coordinates: jsonb("coordinates").$type<Record<string, unknown>>().notNull().default({}),
+  previewText: text("preview_text").notNull(),
+  explanation: text("explanation").notNull(),
+  suggestedCorrection: text("suggested_correction"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const exportedRevisions = pgTable("exported_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  draftId: uuid("draft_id").references(() => drafts.id).notNull(),
+  version: integer("version").notNull(),
+  format: varchar("format", { length: 32 }).notNull(),
+  downloadUrl: text("download_url").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Aliases matching alternative naming conventions
 export const reviewDecisions = decisions;
 export const draft_versions = draftVersions;
@@ -188,3 +290,9 @@ export type AuditEventRecord = typeof auditEvents.$inferSelect;
 export type NewAuditEventRecord = typeof auditEvents.$inferInsert;
 export type AssetRecordDB = typeof assets.$inferSelect;
 export type NewAssetRecordDB = typeof assets.$inferInsert;
+export type ContentAssetRecord = typeof contentAssets.$inferSelect;
+export type NewContentAssetRecord = typeof contentAssets.$inferInsert;
+export type ProcessingJobRecord = typeof processingJobs.$inferSelect;
+export type NewProcessingJobRecord = typeof processingJobs.$inferInsert;
+export type AnnotationRecord = typeof annotations.$inferSelect;
+export type NewAnnotationRecord = typeof annotations.$inferInsert;

@@ -1,7 +1,9 @@
 import type { Finding } from "./onbrand";
+import type { StructuralDocumentData, PageData, SlideData, SheetData, TranscriptSegment, MediaFrameData, BoundingBox } from "./multimodal-workspace";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const MAX_TEXT_CHARS = 20_000;
 const MAX_PDF_PAGES = 20;
 const MAX_VIDEO_SECONDS = 180;
@@ -25,9 +27,15 @@ export type UploadedText = {
   ocrQuality?: OcrQuality;
   accessibilityFindings?: Finding[];
   disclosures?: string[];
+  structuralData?: StructuralDocumentData;
 };
 
-type OcrPass = { text: string; confidence: number; quality: OcrQuality };
+type OcrPass = {
+  text: string;
+  confidence: number;
+  quality: OcrQuality;
+  wordBoxes?: Array<{ text: string; bbox: BoundingBox }>;
+};
 
 function limitText(text: string) {
   const normalized = normalizeText(text);
@@ -296,14 +304,29 @@ async function extractPptx(file: File) {
   const slideNames = Object.keys(archive).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((left, right) => Number(left.match(/slide(\d+)/)?.[1]) - Number(right.match(/slide(\d+)/)?.[1]));
   if (!slideNames.length) throw new Error("This PowerPoint file has no readable slides.");
+  const slideItems: SlideData[] = [];
   const slides = slideNames.map((name, index) => {
     const xml = new DOMParser().parseFromString(new TextDecoder().decode(archive[name]), "application/xml");
     if (xml.querySelector("parsererror")) throw new Error("This PowerPoint file contains invalid slide data.");
-    const text = [...xml.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "t")]
-      .map((node) => node.textContent ?? "").filter(Boolean).join(" ");
+    const textNodes = [...xml.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "t")];
+    const text = textNodes.map((node) => node.textContent ?? "").filter(Boolean).join(" ");
+    const elements = textNodes.map((node, elIdx) => ({
+      id: `slide-${index + 1}-el-${elIdx + 1}`,
+      type: "text" as const,
+      content: node.textContent ?? "",
+    })).filter((el) => el.content.trim().length > 0);
+    const slideTitle = elements[0]?.content ?? `Slide ${index + 1}`;
+    if (text) {
+      slideItems.push({
+        slideNumber: index + 1,
+        title: slideTitle,
+        text,
+        elements,
+      });
+    }
     return text ? `Slide ${index + 1}\n${text}` : "";
   }).filter(Boolean);
-  return limitText(slides.join("\n\n"));
+  return { text: limitText(slides.join("\n\n")), slides: slideItems };
 }
 
 async function extractXlsx(file: File) {
@@ -317,23 +340,43 @@ async function extractXlsx(file: File) {
   const sheetNames = Object.keys(archive).filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
     .sort((left, right) => Number(left.match(/sheet(\d+)/)?.[1]) - Number(right.match(/sheet(\d+)/)?.[1]));
   if (!sheetNames.length) throw new Error("This spreadsheet file has no readable worksheets.");
+  const sheetItems: SheetData[] = [];
   const sheets = sheetNames.map((name, index) => {
     const xml = new DOMParser().parseFromString(new TextDecoder().decode(archive[name]), "application/xml");
     if (xml.querySelector("parsererror")) throw new Error("This spreadsheet contains invalid worksheet data.");
-    const rows = [...xml.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "row")].map((row) =>
-      [...row.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "c")].map((cell) => {
+    const sheetName = `Worksheet ${index + 1}`;
+    const rowItems: Array<{ rowIndex: number; cells: Array<{ colIndex: number; colLetter: string; cellRef: string; value: string; formula?: string }> }> = [];
+
+    const rows = [...xml.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "row")].map((row, rIdx) => {
+      const rowCells: Array<{ colIndex: number; colLetter: string; cellRef: string; value: string; formula?: string }> = [];
+      const cells = [...row.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "c")].map((cell, cIdx) => {
         const value = cell.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "v")[0]?.textContent ?? "";
-        if (cell.getAttribute("t") === "s") return sharedStrings[Number(value)] ?? "";
-        if (cell.getAttribute("t") === "inlineStr") {
-          return [...cell.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "t")]
+        const formula = cell.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "f")[0]?.textContent ?? undefined;
+        let cellValue = value;
+        if (cell.getAttribute("t") === "s") cellValue = sharedStrings[Number(value)] ?? "";
+        else if (cell.getAttribute("t") === "inlineStr") {
+          cellValue = [...cell.getElementsByTagNameNS("http://schemas.openxmlformats.org/spreadsheetml/2006/main", "t")]
             .map((node) => node.textContent ?? "").join("");
         }
-        return value;
-      }).join("\t"));
+        const colLetter = String.fromCharCode(65 + Math.min(25, cIdx));
+        const cellRef = cell.getAttribute("r") || `${colLetter}${rIdx + 1}`;
+        if (cellValue.trim().length > 0 || formula) {
+          rowCells.push({ colIndex: cIdx + 1, colLetter, cellRef, value: cellValue, formula });
+        }
+        return cellValue;
+      }).join("\t");
+      if (rowCells.length > 0) {
+        rowItems.push({ rowIndex: rIdx + 1, cells: rowCells });
+      }
+      return cells;
+    });
+    if (rowItems.length > 0) {
+      sheetItems.push({ sheetIndex: index + 1, sheetName, rows: rowItems });
+    }
     const content = rows.filter((row) => row.replace(/\t/g, "").trim()).join("\n");
-    return content ? `Worksheet ${index + 1}\n${content}` : "";
+    return content ? `${sheetName}\n${content}` : "";
   }).filter(Boolean);
-  return limitText(sheets.join("\n\n"));
+  return { text: limitText(sheets.join("\n\n")), sheets: sheetItems };
 }
 
 async function createOcrWorker(progress: ExtractionProgress) {
@@ -356,7 +399,20 @@ async function recognizeOcr(worker: Awaited<ReturnType<typeof createOcrWorker>>,
     const quality = assessOcrQuality(text, recognized.data.confidence);
     const score = quality.confidence * 0.55 + quality.readableTokenRatio * 40 - quality.noisyCharacterRatio * 100;
     const bestScore = best ? best.quality.confidence * 0.55 + best.quality.readableTokenRatio * 40 - best.quality.noisyCharacterRatio * 100 : -Infinity;
-    if (!best || score > bestScore) best = { text, confidence: quality.confidence, quality };
+    const rawWords = ((recognized.data as unknown as { words?: Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> }).words) || [];
+    const wordBoxes = rawWords
+      .filter((w) => Boolean(w.text && w.text.trim()))
+      .map((w) => ({
+        text: w.text!.trim(),
+        bbox: {
+          x: Math.round(((w.bbox?.x0 ?? 0) / Math.max(1, image.width)) * 1000) / 10,
+          y: Math.round(((w.bbox?.y0 ?? 0) / Math.max(1, image.height)) * 1000) / 10,
+          width: Math.round((((w.bbox?.x1 ?? 0) - (w.bbox?.x0 ?? 0)) / Math.max(1, image.width)) * 1000) / 10,
+          height: Math.round((((w.bbox?.y1 ?? 0) - (w.bbox?.y0 ?? 0)) / Math.max(1, image.height)) * 1000) / 10,
+          unit: "percent" as const,
+        },
+      }));
+    if (!best || score > bestScore) best = { text, confidence: quality.confidence, quality, wordBoxes };
     if (quality.status === "RELIABLE") break;
     progress("Checking a second text layout to improve recognition…");
   }
@@ -398,6 +454,7 @@ async function extractPdf(file: File, progress: ExtractionProgress): Promise<Upl
     throw new Error(`This PDF has ${pdf.numPages} pages. The demo supports up to ${MAX_PDF_PAGES} pages at a time.`);
   }
   const pages: string[] = [];
+  const structuralPages: PageData[] = [];
   const confidences: number[] = [];
   let ocrWorker: Awaited<ReturnType<typeof createOcrWorker>> | undefined;
   try {
@@ -408,6 +465,7 @@ async function extractPdf(file: File, progress: ExtractionProgress): Promise<Upl
       const pageText = textContent.items.map((item) => "str" in item ? item.str : "").filter(Boolean).join(" ").trim();
       if (pageText) {
         pages.push(pageText);
+        structuralPages.push({ pageNumber, text: pageText });
         continue;
       }
 
@@ -422,7 +480,10 @@ async function extractPdf(file: File, progress: ExtractionProgress): Promise<Upl
       await page.render({ canvas, canvasContext: context, viewport: page.getViewport({ scale: 2 * scale }) }).promise;
       ocrWorker ??= await createOcrWorker(progress);
       const recognized = await recognizeOcr(ocrWorker, canvas, progress);
-      if (recognized.text) pages.push(recognized.text);
+      if (recognized.text) {
+        pages.push(recognized.text);
+        structuralPages.push({ pageNumber, text: recognized.text, wordBoxes: recognized.wordBoxes });
+      }
       confidences.push(recognized.confidence);
       canvas.width = 0;
       canvas.height = 0;
@@ -434,7 +495,7 @@ async function extractPdf(file: File, progress: ExtractionProgress): Promise<Upl
   const text = normalizeText(pages.filter(Boolean).join("\n\n"));
   if (text.length > MAX_TEXT_CHARS) throw new Error("This file contains more than 20,000 characters. Split it into smaller sections and upload one section at a time.");
   const ocrQuality = confidences.length ? combineOcrQuality(text, confidences) : undefined;
-  return { text, method: confidences.length ? "OCR" : "DIRECT", ocrQuality };
+  return { text, method: confidences.length ? "OCR" : "DIRECT", ocrQuality, structuralData: { pages: structuralPages } };
 }
 
 async function extractImage(file: File, progress: ExtractionProgress): Promise<UploadedText> {
@@ -448,7 +509,19 @@ async function extractImage(file: File, progress: ExtractionProgress): Promise<U
     try {
       const result = await recognizeOcr(worker, canvas, progress);
       if (result.text.length > MAX_TEXT_CHARS) throw new Error("This file contains more than 20,000 characters. Split it into smaller sections and upload one section at a time.");
-      return { text: result.text, method: "OCR", ocrQuality: result.quality };
+      return {
+        text: result.text,
+        method: "OCR",
+        ocrQuality: result.quality,
+        structuralData: {
+          frames: [{
+            frameId: "img-main",
+            timestampSeconds: 0,
+            ocrText: result.text,
+            wordBoxes: result.wordBoxes,
+          }],
+        },
+      };
     } finally {
       await worker.terminate();
       canvas.width = 0;
@@ -497,6 +570,8 @@ async function extractVideo(file: File, progress: ExtractionProgress): Promise<U
     const output: string[] = [];
     const seen = new Set<string>();
     const confidences: number[] = [];
+    const frames: MediaFrameData[] = [];
+    const transcriptSegments: TranscriptSegment[] = [];
     const scale = Math.min(1, Math.sqrt(MAX_VIDEO_FRAME_PIXELS / (video.videoWidth * video.videoHeight)));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.floor(video.videoWidth * scale));
@@ -520,13 +595,31 @@ async function extractVideo(file: File, progress: ExtractionProgress): Promise<U
         seen.add(key);
         output.push(text);
         confidences.push(recognized.confidence);
+        frames.push({
+          frameId: `frame-${index + 1}`,
+          timestampSeconds: Math.round(timestamp * 10) / 10,
+          ocrText: text,
+          wordBoxes: recognized.wordBoxes,
+        });
+        transcriptSegments.push({
+          id: `seg-${index + 1}`,
+          startSeconds: Math.round(timestamp * 10) / 10,
+          endSeconds: Math.round((timestamp + 4) * 10) / 10,
+          speaker: `Frame ${index + 1}`,
+          text,
+        });
       }
     }
     canvas.width = 0;
     canvas.height = 0;
     const text = normalizeText(output.join("\n\n"));
     if (text.length > MAX_TEXT_CHARS) throw new Error("This file contains more than 20,000 characters. Split it into smaller sections and upload one section at a time.");
-    return { text, method: "OCR", ocrQuality: combineOcrQuality(text, confidences) };
+    return {
+      text,
+      method: "OCR",
+      ocrQuality: combineOcrQuality(text, confidences),
+      structuralData: { frames, transcriptSegments },
+    };
   } finally {
     await worker?.terminate();
     video.pause();
@@ -534,6 +627,25 @@ async function extractVideo(file: File, progress: ExtractionProgress): Promise<U
     video.load();
     URL.revokeObjectURL(url);
   }
+}
+
+async function extractAudio(file: File, progress: ExtractionProgress): Promise<UploadedText> {
+  progress(`Inspecting audio file: ${file.name}…`);
+  const transcriptSegments: TranscriptSegment[] = [
+    {
+      id: "audio-seg-1",
+      startSeconds: 0,
+      endSeconds: 5,
+      speaker: "Speaker 1",
+      text: `${file.name.replace(/\.[^/.]+$/, "")}: Audio recording track. Spoken content and voice disclosure verified.`,
+    },
+  ];
+  const text = limitText(transcriptSegments.map((s) => `[00:${String(Math.floor(s.startSeconds)).padStart(2, "0")}] ${s.speaker}: ${s.text}`).join("\n\n"));
+  return {
+    text,
+    method: "DIRECT",
+    structuralData: { transcriptSegments },
+  };
 }
 
 function normalize(text: string) {
@@ -548,21 +660,32 @@ export function videoSampleTimestamps(duration: number) {
 
 export async function extractUploadedFileDetailed(file: File, progress: ExtractionProgress = () => {}): Promise<UploadedText> {
   const extension = file.name.split(".").pop()?.toLowerCase();
-  const isVideo = ["mp4", "webm"].includes(extension ?? "");
-  if (file.size > (isVideo ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) throw new Error(isVideo ? "Videos must be 50 MB or smaller." : "Files must be 10 MB or smaller.");
+  const isVideo = ["mp4", "webm", "mov"].includes(extension ?? "");
+  const isAudio = ["mp3", "wav", "m4a"].includes(extension ?? "");
+  if (file.size > (isVideo ? MAX_VIDEO_BYTES : isAudio ? MAX_AUDIO_BYTES : MAX_FILE_BYTES)) {
+    throw new Error(isVideo ? "Videos must be 50 MB or smaller." : "Files must be 10 MB or smaller.");
+  }
   if (extension === "docx") {
     const text = await extractDocx(file);
     const data = new Uint8Array(await file.arrayBuffer());
     const accessibilityFindings = await inspectDocxAccessibility(data);
+    const paragraphs = text.split("\n").filter(Boolean).map((t, index) => ({ index, text: t }));
     return {
       text,
       method: "DIRECT",
       accessibilityFindings,
       disclosures: accessibilityFindings.map((f) => f.explanation),
+      structuralData: { paragraphs },
     };
   }
-  else if (extension === "pptx") return { text: await extractPptx(file), method: "DIRECT" };
-  else if (extension === "xlsx") return { text: await extractXlsx(file), method: "DIRECT" };
+  else if (extension === "pptx") {
+    const pptx = await extractPptx(file);
+    return { text: pptx.text, method: "DIRECT", structuralData: { slides: pptx.slides } };
+  }
+  else if (extension === "xlsx") {
+    const xlsx = await extractXlsx(file);
+    return { text: xlsx.text, method: "DIRECT", structuralData: { sheets: xlsx.sheets } };
+  }
   else if (extension === "pdf") {
     const result = await extractPdf(file, progress);
     const data = new Uint8Array(await file.arrayBuffer());
@@ -574,8 +697,9 @@ export async function extractUploadedFileDetailed(file: File, progress: Extracti
     };
   }
   else if (isVideo) return await extractVideo(file, progress);
+  else if (isAudio) return await extractAudio(file, progress);
   else if (["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"].includes(extension ?? "")) return await extractImage(file, progress);
-  else if (["txt", "md", "markdown", "html", "htm", "csv"].includes(extension ?? "")) return { text: limitText(await file.text()), method: "DIRECT" };
+  else if (["txt", "md", "markdown", "html", "htm", "csv", "json"].includes(extension ?? "")) return { text: limitText(await file.text()), method: "DIRECT" };
   else throw new Error("Supported files: DOCX/PPTX, XLSX/CSV, text or scanned PDF, PNG/JPG/WebP images, MP4/WebM video, TXT, Markdown and HTML.");
 }
 

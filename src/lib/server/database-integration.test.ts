@@ -240,3 +240,4 @@ describe("Phase 5: Comprehensive Database & Security Integration Suite", () => {
     expect(() => requireRole(invalidCtx, ["maintainer"])).toThrowError(ForbiddenError);
   });
 });
+
