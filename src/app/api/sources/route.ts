@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/lib/server/repository";
-import { resolveTenantContext, requireRole, ForbiddenError } from "@/lib/server/auth";
+import { resolveTenantContext, requireRole, ForbiddenError, UnauthorizedError } from "@/lib/server/auth";
 import { sourceInjectionWarnings, type Source } from "@/lib/onbrand";
 
 const factSchema = z.object({
@@ -35,7 +35,13 @@ export async function GET(request: Request) {
     const repo = getRepository();
     const sources = await repo.getSources(ctx);
     return NextResponse.json({ sources, organizationId: ctx.organizationId });
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to fetch sources." }, { status: 500 });
   }
 }
@@ -71,6 +77,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ source: saved }, { status: 201 });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error instanceof ForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
@@ -104,6 +113,9 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ ok: true, id: body.id, status: body.status });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error instanceof ForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }

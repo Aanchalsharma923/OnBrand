@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createDraft, initialDraft, reviewDraft, seedSources, sourceInjectionWarnings, sourceSnapshotHash, stableHash, type Draft, type Source } from "../../../lib/onbrand";
 import { z } from "zod";
-import { resolveTenantContext } from "../../../lib/server/auth";
+import { resolveTenantContext, UnauthorizedError, ForbiddenError } from "../../../lib/server/auth";
 import { getRepository } from "../../../lib/server/repository";
 import { databaseConfigured } from "../../../lib/server/db";
 import { analyzeDocumentWithHostedLLM, modelConfigured, runAgentPanel } from "../../../lib/server/model";
@@ -55,7 +55,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ review: null }, { status: 404 });
     }
     return NextResponse.json({ review, organizationId: ctx.organizationId });
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to fetch review from database." }, { status: 500 });
   }
 }
@@ -206,6 +212,12 @@ export async function POST(request: Request) {
       telemetry,
     });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     const message = error instanceof z.ZodError ? "Invalid review request." : "Review failed safely. Check the draft and try again.";
     return NextResponse.json({ error: message }, { status: error instanceof z.ZodError ? 400 : 500 });
   }

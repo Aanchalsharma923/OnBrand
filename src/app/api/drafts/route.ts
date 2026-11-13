@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/lib/server/repository";
-import { resolveTenantContext, requireRole, ForbiddenError } from "@/lib/server/auth";
+import { resolveTenantContext, requireRole, ForbiddenError, UnauthorizedError } from "@/lib/server/auth";
 import { createDraft } from "@/lib/onbrand";
 
 const draftSchema = z.object({
@@ -31,7 +31,13 @@ export async function GET(request: Request) {
     const repo = getRepository();
     const drafts = await repo.getDrafts(ctx);
     return NextResponse.json({ drafts, organizationId: ctx.organizationId });
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to fetch drafts." }, { status: 500 });
   }
 }
@@ -70,6 +76,9 @@ export async function POST(request: Request) {
       draft: { ...safeDraft, version: result.version, hash: result.hash },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error instanceof ForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }

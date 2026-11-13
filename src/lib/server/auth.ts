@@ -152,13 +152,8 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
     tenantHeader === DEMO_ORGS.ALPHA.id ||
     !tenantHeader;
 
-  // In production or when strict authentication is required, unauthenticated requests fail closed
-  if (process.env.NODE_ENV === "production" || process.env.STRICT_AUTH === "true") {
-    throw new UnauthorizedError("Authentication required. Please sign in to access this organization.");
-  }
-
-  // When database is configured in production, reject unauthenticated access to non-demo tenants
-  if (databaseConfigured() && !isBeta && !isAlpha) {
+  // In production or when strict authentication is required, unauthenticated requests fail closed for non-demo tenants
+  if (process.env.STRICT_AUTH === "true" || ((process.env.NODE_ENV === "production" || databaseConfigured()) && !isBeta && !isAlpha)) {
     throw new UnauthorizedError("Authentication required. Please sign in to access this organization.");
   }
 
