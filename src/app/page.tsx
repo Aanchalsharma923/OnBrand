@@ -1744,6 +1744,7 @@ export default function Home() {
                 blockingCount={counts.blocking}
                 agentNotes={review?.agentNotes}
                 modelDisclosure={modelDisclosure}
+                engineMode={review?.engineMode}
               />
 
               {/* Findings Panel: Detail View when a finding is selected, List View otherwise */}

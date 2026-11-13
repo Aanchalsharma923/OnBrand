@@ -9,6 +9,7 @@ export interface AgentActivityPanelProps {
   blockingCount: number;
   agentNotes?: Array<{ agent: string; summary: string }>;
   modelDisclosure: string;
+  engineMode?: "model-assisted" | "deterministic-preview";
 }
 
 export function AgentActivityPanel({
@@ -18,8 +19,10 @@ export function AgentActivityPanel({
   blockingCount,
   agentNotes,
   modelDisclosure,
+  engineMode,
 }: AgentActivityPanelProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const isModelAssisted = engineMode === "model-assisted" && Boolean(agentNotes && agentNotes.length > 0);
 
   // Define the 4 standard execution stages
   const stages = [
@@ -40,11 +43,17 @@ export function AgentActivityPanel({
           />
           <b className="agent-status-title">
             {isReviewing
-              ? "Multi-Agent Evaluation in Progress…"
+              ? isModelAssisted
+                ? "Multi-Agent Evaluation in Progress…"
+                : "Deterministic Evaluation in Progress…"
               : hasCurrentReview
-              ? blockingCount > 0
-                ? `4 Specialized Agents · ${blockingCount} Issue(s) Require Resolution`
-                : "4 Specialized Agents Verified · Grounded"
+              ? isModelAssisted
+                ? blockingCount > 0
+                  ? `4 Specialized Agents · ${blockingCount} Issue(s) Require Resolution`
+                  : "4 Specialized Agents Verified · Grounded"
+                : blockingCount > 0
+                ? `Deterministic Engine · ${blockingCount} Issue(s) Require Resolution`
+                : "Deterministic Engine Verified · Grounded"
               : "Review Engine Ready"}
           </b>
         </div>

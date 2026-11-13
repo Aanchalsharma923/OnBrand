@@ -318,7 +318,7 @@ export function sourceSnapshotHash(sources: Source[]): string {
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-const utf16ToCodePointOffset = (text: string, offset: number) => Array.from(text.slice(0, offset)).length;
+export const utf16ToCodePointOffset = (text: string, offset: number) => Array.from(text.slice(0, offset)).length;
 export const codePointToUtf16Offset = (text: string, offset: number) => Array.from(text).slice(0, offset).join("").length;
 const words = (s: string) => new Set(normalize(s).split(" ")
   .filter((x) => x.length > 2)
@@ -349,7 +349,7 @@ function lexicalScore(query: string, text: string): number {
 
 function eligible(source: Source, channel: string, date: string): boolean {
   if (source.approvalState !== "APPROVED") return false;
-  if (source.revokedAt && source.revokedAt <= date) return false;
+  if (source.revokedAt) return false;
   if (source.effectiveFrom > date) return false;
   if (source.effectiveTo && source.effectiveTo < date) return false;
   return source.channels.includes("all") || source.channels.includes(channel.toLowerCase());
@@ -360,8 +360,8 @@ function parseQuantities(text: string): Array<{ number: string; unit: string }> 
     .map((match) => ({ number: match[1], unit: match[2].toLowerCase().replace(/s$/, "") }));
 }
 
-function detectInjection(text: string): boolean {
-  return /ignore (all )?(previous|prior|above) instructions|reveal (the )?(system|hidden) prompt|override (the )?(system|safety|brand) policy|send .*password/i.test(text);
+export function detectInjection(text: string): boolean {
+  return /(ignore|disregard|forget|bypass|override|drop) (all )?(previous|prior|above|system|existing) (instructions|directives|rules|guidelines|prompts)|reveal (the )?(system|hidden|internal) prompt|(override|bypass|disable) (the )?(system|safety|brand|review) (policy|rules|guardrails|checks)|send .*password|developer mode enabled|jailbreak/i.test(text);
 }
 
 export function sourceInjectionWarnings(source: Source): string[] {
@@ -809,13 +809,14 @@ export function reviewDraft(input: {
 
 export function recheckSuggestion(draft: Draft, finding: Finding, sources = seedSources): { ok: boolean; candidate?: string; reason: string } {
   if (!finding.suggestion) return { ok: false, reason: "No safe candidate is available; edit manually and run a fresh review." };
-  const start = codePointToUtf16Offset(draft.content, finding.start);
-  const end = codePointToUtf16Offset(draft.content, finding.end);
-  const candidateText = draft.content.slice(0, start) + finding.suggestion + draft.content.slice(end);
+  const startU16 = codePointToUtf16Offset(draft.content, finding.start);
+  const endU16 = codePointToUtf16Offset(draft.content, finding.end);
+  const candidateText = draft.content.slice(0, startU16) + finding.suggestion + draft.content.slice(endU16);
   const candidateDraft = { ...draft, content: candidateText, hash: computeDraftHash({ ...draft, content: candidateText }), version: draft.version + 1 };
   const checked = reviewDraft({ draft: candidateDraft, sources });
-  const replacementEnd = start + Array.from(finding.suggestion).length;
-  const revisedClaims = checked.findings.filter((item) => item.end > start && item.start < replacementEnd);
+  const startCp = finding.start;
+  const endCp = startCp + Array.from(finding.suggestion).length;
+  const revisedClaims = checked.findings.filter((item) => item.end > startCp && item.start < endCp);
   if (!revisedClaims.length || revisedClaims.some((item) => item.blocking_for_review || item.evidence_status !== "SUPPORTED" || item.source_evidence.length === 0)) {
     return { ok: false, reason: "The candidate did not pass a full review. It cannot be accepted." };
   }

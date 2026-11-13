@@ -14,7 +14,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import type { Draft, Finding, Review, Source } from "../onbrand";
-import { stableHash } from "../onbrand";
+import { stableHash, utf16ToCodePointOffset } from "../onbrand";
 
 // ---------------------------------------------------------------------------
 // 1. Zod Schemas for Structured Output & Verification
@@ -162,15 +162,23 @@ export function validateEvidenceCitation(
   }
 
   const cleanQuote = evidenceQuote.trim().toLowerCase();
+  if (cleanQuote.length < 3) return { isValid: false, matchedSource: source };
+
   const matchedFact = source.facts.find((f) => {
     const stmt = f.statement.toLowerCase();
     const val = f.value.toLowerCase();
-    return (
-      stmt.includes(cleanQuote) ||
-      val.includes(cleanQuote) ||
-      cleanQuote.includes(stmt) ||
-      cleanQuote.includes(val)
-    );
+    if (stmt.includes(cleanQuote) || cleanQuote.includes(stmt)) return true;
+    if (val && (val === cleanQuote || val.includes(cleanQuote))) return true;
+
+    // If matching a quote against fact value, prevent stray short digit/word matches
+    // by requiring either a substantive value (>=8 chars) or topical overlap with fact attribute
+    if (val && cleanQuote.includes(val)) {
+      if (val.length >= 8) return true;
+      const attrWords = f.attribute.toLowerCase().split(/[^\p{L}\p{N}]+/gu).filter((w) => w.length > 2);
+      const hasTopicOverlap = attrWords.length > 0 && attrWords.some((w) => cleanQuote.includes(w));
+      if (hasTopicOverlap) return true;
+    }
+    return false;
   });
 
   if (!matchedFact) {
@@ -333,6 +341,8 @@ CRITICAL INSTRUCTIONS:
         unresolvedCount++;
       }
 
+      const startCp = utf16ToCodePointOffset(draft.content, offsets.start);
+      const endCp = utf16ToCodePointOffset(draft.content, offsets.end);
       const findingId = `F-LLM-${stableHash(draft.id + item.claim_quote + offsets.start).slice(0, 10)}`;
 
       validatedFindings.push({
@@ -341,10 +351,10 @@ CRITICAL INSTRUCTIONS:
         draft_id: draft.id,
         draft_version_id: `${draft.id}-v${draft.version}`,
         draft_hash: draft.hash,
-        claim_id: `C-LLM-${offsets.start}`,
+        claim_id: `C-LLM-${startCp}`,
         claim_text: item.claim_quote,
-        start: offsets.start,
-        end: offsets.end,
+        start: startCp,
+        end: endCp,
         category: item.category,
         evidence_status: effectiveStatus as Finding["evidence_status"],
         severity: severityVal,
