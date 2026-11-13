@@ -282,6 +282,35 @@ export async function resolveUserMembershipFromDb(
     };
   } catch (err) {
     console.error("Failed to query membership from PostgreSQL:", err);
+    if (isSupabaseConfigured()) {
+      try {
+        const admin = getSupabaseAdmin();
+        let q = admin
+          .from("memberships")
+          .select("organization_id, role, display_name")
+          .eq("user_id", userId);
+        if (requestedOrgId) {
+          q = q.eq("organization_id", requestedOrgId);
+        }
+        const { data, error } = await q.limit(1).maybeSingle();
+        if (!error && data) {
+          const rawRole = (data.role ?? "reviewer").toLowerCase();
+          const role: ServerRole = ["creator", "reviewer", "maintainer"].includes(rawRole)
+            ? (rawRole as ServerRole)
+            : "reviewer";
+          return {
+            organizationId: data.organization_id,
+            role,
+            actor: {
+              userId,
+              displayName: data.display_name || `User (${role})`,
+            },
+          };
+        }
+      } catch (adminErr) {
+        console.error("Failed to query membership from Supabase admin fallback:", adminErr);
+      }
+    }
     return null;
   }
 }
