@@ -240,6 +240,28 @@ export class InMemoryRepository implements OnBrandRepository {
   }
 }
 
+function isDatabaseConnectionError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  if ("name" in err && (err.name === "OrganizationAccessError" || err.name === "ForbiddenError" || err.name === "UnauthorizedError")) {
+    return false;
+  }
+  const msg = (err as Error).message || "";
+  const code = (err as { code?: string }).code || "";
+  return (
+    code === "28P01" ||
+    code === "ECONNREFUSED" ||
+    code === "ENOTFOUND" ||
+    code === "ETIMEDOUT" ||
+    msg.includes("password authentication failed") ||
+    msg.includes("ENOTFOUND") ||
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("connect_timeout") ||
+    msg.includes("Connection terminated") ||
+    msg.includes("ETIMEDOUT") ||
+    msg.includes("Failed query")
+  );
+}
+
 /**
  * PostgreSQL + Drizzle ORM implementation of OnBrandRepository.
  * Every query is executed inside withOrganizationScope enforcing RLS.
@@ -247,110 +269,126 @@ export class InMemoryRepository implements OnBrandRepository {
 export class DrizzleOnBrandRepository implements OnBrandRepository {
   private inMemoryFallback = new InMemoryRepository();
 
-  async getSources(ctx: TenantContext): Promise<Source[]> {
+  private async executeWithFallback<T>(
+    ctx: TenantContext,
+    dbAction: () => Promise<T>,
+    fallbackAction: () => Promise<T>,
+  ): Promise<T> {
     if (!databaseConfigured()) {
-      return this.inMemoryFallback.getSources(ctx);
+      return fallbackAction();
     }
-
-    return withOrganizationScope(ctx, async (tx) => {
-      const sourceRows = await tx
-        .select()
-        .from(schema.sources)
-        .where(eq(schema.sources.organizationId, ctx.organizationId));
-
-      const results: Source[] = [];
-      for (const row of sourceRows) {
-        const factRows = await tx
-          .select()
-          .from(schema.facts)
-          .where(and(
-            eq(schema.facts.organizationId, ctx.organizationId),
-            eq(schema.facts.sourceId, row.id),
-          ));
-
-        results.push({
-          id: row.id,
-          title: row.title,
-          kind: row.kind as Source["kind"],
-          authority: row.authority,
-          version: row.version,
-          effectiveFrom: row.effectiveFrom,
-          effectiveTo: row.effectiveTo ?? undefined,
-          revokedAt: row.revokedAt ? row.revokedAt.toISOString() : undefined,
-          approvalState: row.approvalState as Source["approvalState"],
-          channels: row.channels ?? [],
-          owner: row.owner,
-          facts: factRows.map((f: typeof schema.facts.$inferSelect) => ({
-            id: f.id,
-            subject: f.subject,
-            attribute: f.attribute,
-            value: f.value,
-            unit: f.unit ?? undefined,
-            statement: f.statement,
-            sourceId: row.id,
-          })),
-        });
+    try {
+      return await dbAction();
+    } catch (err: unknown) {
+      if (isDatabaseConnectionError(err)) {
+        return fallbackAction();
       }
-      return results;
-    });
+      throw err;
+    }
+  }
+
+  async getSources(ctx: TenantContext): Promise<Source[]> {
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const sourceRows = await tx
+            .select()
+            .from(schema.sources)
+            .where(eq(schema.sources.organizationId, ctx.organizationId));
+
+          const results: Source[] = [];
+          for (const row of sourceRows) {
+            const factRows = await tx
+              .select()
+              .from(schema.facts)
+              .where(and(
+                eq(schema.facts.organizationId, ctx.organizationId),
+                eq(schema.facts.sourceId, row.id),
+              ));
+
+            results.push({
+              id: row.id,
+              title: row.title,
+              kind: row.kind as Source["kind"],
+              authority: row.authority,
+              version: row.version,
+              effectiveFrom: row.effectiveFrom,
+              effectiveTo: row.effectiveTo ?? undefined,
+              revokedAt: row.revokedAt ? row.revokedAt.toISOString() : undefined,
+              approvalState: row.approvalState as Source["approvalState"],
+              channels: row.channels ?? [],
+              owner: row.owner,
+              facts: factRows.map((f: typeof schema.facts.$inferSelect) => ({
+                id: f.id,
+                subject: f.subject,
+                attribute: f.attribute,
+                value: f.value,
+                unit: f.unit ?? undefined,
+                statement: f.statement,
+                sourceId: row.id,
+              })),
+            });
+          }
+          return results;
+        }),
+      () => this.inMemoryFallback.getSources(ctx),
+    );
   }
 
   async getSourceById(ctx: TenantContext, id: string): Promise<Source | null> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.getSourceById(ctx, id);
-    }
+    return this.executeWithFallback<Source | null>(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const rows = await tx
+            .select()
+            .from(schema.sources)
+            .where(and(
+              eq(schema.sources.organizationId, ctx.organizationId),
+              eq(schema.sources.id, id),
+            ))
+            .limit(1);
 
-    return withOrganizationScope(ctx, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(schema.sources)
-        .where(and(
-          eq(schema.sources.organizationId, ctx.organizationId),
-          eq(schema.sources.id, id),
-        ))
-        .limit(1);
+          if (!rows.length) return null;
+          const row = rows[0];
 
-      if (!rows.length) return null;
-      const row = rows[0];
+          const factRows = await tx
+            .select()
+            .from(schema.facts)
+            .where(and(
+              eq(schema.facts.organizationId, ctx.organizationId),
+              eq(schema.facts.sourceId, row.id),
+            ));
 
-      const factRows = await tx
-        .select()
-        .from(schema.facts)
-        .where(and(
-          eq(schema.facts.organizationId, ctx.organizationId),
-          eq(schema.facts.sourceId, row.id),
-        ));
-
-      return {
-        id: row.id,
-        title: row.title,
-        kind: row.kind as Source["kind"],
-        authority: row.authority,
-        version: row.version,
-        effectiveFrom: row.effectiveFrom,
-        effectiveTo: row.effectiveTo ?? undefined,
-        revokedAt: row.revokedAt ? row.revokedAt.toISOString() : undefined,
-        approvalState: row.approvalState as Source["approvalState"],
-        channels: row.channels ?? [],
-        owner: row.owner,
-        facts: factRows.map((f: typeof schema.facts.$inferSelect) => ({
-          id: f.id,
-          subject: f.subject,
-          attribute: f.attribute,
-          value: f.value,
-          unit: f.unit ?? undefined,
-          statement: f.statement,
-          sourceId: row.id,
-        })),
-      };
-    });
+          return {
+            id: row.id,
+            title: row.title,
+            kind: row.kind as Source["kind"],
+            authority: row.authority,
+            version: row.version,
+            effectiveFrom: row.effectiveFrom,
+            effectiveTo: row.effectiveTo ?? undefined,
+            revokedAt: row.revokedAt ? row.revokedAt.toISOString() : undefined,
+            approvalState: row.approvalState as Source["approvalState"],
+            channels: row.channels ?? [],
+            owner: row.owner,
+            facts: factRows.map((f: typeof schema.facts.$inferSelect) => ({
+              id: f.id,
+              subject: f.subject,
+              attribute: f.attribute,
+              value: f.value,
+              unit: f.unit ?? undefined,
+              statement: f.statement,
+              sourceId: row.id,
+            })),
+          };
+        }),
+      () => this.inMemoryFallback.getSourceById(ctx, id),
+    );
   }
 
   async createSource(ctx: TenantContext, source: Omit<Source, "id"> | Source): Promise<Source> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.createSource(ctx, source);
-    }
-
     const id = "id" in source && source.id ? source.id : crypto.randomUUID();
     const fullSource: Source = {
       ...source,
@@ -362,59 +400,65 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       })),
     };
 
-    return withOrganizationScope(ctx, async (tx) => {
-      await tx.insert(schema.sources).values({
-        id,
-        organizationId: ctx.organizationId,
-        sourceKey: fullSource.id,
-        title: fullSource.title,
-        kind: fullSource.kind,
-        authority: fullSource.authority,
-        version: fullSource.version,
-        effectiveFrom: fullSource.effectiveFrom,
-        effectiveTo: fullSource.effectiveTo ?? null,
-        revokedAt: fullSource.revokedAt ? new Date(fullSource.revokedAt) : null,
-        approvalState: fullSource.approvalState,
-        channels: fullSource.channels,
-        owner: fullSource.owner,
-      });
-
-      if (fullSource.facts.length > 0) {
-        await tx.insert(schema.facts).values(
-          fullSource.facts.map((f) => ({
-            id: f.id.length === 36 ? f.id : crypto.randomUUID(),
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          await tx.insert(schema.sources).values({
+            id,
             organizationId: ctx.organizationId,
-            sourceId: id,
-            subject: f.subject,
-            attribute: f.attribute,
-            value: f.value,
-            unit: f.unit ?? null,
-            statement: f.statement,
-          })),
-        );
-      }
+            sourceKey: fullSource.id,
+            title: fullSource.title,
+            kind: fullSource.kind,
+            authority: fullSource.authority,
+            version: fullSource.version,
+            effectiveFrom: fullSource.effectiveFrom,
+            effectiveTo: fullSource.effectiveTo ?? null,
+            revokedAt: fullSource.revokedAt ? new Date(fullSource.revokedAt) : null,
+            approvalState: fullSource.approvalState,
+            channels: fullSource.channels,
+            owner: fullSource.owner,
+          });
 
-      return fullSource;
-    });
+          if (fullSource.facts.length > 0) {
+            await tx.insert(schema.facts).values(
+              fullSource.facts.map((f) => ({
+                id: f.id.length === 36 ? f.id : crypto.randomUUID(),
+                organizationId: ctx.organizationId,
+                sourceId: id,
+                subject: f.subject,
+                attribute: f.attribute,
+                value: f.value,
+                unit: f.unit ?? null,
+                statement: f.statement,
+              })),
+            );
+          }
+
+          return fullSource;
+        }),
+      () => this.inMemoryFallback.createSource(ctx, source),
+    );
   }
 
   async updateSourceStatus(ctx: TenantContext, id: string, status: "APPROVED" | "REVOKED"): Promise<void> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.updateSourceStatus(ctx, id, status);
-    }
-
-    return withOrganizationScope(ctx, async (tx) => {
-      await tx
-        .update(schema.sources)
-        .set({
-          approvalState: status,
-          revokedAt: status === "REVOKED" ? new Date() : null,
-        })
-        .where(and(
-          eq(schema.sources.organizationId, ctx.organizationId),
-          eq(schema.sources.id, id),
-        ));
-    });
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          await tx
+            .update(schema.sources)
+            .set({
+              approvalState: status,
+              revokedAt: status === "REVOKED" ? new Date() : null,
+            })
+            .where(and(
+              eq(schema.sources.organizationId, ctx.organizationId),
+              eq(schema.sources.id, id),
+            ));
+        }),
+      () => this.inMemoryFallback.updateSourceStatus(ctx, id, status),
+    );
   }
 
   async searchFacts(ctx: TenantContext, query: string, channel: string, date: string): Promise<Fact[]> {
@@ -445,154 +489,156 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
   }
 
   async getDrafts(ctx: TenantContext): Promise<Draft[]> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.getDrafts(ctx);
-    }
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const draftsRows = await tx
+            .select()
+            .from(schema.drafts)
+            .where(eq(schema.drafts.organizationId, ctx.organizationId))
+            .orderBy(desc(schema.drafts.updatedAt));
 
-    return withOrganizationScope(ctx, async (tx) => {
-      const draftsRows = await tx
-        .select()
-        .from(schema.drafts)
-        .where(eq(schema.drafts.organizationId, ctx.organizationId))
-        .orderBy(desc(schema.drafts.updatedAt));
+          const drafts: Draft[] = [];
+          for (const d of draftsRows) {
+            const versionRows = await tx
+              .select()
+              .from(schema.draftVersions)
+              .where(and(
+                eq(schema.draftVersions.organizationId, ctx.organizationId),
+                eq(schema.draftVersions.draftId, d.id),
+                eq(schema.draftVersions.version, d.currentVersion),
+              ))
+              .limit(1);
 
-      const drafts: Draft[] = [];
-      for (const d of draftsRows) {
-        const versionRows = await tx
-          .select()
-          .from(schema.draftVersions)
-          .where(and(
-            eq(schema.draftVersions.organizationId, ctx.organizationId),
-            eq(schema.draftVersions.draftId, d.id),
-            eq(schema.draftVersions.version, d.currentVersion),
-          ))
-          .limit(1);
-
-        const version = versionRows[0];
-        drafts.push({
-          id: d.id,
-          title: d.title,
-          content: version?.content ?? "",
-          channel: d.channel,
-          product: d.product,
-          audience: d.audience,
-          publicationDate: d.publicationDate,
-          updatedAt: d.updatedAt.toISOString(),
-          version: d.currentVersion,
-          hash: version?.contentHash ?? "",
-        });
-      }
-      return drafts;
-    });
+            const version = versionRows[0];
+            drafts.push({
+              id: d.id,
+              title: d.title,
+              content: version?.content ?? "",
+              channel: d.channel,
+              product: d.product,
+              audience: d.audience,
+              publicationDate: d.publicationDate,
+              updatedAt: d.updatedAt.toISOString(),
+              version: d.currentVersion,
+              hash: version?.contentHash ?? "",
+            });
+          }
+          return drafts;
+        }),
+      () => this.inMemoryFallback.getDrafts(ctx),
+    );
   }
 
   async getDraftVersion(ctx: TenantContext, draftId: string, version: number): Promise<Draft | null> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.getDraftVersion(ctx, draftId, version);
-    }
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const draftsRows = await tx
+            .select()
+            .from(schema.drafts)
+            .where(and(
+              eq(schema.drafts.organizationId, ctx.organizationId),
+              eq(schema.drafts.id, draftId),
+            ))
+            .limit(1);
 
-    return withOrganizationScope(ctx, async (tx) => {
-      const draftsRows = await tx
-        .select()
-        .from(schema.drafts)
-        .where(and(
-          eq(schema.drafts.organizationId, ctx.organizationId),
-          eq(schema.drafts.id, draftId),
-        ))
-        .limit(1);
+          if (!draftsRows.length) return null;
+          const d = draftsRows[0];
 
-      if (!draftsRows.length) return null;
-      const d = draftsRows[0];
+          const versionRows = await tx
+            .select()
+            .from(schema.draftVersions)
+            .where(and(
+              eq(schema.draftVersions.organizationId, ctx.organizationId),
+              eq(schema.draftVersions.draftId, draftId),
+              eq(schema.draftVersions.version, version),
+            ))
+            .limit(1);
 
-      const versionRows = await tx
-        .select()
-        .from(schema.draftVersions)
-        .where(and(
-          eq(schema.draftVersions.organizationId, ctx.organizationId),
-          eq(schema.draftVersions.draftId, draftId),
-          eq(schema.draftVersions.version, version),
-        ))
-        .limit(1);
+          if (!versionRows.length) return null;
+          const v = versionRows[0];
 
-      if (!versionRows.length) return null;
-      const v = versionRows[0];
-
-      return {
-        id: d.id,
-        title: d.title,
-        content: v.content,
-        channel: d.channel,
-        product: d.product,
-        audience: d.audience,
-        publicationDate: d.publicationDate,
-        updatedAt: d.updatedAt.toISOString(),
-        version: v.version,
-        hash: v.contentHash,
-      };
-    });
+          return {
+            id: d.id,
+            title: d.title,
+            content: v.content,
+            channel: d.channel,
+            product: d.product,
+            audience: d.audience,
+            publicationDate: d.publicationDate,
+            updatedAt: d.updatedAt.toISOString(),
+            version: v.version,
+            hash: v.contentHash,
+          };
+        }),
+      () => this.inMemoryFallback.getDraftVersion(ctx, draftId, version),
+    );
   }
 
   async saveDraftVersion(ctx: TenantContext, draft: Draft): Promise<{ draftId: string; version: number; hash: string }> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.saveDraftVersion(ctx, draft);
-    }
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const userId = ctx.actor?.userId ?? ctx.userId ?? "creator";
+          await tx
+            .insert(schema.drafts)
+            .values({
+              id: draft.id,
+              organizationId: ctx.organizationId,
+              title: draft.title,
+              channel: draft.channel,
+              product: draft.product,
+              audience: draft.audience,
+              publicationDate: draft.publicationDate,
+              currentVersion: draft.version,
+              createdBy: userId,
+            })
+            .onConflictDoUpdate({
+              target: schema.drafts.id,
+              set: {
+                title: draft.title,
+                channel: draft.channel,
+                product: draft.product,
+                audience: draft.audience,
+                publicationDate: draft.publicationDate,
+                currentVersion: draft.version,
+                updatedAt: new Date(),
+              },
+            });
 
-    return withOrganizationScope(ctx, async (tx) => {
-      const userId = ctx.actor?.userId ?? ctx.userId ?? "creator";
-      await tx
-        .insert(schema.drafts)
-        .values({
-          id: draft.id,
-          organizationId: ctx.organizationId,
-          title: draft.title,
-          channel: draft.channel,
-          product: draft.product,
-          audience: draft.audience,
-          publicationDate: draft.publicationDate,
-          currentVersion: draft.version,
-          createdBy: userId,
-        })
-        .onConflictDoUpdate({
-          target: schema.drafts.id,
-          set: {
-            title: draft.title,
-            channel: draft.channel,
-            product: draft.product,
-            audience: draft.audience,
-            publicationDate: draft.publicationDate,
-            currentVersion: draft.version,
-            updatedAt: new Date(),
-          },
-        });
+          await tx
+            .insert(schema.draftVersions)
+            .values({
+              organizationId: ctx.organizationId,
+              draftId: draft.id,
+              version: draft.version,
+              content: draft.content,
+              contentHash: draft.hash,
+              createdBy: userId,
+            })
+            .onConflictDoUpdate({
+              target: [schema.draftVersions.organizationId, schema.draftVersions.draftId, schema.draftVersions.version],
+              set: {
+                content: draft.content,
+                contentHash: draft.hash,
+              },
+            });
 
-      await tx
-        .insert(schema.draftVersions)
-        .values({
-          organizationId: ctx.organizationId,
-          draftId: draft.id,
-          version: draft.version,
-          content: draft.content,
-          contentHash: draft.hash,
-          createdBy: userId,
-        })
-        .onConflictDoUpdate({
-          target: [schema.draftVersions.organizationId, schema.draftVersions.draftId, schema.draftVersions.version],
-          set: {
-            content: draft.content,
-            contentHash: draft.hash,
-          },
-        });
-
-      return { draftId: draft.id, version: draft.version, hash: draft.hash };
-    });
+          return { draftId: draft.id, version: draft.version, hash: draft.hash };
+        }),
+      () => this.inMemoryFallback.saveDraftVersion(ctx, draft),
+    );
   }
 
   async saveReview(ctx: TenantContext, review: Review): Promise<void> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.saveReview(ctx, review);
-    }
-
-    return withOrganizationScope(ctx, async (tx) => {
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
       const isReviewUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(review.id);
       const targetReviewId = isReviewUuid ? review.id : crypto.randomUUID();
       review.id = targetReviewId;
@@ -662,15 +708,16 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           })),
         );
       }
-    });
+    }),
+      () => this.inMemoryFallback.saveReview(ctx, review),
+    );
   }
 
   async getReviewByDraftVersion(ctx: TenantContext, draftVersionIdOrDraftId: string, version?: number): Promise<Review | null> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.getReviewByDraftVersion(ctx, draftVersionIdOrDraftId, version);
-    }
-
-    return withOrganizationScope(ctx, async (tx) => {
+    return this.executeWithFallback<Review | null>(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
       const reviewRows = await tx
         .select()
         .from(schema.reviews)
@@ -749,15 +796,16 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         decision: decisionObj,
         decisionHistory,
       };
-    });
+    }),
+      () => this.inMemoryFallback.getReviewByDraftVersion(ctx, draftVersionIdOrDraftId, version),
+    );
   }
 
   async recordDecision(ctx: TenantContext, reviewId: string, decision: ReviewDecision): Promise<void> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.recordDecision(ctx, reviewId, decision);
-    }
-
-    return withOrganizationScope(ctx, async (tx) => {
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
       const decidedBy = decision.by ?? ctx.actor?.displayName ?? ctx.userId ?? "reviewer";
       const decisionVal = decision.state ?? "APPROVED";
 
@@ -815,15 +863,16 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           reason: decision.reason,
         },
       });
-    });
+    }),
+      () => this.inMemoryFallback.recordDecision(ctx, reviewId, decision),
+    );
   }
 
   async recordAuditEvent(ctx: TenantContext, event: AuditEvent): Promise<void> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.recordAuditEvent(ctx, event);
-    }
-
-    return withOrganizationScope(ctx, async (tx) => {
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
       const actorId = event.actorId ?? ctx.actor?.userId ?? ctx.userId ?? "system";
       await tx.insert(schema.auditEvents).values({
         organizationId: ctx.organizationId,
@@ -833,43 +882,42 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         entityId: event.entityId,
         metadata: event.metadata ?? {},
       });
-    });
+    }),
+      () => this.inMemoryFallback.recordAuditEvent(ctx, event),
+    );
   }
 
   async getAuditLog(ctx: TenantContext, limit = 100): Promise<AuditEvent[]> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.getAuditLog(ctx, limit);
-    }
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const rows = await tx
+            .select()
+            .from(schema.auditEvents)
+            .where(eq(schema.auditEvents.organizationId, ctx.organizationId))
+            .orderBy(desc(schema.auditEvents.createdAt))
+            .limit(limit);
 
-    return withOrganizationScope(ctx, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(schema.auditEvents)
-        .where(eq(schema.auditEvents.organizationId, ctx.organizationId))
-        .orderBy(desc(schema.auditEvents.createdAt))
-        .limit(limit);
-
-      return rows.map((r: typeof schema.auditEvents.$inferSelect) => ({
-        id: r.id,
-        organizationId: r.organizationId,
-        actorId: r.actorId,
-        action: r.action,
-        entityType: r.entityType,
-        entityId: r.entityId,
-        metadata: r.metadata ?? {},
-        createdAt: r.createdAt.toISOString(),
-      }));
-    });
+          return rows.map((r: typeof schema.auditEvents.$inferSelect) => ({
+            id: r.id,
+            organizationId: r.organizationId,
+            actorId: r.actorId,
+            action: r.action,
+            entityType: r.entityType,
+            entityId: r.entityId,
+            metadata: r.metadata ?? {},
+            createdAt: r.createdAt.toISOString(),
+          }));
+        }),
+      () => this.inMemoryFallback.getAuditLog(ctx, limit),
+    );
   }
 
   async registerAsset(
     ctx: TenantContext,
     asset: AssetRecord | Omit<AssetRecord, "id" | "createdAt">,
   ): Promise<AssetRecord> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.registerAsset(ctx, asset);
-    }
-
     const id = "id" in asset && asset.id ? asset.id : crypto.randomUUID();
     const createdAt = "createdAt" in asset && asset.createdAt ? asset.createdAt : new Date().toISOString();
     const fullAsset: AssetRecord = {
@@ -879,48 +927,54 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       createdAt,
     };
 
-    return withOrganizationScope(ctx, async (tx) => {
-      await tx
-        .insert(schema.assets)
-        .values({
-          id: fullAsset.id.length === 36 ? fullAsset.id : crypto.randomUUID(),
-          organizationId: ctx.organizationId,
-          name: fullAsset.name,
-          sha256: fullAsset.sha256,
-          phash: fullAsset.pHash ?? fullAsset.phash ?? "",
-          mimeType: fullAsset.mimeType ?? "image/png",
-          byteSize: fullAsset.byteSize ?? 0,
-          approvalState: (fullAsset.approvalState as string) ?? "APPROVED",
-          uploadedBy: ctx.actor?.userId ?? ctx.userId ?? "user",
-        })
-        .onConflictDoNothing();
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          await tx
+            .insert(schema.assets)
+            .values({
+              id: fullAsset.id.length === 36 ? fullAsset.id : crypto.randomUUID(),
+              organizationId: ctx.organizationId,
+              name: fullAsset.name,
+              sha256: fullAsset.sha256,
+              phash: fullAsset.pHash ?? fullAsset.phash ?? "",
+              mimeType: fullAsset.mimeType ?? "image/png",
+              byteSize: fullAsset.byteSize ?? 0,
+              approvalState: (fullAsset.approvalState as string) ?? "APPROVED",
+              uploadedBy: ctx.actor?.userId ?? ctx.userId ?? "user",
+            })
+            .onConflictDoNothing();
 
-      return fullAsset;
-    });
+          return fullAsset;
+        }),
+      () => this.inMemoryFallback.registerAsset(ctx, asset),
+    );
   }
 
   async getAssets(ctx: TenantContext): Promise<AssetRecord[]> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.getAssets(ctx);
-    }
+    return this.executeWithFallback(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const rows = await tx
+            .select()
+            .from(schema.assets)
+            .where(eq(schema.assets.organizationId, ctx.organizationId));
 
-    return withOrganizationScope(ctx, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(schema.assets)
-        .where(eq(schema.assets.organizationId, ctx.organizationId));
-
-      return rows.map((r: typeof schema.assets.$inferSelect) => ({
-        id: r.id,
-        organizationId: r.organizationId,
-        name: r.name,
-        sha256: r.sha256,
-        phash: r.phash,
-        pHash: r.phash,
-        mimeType: r.mimeType,
-        createdAt: r.createdAt.toISOString(),
-      }));
-    });
+          return rows.map((r: typeof schema.assets.$inferSelect) => ({
+            id: r.id,
+            organizationId: r.organizationId,
+            name: r.name,
+            sha256: r.sha256,
+            phash: r.phash,
+            pHash: r.phash,
+            mimeType: r.mimeType,
+            createdAt: r.createdAt.toISOString(),
+          }));
+        }),
+      () => this.inMemoryFallback.getAssets(ctx),
+    );
   }
 }
 
