@@ -70,6 +70,12 @@ export interface EnrichedFinding {
     authority: number;
     relation?: string;
   }>;
+  // Three Independent Review Dimensions
+  evidence_verification?: Finding["evidence_verification"];
+  governance_compliance?: Finding["governance_compliance"];
+  brand_voice_quality?: Finding["brand_voice_quality"];
+  regulatory_details?: Finding["regulatory_details"];
+  tone_analysis?: Finding["tone_analysis"];
 }
 
 /**
@@ -377,6 +383,11 @@ export function consolidateFindings(
         dismissed: false,
         source_evidence: raw.source_evidence ?? [],
         sourceCitations: citations,
+        evidence_verification: raw.evidence_verification,
+        governance_compliance: raw.governance_compliance,
+        brand_voice_quality: raw.brand_voice_quality,
+        regulatory_details: raw.regulatory_details,
+        tone_analysis: raw.tone_analysis,
       };
 
       grouped.set(groupKey, enriched);

@@ -1,5 +1,6 @@
 import type { Finding } from "./onbrand";
 import type { StructuralDocumentData, PageData, SlideData, SheetData, TranscriptSegment, MediaFrameData, BoundingBox } from "./multimodal-workspace";
+import { isNoisyOcrFragment } from "./claim-classifier";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
@@ -419,9 +420,9 @@ async function recognizeOcr(worker: Awaited<ReturnType<typeof createOcrWorker>>,
       for (const p of b.paragraphs || []) {
         for (const l of p.lines || []) {
           const rawLineText = (l.text || "").replace(/[\r\n]+/g, " ").trim();
-          // Filter noise characters and pure symbol artifacts
+          // Filter noise characters, pure symbol artifacts, and broken OCR fragments
           const cleanLineText = rawLineText.replace(/^[|~_€£$§\\\/<>\-–\s]+|[|~_€£$§\\\/<>\-–\s]+$/g, "").trim();
-          if (cleanLineText.length > 1 && /[a-zA-Z0-9]/.test(cleanLineText)) {
+          if (cleanLineText.length > 1 && /[a-zA-Z0-9]/.test(cleanLineText) && !isNoisyOcrFragment(cleanLineText)) {
             cleanLines.push(cleanLineText);
           }
 

@@ -69,6 +69,51 @@ export function FindingDetailPanel({
         <h3 className="detail-title">{finding.title}</h3>
       </div>
 
+      {/* Three Independent Review Dimensions */}
+      <div className="detail-block review-dimensions-block">
+        <div className="block-label">INDEPENDENT GOVERNANCE DIMENSIONS</div>
+        <div className="three-dimensions-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginTop: "6px" }}>
+          <div className="dimension-card" style={{ padding: "8px", borderRadius: "6px", background: "var(--card-bg, rgba(255,255,255,0.05))", border: "1px solid var(--border-color, rgba(255,255,255,0.1))" }}>
+            <small style={{ display: "block", fontSize: "10px", textTransform: "uppercase", opacity: 0.7 }}>A. Evidence</small>
+            <b style={{ fontSize: "12px", color: (finding.evidence_verification ?? finding.evidence_status) === "SUPPORTED" ? "#4ade80" : (finding.evidence_verification ?? finding.evidence_status) === "CONTRADICTED" ? "#f87171" : "#fbbf24" }}>
+              {(finding.evidence_verification ?? finding.evidence_status).replaceAll("_", " ")}
+            </b>
+          </div>
+          <div className="dimension-card" style={{ padding: "8px", borderRadius: "6px", background: "var(--card-bg, rgba(255,255,255,0.05))", border: "1px solid var(--border-color, rgba(255,255,255,0.1))" }}>
+            <small style={{ display: "block", fontSize: "10px", textTransform: "uppercase", opacity: 0.7 }}>B. Compliance</small>
+            <b style={{ fontSize: "12px", color: (finding.governance_compliance ?? "COMPLIANT") === "COMPLIANT" ? "#4ade80" : "#f87171" }}>
+              {(finding.governance_compliance ?? "COMPLIANT").replaceAll("_", " ")}
+            </b>
+          </div>
+          <div className="dimension-card" style={{ padding: "8px", borderRadius: "6px", background: "var(--card-bg, rgba(255,255,255,0.05))", border: "1px solid var(--border-color, rgba(255,255,255,0.1))" }}>
+            <small style={{ display: "block", fontSize: "10px", textTransform: "uppercase", opacity: 0.7 }}>C. Brand Voice</small>
+            <b style={{ fontSize: "12px", color: (finding.brand_voice_quality ?? "ON_BRAND") === "ON_BRAND" ? "#4ade80" : "#c084fc" }}>
+              {(finding.brand_voice_quality ?? "ON_BRAND").replaceAll("_", " ")}
+            </b>
+          </div>
+        </div>
+      </div>
+
+      {/* Regulatory Intelligence Details (if applicable) */}
+      {finding.regulatory_details && (
+        <div className="detail-block regulatory-block" style={{ borderLeft: "3px solid #818cf8", paddingLeft: "10px" }}>
+          <div className="block-label" style={{ color: "#818cf8" }}>JURISDICTION &amp; REGULATORY INTELLIGENCE</div>
+          <div style={{ fontSize: "12px", marginTop: "4px" }}>
+            <div><b>Jurisdiction / Authority:</b> {finding.regulatory_details.jurisdiction} ({finding.regulatory_details.authority})</div>
+            <div><b>Regulation:</b> {finding.regulatory_details.regulation}</div>
+            <div><b>Provision:</b> {finding.regulatory_details.provision}</div>
+            {finding.regulatory_details.missingFacts.length > 0 && (
+              <div style={{ marginTop: "4px", color: "#fbbf24" }}>
+                <b>Missing Facts:</b> {finding.regulatory_details.missingFacts.join(", ")}
+              </div>
+            )}
+            <div style={{ marginTop: "4px", opacity: 0.85 }}>
+              <b>Human Review Required:</b> {finding.regulatory_details.humanReviewRequired ? "Yes (Regulatory escalation mandatory)" : "No"}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Section 1: Problem Explanation & Impact */}
       <div className="detail-block">
         <div className="block-label">WHAT IS WRONG & WHY IT MATTERS</div>

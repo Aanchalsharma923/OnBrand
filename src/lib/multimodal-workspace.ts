@@ -356,7 +356,7 @@ export function mapFindingsToAnnotations(
           }
         }
 
-        // If not matched to a single line, match constituent words in wordBoxes and compute union bounding box
+        // If not matched to a single line, match constituent words and find contiguous spatial cluster
         if (!baseAnn.boundingBox && frame.wordBoxes && frame.wordBoxes.length > 0) {
           const claimWords = finding.claim_text
             .toLowerCase()
@@ -373,23 +373,55 @@ export function mapFindingsToAnnotations(
             baseAnn.locationType = "IMAGE_BBOX";
             baseAnn.boundingBox = matchedBoxes[0].bbox;
           } else if (matchedBoxes.length > 1) {
-            const minX = Math.max(0, Math.min(...matchedBoxes.map((b) => b.bbox.x)));
-            const minY = Math.max(0, Math.min(...matchedBoxes.map((b) => b.bbox.y)));
-            const maxX = Math.min(100, Math.max(...matchedBoxes.map((b) => b.bbox.x + b.bbox.width)));
-            const maxY = Math.min(100, Math.max(...matchedBoxes.map((b) => b.bbox.y + b.bbox.height)));
-            baseAnn.locationType = "IMAGE_BBOX";
-            baseAnn.boundingBox = {
-              x: Math.round(minX * 10) / 10,
-              y: Math.round(minY * 10) / 10,
-              width: Math.round((maxX - minX) * 10) / 10,
-              height: Math.round((maxY - minY) * 10) / 10,
-              unit: "percent",
-            };
+            // Group into spatially contiguous clusters (prevent giant rectangles covering distant areas of the poster)
+            // Words must be on the same horizontal line (within 4% height) or immediately adjacent lines (within 8% height)
+            const sorted = [...matchedBoxes].sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
+            const clusters: Array<typeof sorted> = [];
+            let currentCluster: typeof sorted = [sorted[0]];
+
+            for (let i = 1; i < sorted.length; i++) {
+              const prev = currentCluster[currentCluster.length - 1];
+              const curr = sorted[i];
+              const verticalDist = Math.abs(curr.bbox.y - prev.bbox.y);
+              const horizontalDist = curr.bbox.x - (prev.bbox.x + prev.bbox.width);
+
+              // Proximity threshold: same line or consecutive line within 8% vertical distance
+              if (verticalDist <= 8 && horizontalDist <= 20) {
+                currentCluster.push(curr);
+              } else {
+                clusters.push(currentCluster);
+                currentCluster = [curr];
+              }
+            }
+            clusters.push(currentCluster);
+
+            // Pick the cluster with the highest density of matching words
+            clusters.sort((a, b) => b.length - a.length);
+            const bestCluster = clusters[0];
+
+            if (bestCluster && bestCluster.length > 0) {
+              const minX = Math.max(0, Math.min(...bestCluster.map((b) => b.bbox.x)));
+              const minY = Math.max(0, Math.min(...bestCluster.map((b) => b.bbox.y)));
+              const maxX = Math.min(100, Math.max(...bestCluster.map((b) => b.bbox.x + b.bbox.width)));
+              const maxY = Math.min(100, Math.max(...bestCluster.map((b) => b.bbox.y + b.bbox.height)));
+
+              // Ensure bounding box does not exceed realistic single-finding span (max 40% height)
+              if (maxY - minY <= 40) {
+                baseAnn.locationType = "IMAGE_BBOX";
+                baseAnn.boundingBox = {
+                  x: Math.round(minX * 10) / 10,
+                  y: Math.round(minY * 10) / 10,
+                  width: Math.round((maxX - minX) * 10) / 10,
+                  height: Math.round((maxY - minY) * 10) / 10,
+                  unit: "percent",
+                };
+              }
+            }
           }
         }
       }
 
-      // If coordinates cannot be established reliably, do NOT fabricate fake highlights.
+      // If coordinates cannot be established reliably, do NOT fabricate fake giant highlights.
       // Leave boundingBox undefined and keep locationType as TEXT_OFFSET.
       if (!baseAnn.boundingBox) {
         baseAnn.locationType = "TEXT_OFFSET";

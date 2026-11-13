@@ -201,6 +201,11 @@ export function FindingsPanel({
                       </span>
                     )}
                     <span className="category-label">{f.category.replaceAll("_", " ")}</span>
+                    {f.regulatory_details && (
+                      <span className="category-label" style={{ background: "rgba(129, 140, 248, 0.15)", color: "#818cf8", borderColor: "rgba(129, 140, 248, 0.3)" }}>
+                        {f.regulatory_details.authority}
+                      </span>
+                    )}
                   </div>
                   {f.occurrenceCount > 1 && (
                     <span className="occurrence-badge" title={`${f.occurrenceCount} occurrences in document`}>

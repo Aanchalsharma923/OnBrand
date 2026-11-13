@@ -1,22 +1,52 @@
 /**
- * OnBrand — Multi-Attribute Evidence Matching Engine
+ * OnBrand — Universal Multi-Attribute Evidence Matching Engine
  *
  * Enforces strict governance checks before any evidence can substantiate or contradict a claim:
- * 1. Exact organization/tenant (Zero cross-tenant leakage)
- * 2. Exact brand
- * 3. Exact product
- * 4. Exact product variant/SKU (e.g. Cocoa Oat vs Peanut Butter, 30g vs 500g)
- * 5. Market or country scope
- * 6. Source approval status (Only "APPROVED", excludes "PENDING_REVIEW", "REVOKED", "DRAFT")
- * 7. Source effective date and expiry (effectiveFrom <= date <= effectiveTo)
- * 8. Active version
- * 9. Unit and serving basis compatibility (e.g. grams vs grams, per 30g serving vs per 100g)
- * 10. Relevant claim category
+ * 1. Strict tenant isolation (Zero cross-tenant leakage)
+ * 2. Dynamic brand and product scope
+ * 3. Product variant/SKU matching
+ * 4. Market and country regulatory scope (India FSSAI, US FDA/FTC, EU EFSA, UK ASA)
+ * 5. Source approval status (Only "APPROVED", excludes "PENDING_REVIEW", "REVOKED", "DRAFT", "EXPIRED", "SUPERSEDED")
+ * 6. Source effective date and expiry (effectiveFrom <= targetDate <= effectiveTo)
+ * 7. Active version check
+ * 8. Unit and serving basis compatibility
+ *
+ * Separates evaluation into three independent review dimensions:
+ * A. Evidence Verification: SUPPORTED | CONTRADICTED | UNSUPPORTED | NEEDS_HUMAN | NOT_APPLICABLE
+ * B. Governance & Policy Compliance: COMPLIANT | NON_COMPLIANT | NEEDS_REVIEW | NOT_APPLICABLE
+ * C. Brand Voice & Quality: ON_BRAND | MINOR_SUGGESTION | OFF_BRAND | NEEDS_HUMAN
  */
 
 import type { Source, Fact } from "./onbrand";
 import type { ClaimType, FindingOutcome } from "./claim-classifier";
 import { generateSpecificExplanation, type StructuredFindingExplanation } from "./finding-explanations";
+import {
+  evaluateSugarClaim,
+  evaluateDiseaseClaim,
+  evaluateChildDevelopmentClaim,
+  type RegulatoryFindingDetails,
+} from "./regulatory-intelligence";
+import { evaluateTone, type ToneEvaluationResult } from "./tone-evaluator";
+import { resolveBrandContext, type BrandContext } from "./brand-context";
+
+export type EvidenceVerificationStatus =
+  | "SUPPORTED"
+  | "CONTRADICTED"
+  | "UNSUPPORTED"
+  | "NEEDS_HUMAN"
+  | "NOT_APPLICABLE";
+
+export type GovernanceComplianceStatus =
+  | "COMPLIANT"
+  | "NON_COMPLIANT"
+  | "NEEDS_REVIEW"
+  | "NOT_APPLICABLE";
+
+export type BrandVoiceQualityStatus =
+  | "ON_BRAND"
+  | "MINOR_SUGGESTION"
+  | "OFF_BRAND"
+  | "NEEDS_HUMAN";
 
 export interface EvidenceMatchCriteria {
   claimText: string;
@@ -30,6 +60,7 @@ export interface EvidenceMatchCriteria {
   targetDate?: string;
   claimedUnit?: string;
   claimedServingBasis?: string;
+  brandContext?: BrandContext;
 }
 
 export interface MatchedEvidenceItem {
@@ -45,6 +76,12 @@ export interface MatchedEvidenceItem {
 }
 
 export interface EvidenceEvaluationResult {
+  // Three independent review dimensions
+  evidenceVerification: EvidenceVerificationStatus;
+  governanceCompliance: GovernanceComplianceStatus;
+  brandVoiceQuality: BrandVoiceQualityStatus;
+
+  // Backwards-compatible legacy fields
   outcome: FindingOutcome;
   matchedEvidence: MatchedEvidenceItem[];
   conflictingEvidence: MatchedEvidenceItem[];
@@ -52,17 +89,18 @@ export interface EvidenceEvaluationResult {
   severity: "LOW" | "MEDIUM" | "HIGH" | "REVIEW";
   blocking: boolean;
   citationFailures: string[];
+
+  // Detailed subsystem outputs
+  regulatoryDetails?: RegulatoryFindingDetails;
+  toneAnalysis?: ToneEvaluationResult;
 }
 
-/**
- * Normalizes text for comparison.
- */
 function normalize(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /**
- * Evaluates a candidate claim against available sources with multi-attribute precision.
+ * Evaluates a candidate claim against available sources across the three independent dimensions.
  */
 export function evaluateClaimWithEvidence(
   criteria: EvidenceMatchCriteria,
@@ -72,38 +110,50 @@ export function evaluateClaimWithEvidence(
     claimText,
     claimType,
     organizationId,
-    product = "Sample Foods Oat Bites",
-    brand = "Sample Foods",
+    product = "Target Product",
+    brand = "Target Brand",
     channel = "social",
+    marketCountry = "UNKNOWN",
     targetDate = new Date().toISOString().slice(0, 10),
   } = criteria;
+
+  const brandContext =
+    criteria.brandContext ??
+    resolveBrandContext({
+      organizationId,
+      brand,
+      product,
+      channel,
+      marketCountry,
+      sources,
+    });
 
   const citationFailures: string[] = [];
   const normClaim = normalize(claimText);
   const normProduct = normalize(product);
 
-  // Filter sources using strict multi-attribute checks
+  // 1. Strict multi-attribute source filtering
   const eligibleSources = sources.filter((source) => {
-    // 1. Organization / Tenant check (if source has organization metadata)
+    // Tenant check
     const sourceOrg = (source as unknown as { organizationId?: string }).organizationId;
     if (organizationId && sourceOrg && sourceOrg !== organizationId) {
       citationFailures.push(`Source ${source.id} excluded: belongs to different organization (${sourceOrg})`);
       return false;
     }
 
-    // 2. Approval status: ONLY "APPROVED" sources can be used
+    // Approval state check
     if (source.approvalState !== "APPROVED") {
-      citationFailures.push(`Source ${source.id} excluded: approval state is '${source.approvalState}' (requires APPROVED)`);
+      citationFailures.push(`Source ${source.id} excluded: approval state is '${source.approvalState}' (only 'APPROVED' allowed)`);
       return false;
     }
 
-    // 3. Revocation check
+    // Revocation check
     if (source.revokedAt) {
       citationFailures.push(`Source ${source.id} excluded: revoked on ${source.revokedAt}`);
       return false;
     }
 
-    // 4. Effective date range
+    // Effective date range
     if (source.effectiveFrom && source.effectiveFrom > targetDate) {
       citationFailures.push(`Source ${source.id} excluded: effectiveFrom (${source.effectiveFrom}) is after target date (${targetDate})`);
       return false;
@@ -113,7 +163,7 @@ export function evaluateClaimWithEvidence(
       return false;
     }
 
-    // 5. Channel scope
+    // Channel scope
     if (channel && source.channels && source.channels.length > 0) {
       const normChannel = channel.toLowerCase();
       const inScope = source.channels.includes("all") || source.channels.map((c) => c.toLowerCase()).includes(normChannel);
@@ -126,7 +176,6 @@ export function evaluateClaimWithEvidence(
     return true;
   });
 
-  // Extract all eligible facts
   const eligibleFacts: Array<{ source: Source; fact: Fact }> = eligibleSources.flatMap((source) =>
     source.facts.map((fact) => ({ source, fact }))
   );
@@ -134,14 +183,24 @@ export function evaluateClaimWithEvidence(
   const matchedEvidence: MatchedEvidenceItem[] = [];
   const conflictingEvidence: MatchedEvidenceItem[] = [];
 
-  // 1. NON-VERIFIABLE CLAIMS (Brand names, product descriptions, taglines, CTAs, disclaimers, ordinary copy)
+  // Evaluate tone dimension independently
+  const toneResult = evaluateTone(claimText, brandContext.brandVoice, channel);
+
+  // =========================================================================
+  // CASE 1: Non-Claims (Brand/Product names, CTAs, Disclaimers, Ordinary copy)
+  // =========================================================================
   if (
+    claimType === "BRAND_NAME" ||
+    claimType === "PRODUCT_NAME" ||
     claimType === "BRAND_OR_PRODUCT_NAME" ||
+    claimType === "PRODUCT_VARIANT" ||
     claimType === "PRODUCT_DESCRIPTION" ||
     claimType === "CALL_TO_ACTION" ||
     claimType === "DISCLAIMER" ||
+    claimType === "LEGAL_NOTICE" ||
     claimType === "ORDINARY_TEXT" ||
-    (claimType === "SUBJECTIVE_TAGLINE" && !/miracle|guaranteed/i.test(claimText))
+    claimType === "ORDINARY_DESCRIPTIVE" ||
+    (claimType === "SUBJECTIVE_TAGLINE" && !/miracle|guaranteed|guarantee|unhackable|impenetrable|foolproof/i.test(claimText))
   ) {
     const explanation = generateSpecificExplanation({
       exactWords: claimText,
@@ -151,6 +210,9 @@ export function evaluateClaimWithEvidence(
       brand,
     });
     return {
+      evidenceVerification: "NOT_APPLICABLE",
+      governanceCompliance: "COMPLIANT",
+      brandVoiceQuality: toneResult.brandVoiceQuality,
       outcome: "NO_ISSUE",
       matchedEvidence: [],
       conflictingEvidence: [],
@@ -158,102 +220,253 @@ export function evaluateClaimWithEvidence(
       severity: "LOW",
       blocking: false,
       citationFailures,
+      toneAnalysis: toneResult,
     };
   }
 
-  // 2. SUGAR FREE REGULATORY NUTRITION CLAIM CHECK
-  if (/sugar free|zero sugar|no sugar/i.test(claimText)) {
-    // Find added sugar fact for this exact product
-    const addedSugarFact = eligibleFacts.find(
-      ({ fact }) =>
-        normalize(fact.subject).includes(normProduct) &&
-        (normalize(fact.attribute).includes("added sugar") || normalize(fact.attribute).includes("sugar per serving"))
-    );
-    const servingFact = eligibleFacts.find(
-      ({ fact }) =>
-        normalize(fact.subject).includes(normProduct) &&
-        normalize(fact.attribute).includes("serving size")
-    );
-
-    if (addedSugarFact) {
-      const sugarVal = parseFloat(addedSugarFact.fact.value);
-      const servingVal = servingFact ? `${servingFact.fact.value} ${servingFact.fact.unit ?? "g"}` : "30 g";
-
-      if (!isNaN(sugarVal) && sugarVal >= 0.5) {
-        // Direct regulatory contradiction under FDA 21 CFR 101.60(c) (<0.5g sugar required for "sugar free")
-        conflictingEvidence.push({
-          source_id: addedSugarFact.source.id,
-          source_version: addedSugarFact.source.version,
-          source_title: addedSugarFact.source.title,
-          quote: addedSugarFact.fact.statement,
-          authority: addedSugarFact.source.authority,
-          score: 1.0,
-          attribute: addedSugarFact.fact.attribute,
-          value: addedSugarFact.fact.value,
-          unit: addedSugarFact.fact.unit,
-        });
-
-        const explanation = generateSpecificExplanation({
-          exactWords: claimText,
-          claimType: "NUMERIC_NUTRITION_CLAIM",
-          outcome: "CONTRADICTED",
-          product,
-          brand,
-          conflictingEvidence,
-          regulatoryReference: "FDA 21 CFR 101.60(c)",
-          specificationDetails: {
-            claimedValue: "0 g sugar (Sugar Free)",
-            expectedValue: `${addedSugarFact.fact.value} ${addedSugarFact.fact.unit ?? "g"}`,
-            servingBasis: servingVal,
-          },
-        });
-
-        return {
-          outcome: "CONTRADICTED",
-          matchedEvidence: [],
-          conflictingEvidence,
-          explanation,
-          severity: "HIGH",
-          blocking: true,
-          citationFailures,
-        };
-      }
-    }
-  }
-
-  // 3. HEALTH & DEVELOPMENTAL CLAIMS (Cognitive, Intelligence, Clinical)
-  if (claimType === "HEALTH_DEVELOPMENTAL_CLAIM") {
-    // Escalate as high-risk item requiring human regulatory review
+  // =========================================================================
+  // CASE 2: Prohibited Words in Taglines
+  // =========================================================================
+  if (claimType === "SUBJECTIVE_TAGLINE" && /miracle|guaranteed|guarantee|unhackable|impenetrable|foolproof/i.test(claimText)) {
     const explanation = generateSpecificExplanation({
       exactWords: claimText,
       claimType,
-      outcome: "NEEDS_HUMAN",
+      outcome: "CONTRADICTED",
       product,
       brand,
     });
     return {
-      outcome: "NEEDS_HUMAN",
+      evidenceVerification: "NOT_APPLICABLE",
+      governanceCompliance: "NON_COMPLIANT",
+      brandVoiceQuality: "OFF_BRAND",
+      outcome: "CONTRADICTED",
       matchedEvidence: [],
       conflictingEvidence: [],
       explanation,
       severity: "HIGH",
       blocking: true,
       citationFailures,
+      toneAnalysis: toneResult,
     };
   }
 
-  // 4. NUMERIC NUTRITION CLAIMS (e.g. "6 g protein", "4 g added sugar", "30 g serving")
-  if (claimType === "NUMERIC_NUTRITION_CLAIM") {
-    // Parse quantity and metric
-    const numMatch = claimText.match(/(\d+(?:\.\d+)?)\s*(g|grams?|mg|ml|kcal|calories)\s+(protein|added\s+sugar|sugar|serving)/i) ||
-                     claimText.match(/(\d+(?:\.\d+)?)\s*(g|grams?|oz|bites?)\s+serving/i);
+  // =========================================================================
+  // CASE 3: Regulated Sugar Claims (Jurisdiction-Aware)
+  // =========================================================================
+  const sugarRegResult = evaluateSugarClaim({
+    claimText,
+    facts: eligibleFacts.map((ef) => ef.fact),
+    productName: product,
+    marketCountry: brandContext.marketCountry,
+    framework: brandContext.applicableRegulatoryFramework,
+  });
+
+  if (sugarRegResult) {
+    if (sugarRegResult.complianceStatus === "NON_COMPLIANT") {
+      // Find the conflicting fact in eligibleFacts
+      const conflictFact = eligibleFacts.find(
+        (ef) =>
+          normalize(ef.fact.subject).includes(normProduct) &&
+          (normalize(ef.fact.attribute).includes("sugar") || normalize(ef.fact.attribute).includes("added sugar"))
+      );
+      if (conflictFact) {
+        conflictingEvidence.push({
+          source_id: conflictFact.source.id,
+          source_version: conflictFact.source.version,
+          source_title: conflictFact.source.title,
+          quote: conflictFact.fact.statement,
+          authority: conflictFact.source.authority,
+          score: 1.0,
+          attribute: conflictFact.fact.attribute,
+          value: conflictFact.fact.value,
+          unit: conflictFact.fact.unit,
+        });
+      }
+
+      const explanation = generateSpecificExplanation({
+        exactWords: claimText,
+        claimType: "NUTRITION_CLAIM",
+        outcome: "CONTRADICTED",
+        product,
+        brand,
+        conflictingEvidence,
+        regulatoryDetails: sugarRegResult,
+      });
+
+      return {
+        evidenceVerification: "CONTRADICTED",
+        governanceCompliance: "NON_COMPLIANT",
+        brandVoiceQuality: toneResult.brandVoiceQuality,
+        outcome: "CONTRADICTED",
+        matchedEvidence: [],
+        conflictingEvidence,
+        explanation,
+        severity: "HIGH",
+        blocking: true,
+        citationFailures,
+        regulatoryDetails: sugarRegResult,
+        toneAnalysis: toneResult,
+      };
+    }
+
+    if (sugarRegResult.complianceStatus === "COMPLIANT") {
+      const matchFact = eligibleFacts.find(
+        (ef) =>
+          normalize(ef.fact.subject).includes(normProduct) &&
+          (normalize(ef.fact.attribute).includes("sugar") || normalize(ef.fact.attribute).includes("total sugar"))
+      );
+      if (matchFact) {
+        matchedEvidence.push({
+          source_id: matchFact.source.id,
+          source_version: matchFact.source.version,
+          source_title: matchFact.source.title,
+          quote: matchFact.fact.statement,
+          authority: matchFact.source.authority,
+          score: 1.0,
+          attribute: matchFact.fact.attribute,
+          value: matchFact.fact.value,
+          unit: matchFact.fact.unit,
+        });
+      }
+
+      const explanation = generateSpecificExplanation({
+        exactWords: claimText,
+        claimType: "NUTRITION_CLAIM",
+        outcome: "SUPPORTED",
+        product,
+        brand,
+        matchedEvidence,
+        regulatoryDetails: sugarRegResult,
+      });
+
+      return {
+        evidenceVerification: "SUPPORTED",
+        governanceCompliance: "COMPLIANT",
+        brandVoiceQuality: toneResult.brandVoiceQuality,
+        outcome: "SUPPORTED",
+        matchedEvidence,
+        conflictingEvidence: [],
+        explanation,
+        severity: "LOW",
+        blocking: false,
+        citationFailures,
+        regulatoryDetails: sugarRegResult,
+        toneAnalysis: toneResult,
+      };
+    }
+
+    if (sugarRegResult.complianceStatus === "NEEDS_REVIEW") {
+      const explanation = generateSpecificExplanation({
+        exactWords: claimText,
+        claimType: "NUTRITION_CLAIM",
+        outcome: "NEEDS_HUMAN",
+        product,
+        brand,
+        regulatoryDetails: sugarRegResult,
+      });
+
+      return {
+        evidenceVerification: "NEEDS_HUMAN",
+        governanceCompliance: "NEEDS_REVIEW",
+        brandVoiceQuality: toneResult.brandVoiceQuality,
+        outcome: "NEEDS_HUMAN",
+        matchedEvidence: [],
+        conflictingEvidence: [],
+        explanation,
+        severity: "REVIEW",
+        blocking: false,
+        citationFailures,
+        regulatoryDetails: sugarRegResult,
+        toneAnalysis: toneResult,
+      };
+    }
+  }
+
+  // =========================================================================
+  // CASE 4: Disease / Therapeutic Claims
+  // =========================================================================
+  const diseaseRegResult = evaluateDiseaseClaim({
+    claimText,
+    marketCountry: brandContext.marketCountry,
+    framework: brandContext.applicableRegulatoryFramework,
+  });
+
+  if (diseaseRegResult) {
+    const explanation = generateSpecificExplanation({
+      exactWords: claimText,
+      claimType: "HEALTH_MEDICAL_CLAIM",
+      outcome: "CONTRADICTED",
+      product,
+      brand,
+      regulatoryDetails: diseaseRegResult,
+    });
+    return {
+      evidenceVerification: "CONTRADICTED",
+      governanceCompliance: "NON_COMPLIANT",
+      brandVoiceQuality: "OFF_BRAND",
+      outcome: "CONTRADICTED",
+      matchedEvidence: [],
+      conflictingEvidence: [],
+      explanation,
+      severity: "HIGH",
+      blocking: true,
+      citationFailures,
+      regulatoryDetails: diseaseRegResult,
+      toneAnalysis: toneResult,
+    };
+  }
+
+  // =========================================================================
+  // CASE 5: Child Development & Cognition Claims
+  // =========================================================================
+  const childDevResult = evaluateChildDevelopmentClaim({
+    claimText,
+    marketCountry: brandContext.marketCountry,
+    framework: brandContext.applicableRegulatoryFramework,
+  });
+
+  if (childDevResult) {
+    const explanation = generateSpecificExplanation({
+      exactWords: claimText,
+      claimType: "DEVELOPMENTAL_CLAIM",
+      outcome: "NEEDS_HUMAN",
+      product,
+      brand,
+      regulatoryDetails: childDevResult,
+    });
+    return {
+      evidenceVerification: "NEEDS_HUMAN",
+      governanceCompliance: "NEEDS_REVIEW",
+      brandVoiceQuality: toneResult.brandVoiceQuality,
+      outcome: "NEEDS_HUMAN",
+      matchedEvidence: [],
+      conflictingEvidence: [],
+      explanation,
+      severity: "REVIEW",
+      blocking: false,
+      citationFailures,
+      regulatoryDetails: childDevResult,
+      toneAnalysis: toneResult,
+    };
+  }
+
+  // =========================================================================
+  // CASE 6: Numeric Nutrition & Specification Claims
+  // =========================================================================
+  if (
+    claimType === "NUTRITION_CLAIM" ||
+    claimType === "NUMERIC_NUTRITION_CLAIM" ||
+    claimType === "NUMERIC_SPECIFICATION"
+  ) {
+    const numMatch =
+      claimText.match(/(\d+(?:\.\d+)?)\s*(g|grams?|mg|ml|kcal|calories)\s+(protein|added\s+sugar|sugar|sugars|total\s+sugars|serving)/i) ||
+      claimText.match(/(\d+(?:\.\d+)?)\s*(g|grams?|oz|bites?)\s+serving/i);
 
     if (numMatch) {
       const claimedVal = numMatch[1];
       const claimedUnit = numMatch[2].toLowerCase();
       const claimedMetric = (numMatch[3] || "serving").toLowerCase();
 
-      // Look for fact for this product and metric
       const matchingFact = eligibleFacts.find(({ fact }) => {
         const subjMatch = normalize(fact.subject).includes(normProduct) || normProduct.includes(normalize(fact.subject));
         if (!subjMatch) return false;
@@ -270,7 +483,6 @@ export function evaluateClaimWithEvidence(
         const factUnit = (matchingFact.fact.unit ?? "").toLowerCase().trim();
 
         if (claimedVal === factVal && (!factUnit || claimedUnit.startsWith(factUnit[0]))) {
-          // Exact match!
           matchedEvidence.push({
             source_id: matchingFact.source.id,
             source_version: matchingFact.source.version,
@@ -293,6 +505,9 @@ export function evaluateClaimWithEvidence(
           });
 
           return {
+            evidenceVerification: "SUPPORTED",
+            governanceCompliance: "COMPLIANT",
+            brandVoiceQuality: toneResult.brandVoiceQuality,
             outcome: "SUPPORTED",
             matchedEvidence,
             conflictingEvidence: [],
@@ -300,9 +515,10 @@ export function evaluateClaimWithEvidence(
             severity: "LOW",
             blocking: false,
             citationFailures,
+            toneAnalysis: toneResult,
           };
         } else {
-          // Value mismatch! Direct contradiction
+          // Direct numeric contradiction
           conflictingEvidence.push({
             source_id: matchingFact.source.id,
             source_version: matchingFact.source.version,
@@ -329,6 +545,9 @@ export function evaluateClaimWithEvidence(
           });
 
           return {
+            evidenceVerification: "CONTRADICTED",
+            governanceCompliance: "NON_COMPLIANT",
+            brandVoiceQuality: toneResult.brandVoiceQuality,
             outcome: "CONTRADICTED",
             matchedEvidence: [],
             conflictingEvidence,
@@ -336,12 +555,13 @@ export function evaluateClaimWithEvidence(
             severity: "HIGH",
             blocking: true,
             citationFailures,
+            toneAnalysis: toneResult,
           };
         }
       }
     }
 
-    // No matching specification fact found -> UNSUPPORTED (Never claim proven false!)
+    // No matching specification fact found -> UNSUPPORTED (Never claim false!)
     const explanation = generateSpecificExplanation({
       exactWords: claimText,
       claimType,
@@ -350,6 +570,9 @@ export function evaluateClaimWithEvidence(
       brand,
     });
     return {
+      evidenceVerification: "UNSUPPORTED",
+      governanceCompliance: "NEEDS_REVIEW",
+      brandVoiceQuality: toneResult.brandVoiceQuality,
       outcome: "UNSUPPORTED",
       matchedEvidence: [],
       conflictingEvidence: [],
@@ -357,18 +580,25 @@ export function evaluateClaimWithEvidence(
       severity: "REVIEW",
       blocking: false,
       citationFailures,
+      toneAnalysis: toneResult,
     };
   }
 
-  // 5. INGREDIENT CLAIMS (e.g. "Made with wholegrain oats")
-  if (claimType === "INGREDIENT_CLAIM") {
-    // Check if ingredient fact exists in eligible facts
+  // =========================================================================
+  // CASE 7: Ingredient Claims
+  // =========================================================================
+  if (claimType === "INGREDIENT_COMPOSITION" || claimType === "INGREDIENT_CLAIM") {
     const ingredientFact = eligibleFacts.find(({ fact }) => {
       const normAttr = normalize(fact.attribute);
-      const isIngrOrAllergen = normAttr.includes("ingredient") || normAttr.includes("allergen");
+      const isIngrOrAllergen =
+        normAttr.includes("ingredient") ||
+        normAttr.includes("allergen") ||
+        normAttr.includes("material") ||
+        normAttr.includes("fabric") ||
+        normAttr.includes("composition");
       if (!isIngrOrAllergen) return false;
       const normVal = normalize(fact.value);
-      return normVal.length >= 3 && normClaim.includes(normVal);
+      return normVal.length >= 3 && (normClaim.includes(normVal) || normVal.includes(normClaim));
     });
 
     if (ingredientFact) {
@@ -381,6 +611,7 @@ export function evaluateClaimWithEvidence(
         score: 1.0,
         attribute: ingredientFact.fact.attribute,
         value: ingredientFact.fact.value,
+        unit: ingredientFact.fact.unit,
       });
 
       const explanation = generateSpecificExplanation({
@@ -393,6 +624,9 @@ export function evaluateClaimWithEvidence(
       });
 
       return {
+        evidenceVerification: "SUPPORTED",
+        governanceCompliance: "COMPLIANT",
+        brandVoiceQuality: toneResult.brandVoiceQuality,
         outcome: "SUPPORTED",
         matchedEvidence,
         conflictingEvidence: [],
@@ -400,10 +634,10 @@ export function evaluateClaimWithEvidence(
         severity: "LOW",
         blocking: false,
         citationFailures,
+        toneAnalysis: toneResult,
       };
     }
 
-    // Missing specific ingredient specification -> UNSUPPORTED (Do not claim false!)
     const explanation = generateSpecificExplanation({
       exactWords: claimText,
       claimType,
@@ -412,6 +646,9 @@ export function evaluateClaimWithEvidence(
       brand,
     });
     return {
+      evidenceVerification: "UNSUPPORTED",
+      governanceCompliance: "NEEDS_REVIEW",
+      brandVoiceQuality: toneResult.brandVoiceQuality,
       outcome: "UNSUPPORTED",
       matchedEvidence: [],
       conflictingEvidence: [],
@@ -419,12 +656,14 @@ export function evaluateClaimWithEvidence(
       severity: "REVIEW",
       blocking: false,
       citationFailures,
+      toneAnalysis: toneResult,
     };
   }
 
-  // 6. PROMOTIONAL OFFERS (e.g. "Our starter bundle includes 3 jars with standard delivery.")
+  // =========================================================================
+  // CASE 8: Promotional Offers
+  // =========================================================================
   if (claimType === "PROMOTIONAL_OFFER") {
-    // Check for conflicting bundle records
     const bundleFacts = eligibleFacts.filter(({ fact }) =>
       normalize(fact.attribute).includes("bundle")
     );
@@ -435,7 +674,6 @@ export function evaluateClaimWithEvidence(
       (normClaim.includes("jar") || /\b(?:2|3|two|three)\b/.test(normClaim));
 
     if (differingValues.size > 1 && touchesBundleConflict) {
-      // Conflicting approved briefs!
       for (const bf of bundleFacts.slice(0, 2)) {
         conflictingEvidence.push({
           source_id: bf.source.id,
@@ -458,6 +696,9 @@ export function evaluateClaimWithEvidence(
         conflictingEvidence,
       });
       return {
+        evidenceVerification: "CONTRADICTED",
+        governanceCompliance: "NON_COMPLIANT",
+        brandVoiceQuality: toneResult.brandVoiceQuality,
         outcome: "CONTRADICTED",
         matchedEvidence: [],
         conflictingEvidence,
@@ -465,10 +706,10 @@ export function evaluateClaimWithEvidence(
         severity: "HIGH",
         blocking: true,
         citationFailures,
+        toneAnalysis: toneResult,
       };
     }
 
-    // Missing commercial offer record -> UNSUPPORTED
     const explanation = generateSpecificExplanation({
       exactWords: claimText,
       claimType,
@@ -477,6 +718,9 @@ export function evaluateClaimWithEvidence(
       brand,
     });
     return {
+      evidenceVerification: "UNSUPPORTED",
+      governanceCompliance: "NEEDS_REVIEW",
+      brandVoiceQuality: toneResult.brandVoiceQuality,
       outcome: "UNSUPPORTED",
       matchedEvidence: [],
       conflictingEvidence: [],
@@ -484,10 +728,13 @@ export function evaluateClaimWithEvidence(
       severity: "REVIEW",
       blocking: false,
       citationFailures,
+      toneAnalysis: toneResult,
     };
   }
 
-  // 7. DEFAULT GENERAL FALLBACK
+  // =========================================================================
+  // DEFAULT / UNVERIFIED CLAIM
+  // =========================================================================
   const explanation = generateSpecificExplanation({
     exactWords: claimText,
     claimType,
@@ -495,7 +742,11 @@ export function evaluateClaimWithEvidence(
     product,
     brand,
   });
+
   return {
+    evidenceVerification: "UNSUPPORTED",
+    governanceCompliance: "NEEDS_REVIEW",
+    brandVoiceQuality: toneResult.brandVoiceQuality,
     outcome: "UNSUPPORTED",
     matchedEvidence: [],
     conflictingEvidence: [],
@@ -503,5 +754,6 @@ export function evaluateClaimWithEvidence(
     severity: "REVIEW",
     blocking: false,
     citationFailures,
+    toneAnalysis: toneResult,
   };
 }

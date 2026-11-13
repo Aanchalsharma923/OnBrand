@@ -13,6 +13,9 @@ export type Severity = "LOW" | "MEDIUM" | "HIGH" | "REVIEW";
 
 import { classifyClaim, shouldSkipNonClaim } from "./claim-classifier";
 import { generateSpecificExplanation } from "./finding-explanations";
+import { resolveBrandContext } from "./brand-context";
+import { evaluateSugarClaim, type RegulatoryFindingDetails } from "./regulatory-intelligence";
+import { evaluateTone, type ToneEvaluationResult } from "./tone-evaluator";
 export type ExtractionReview = {
   method: "OCR";
   quality: "RELIABLE" | "NEEDS_PROOFREAD" | "UNREADABLE";
@@ -79,6 +82,12 @@ export type Finding = {
   suggestion?: string;
   suggestion_state?: "CANDIDATE" | "RECHECK_PASSED" | "REJECTED";
   created_at: string;
+  // Three Independent Review Dimensions
+  evidence_verification?: "SUPPORTED" | "CONTRADICTED" | "UNSUPPORTED" | "NEEDS_HUMAN" | "NOT_APPLICABLE";
+  governance_compliance?: "COMPLIANT" | "NON_COMPLIANT" | "NEEDS_REVIEW" | "NOT_APPLICABLE";
+  brand_voice_quality?: "ON_BRAND" | "MINOR_SUGGESTION" | "OFF_BRAND" | "NEEDS_HUMAN";
+  regulatory_details?: RegulatoryFindingDetails;
+  tone_analysis?: ToneEvaluationResult;
 };
 
 export type FindingFilter = "all" | "attention" | "blocking" | "supported";
@@ -707,6 +716,44 @@ export function reviewDraft(input: {
         : status === "NO_APPROVED_EVIDENCE" || status === "NEEDS_HUMAN"
           ? undefined
           : undefined;
+    const brandCtx = resolveBrandContext({ product: draft.product, channel: draft.channel, sources });
+    const toneAnalysis = evaluateTone(claimText, brandCtx.brandVoice, draft.channel, draft.audience);
+    const sugarEval = /sugar free|zero sugar|no sugar/i.test(claimText)
+      ? evaluateSugarClaim({
+          claimText,
+          facts: sources.flatMap((s) => s.facts),
+          productName: draft.product,
+          marketCountry: brandCtx.marketCountry,
+          framework: brandCtx.applicableRegulatoryFramework,
+        })
+      : null;
+
+    let evVerification: "SUPPORTED" | "CONTRADICTED" | "UNSUPPORTED" | "NEEDS_HUMAN" | "NOT_APPLICABLE" =
+      status === "SUPPORTED"
+        ? "SUPPORTED"
+        : status === "CONTRADICTED" || status === "CONFLICT"
+        ? "CONTRADICTED"
+        : status === "NO_APPROVED_EVIDENCE" || (status as string) === "UNSUPPORTED"
+        ? "UNSUPPORTED"
+        : "NEEDS_HUMAN";
+
+    let govCompliance: "COMPLIANT" | "NON_COMPLIANT" | "NEEDS_REVIEW" | "NOT_APPLICABLE" =
+      status === "CONTRADICTED" || status === "CONFLICT" || Boolean(rule)
+        ? "NON_COMPLIANT"
+        : "COMPLIANT";
+
+    if (sugarEval) {
+      if (sugarEval.complianceStatus === "NON_COMPLIANT") {
+        govCompliance = "NON_COMPLIANT";
+        evVerification = "CONTRADICTED";
+        explanation = sugarEval.reasoning;
+      } else if (sugarEval.complianceStatus === "NEEDS_REVIEW") {
+        govCompliance = "NEEDS_REVIEW";
+        evVerification = "NEEDS_HUMAN";
+        explanation = sugarEval.reasoning;
+      }
+    }
+
     return {
       finding_id: `F-${index + 1}-${stableHash(claimText).slice(0, 6)}`,
       review_id: reviewId,
@@ -726,6 +773,11 @@ export function reviewDraft(input: {
       suggestion: suggested,
       suggestion_state: suggested ? "CANDIDATE" : undefined,
       created_at: new Date().toISOString(),
+      evidence_verification: evVerification,
+      governance_compliance: govCompliance,
+      brand_voice_quality: toneAnalysis.brandVoiceQuality,
+      regulatory_details: sugarEval ?? undefined,
+      tone_analysis: toneAnalysis,
     };
   });
   const accessibility = htmlAccessibilityChecks(draft.content);
