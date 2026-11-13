@@ -132,6 +132,7 @@ export interface OnBrandRepository {
     draftVersionIdOrDraftId: string,
     version?: number
   ): Promise<Review | null>;
+  getReviewById(ctx: TenantContext, reviewId: string): Promise<Review | null>;
 
   // Governance Decisions & Audits
   recordDecision(ctx: TenantContext, reviewId: string, decision: ReviewDecision): Promise<void>;

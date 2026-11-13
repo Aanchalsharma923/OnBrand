@@ -25,6 +25,20 @@ describe("server-enforced role authorization (RBAC)", () => {
   });
 
   it("permits workspace reviewer to record review decisions", async () => {
+    const repo = (await import("@/lib/server/repository")).getRepository();
+    const { reviewDraft } = await import("@/lib/onbrand");
+    const ctx = {
+      organizationId: "00000000-0000-0000-0000-000000000001",
+      userId: "test-reviewer",
+      role: "reviewer" as const,
+      actor: { userId: "test-reviewer", displayName: "Workspace Reviewer" },
+    };
+    const rev = reviewDraft({ draft: initialDraft, sources: seedSources });
+    rev.id = "REV-TEST-002";
+    rev.draftHash = initialDraft.hash;
+    rev.findings = rev.findings.filter((f) => f.evidence_status !== "CONTRADICTED");
+    await repo.saveReview(ctx, rev);
+
     const request = new Request("http://localhost/api/decisions", {
       method: "POST",
       headers: {

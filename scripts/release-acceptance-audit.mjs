@@ -292,10 +292,22 @@ async function test8_ReReview() {
 // TEST 9: Authorised human approval
 async function test9_HumanApproval() {
   try {
-    const testReviewId = `REV-TEST-${Date.now()}`;
-    const draftHash = stableHash("Approved content draft");
+    // 1. Run a clean review on a compliant draft
+    const cleanDraft = createDraft("Sample Foods Oat Bites contain 4g of sugar per serving.", {
+      channel: "social",
+      product: "Sample Foods Oat Bites"
+    });
+    const revRes = await fetch(`${BASE_URL}/api/reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-onbrand-tenant": "org_alpha" },
+      body: JSON.stringify({ draft: cleanDraft, useAdvisoryModel: false })
+    });
+    assert.strictEqual(revRes.status, 200, "Clean review must succeed");
+    const revData = await revRes.json();
+    const testReviewId = revData.review.id;
+    const draftHash = cleanDraft.hash;
 
-    // Negative role test: creators cannot approve decisions
+    // 2. Negative role test: creators cannot approve decisions
     const creatorDecision = await fetch(`${BASE_URL}/api/decisions`, {
       method: "POST",
       headers: {
@@ -311,7 +323,24 @@ async function test9_HumanApproval() {
     });
     assert.strictEqual(creatorDecision.status, 403, "Creators must receive 403 Forbidden on decision recording");
 
-    // Positive role test: reviewer can record decision
+    // 3. Stale hash protection test: approval with mismatched hash must be rejected (409)
+    const staleDecision = await fetch(`${BASE_URL}/api/decisions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-onbrand-tenant": "org_alpha",
+        "x-onbrand-role": "reviewer"
+      },
+      body: JSON.stringify({
+        reviewId: testReviewId,
+        state: "APPROVED",
+        draftHash: stableHash("Modified content that does not match review"),
+        reason: "Stale approval attempt"
+      })
+    });
+    assert.strictEqual(staleDecision.status, 409, "Stale review with altered draft hash must receive 409 Conflict");
+
+    // 4. Positive role test: reviewer records decision on valid review with matching hash
     const reviewerDecision = await fetch(`${BASE_URL}/api/decisions`, {
       method: "POST",
       headers: {
@@ -335,7 +364,7 @@ async function test9_HumanApproval() {
       9,
       "Authorised human approval",
       "PASS",
-      `Role matrix verified: creator receives 403 Forbidden; reviewer records approval with actor '${data.decision.by}' and immutable draftHash.`
+      `Role matrix & version integrity verified: creator receives 403; stale draft hash receives 409; reviewer records approval with actor '${data.decision.by}' and immutable draftHash.`
     );
   } catch (err) {
     recordResult(9, "Authorised human approval", "FAIL", err.message);

@@ -236,8 +236,16 @@ export default function Home() {
           setShowOnboardingModal(true);
         } else {
           setCurrentOrg((prev) => {
-            const exists = orgs.some((o) => o.id === prev);
-            return exists ? prev : orgs[0].id;
+            const matched = orgs.find((o) => o.id === prev);
+            if (matched && matched.role && ["creator", "reviewer", "maintainer"].includes(matched.role)) {
+              setRole(matched.role as Role);
+              return prev;
+            }
+            const target = orgs[0];
+            if (target && target.role && ["creator", "reviewer", "maintainer"].includes(target.role)) {
+              setRole(target.role as Role);
+            }
+            return target.id;
           });
           setShowOnboardingModal(false);
         }
@@ -1456,7 +1464,7 @@ export default function Home() {
                   setNewOrgSlug("");
                   setShowOnboardingModal(false);
                   setCurrentOrg(created.id);
-                  setRole("creator");
+                  setRole("maintainer");
                   await refreshOrganizations(token);
                 } catch (err) {
                   setOnboardingError(err instanceof Error ? err.message : "Failed to create organization.");

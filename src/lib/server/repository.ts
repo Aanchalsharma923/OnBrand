@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { seedSources, type Draft, type Fact, type Finding, type Review, type Source } from "@/lib/onbrand";
 import * as schema from "@/lib/schema";
 import { databaseConfigured, withOrganizationScope } from "./db";
@@ -131,6 +131,28 @@ export class InMemoryRepository implements OnBrandRepository {
         r.draftVersionId === draftVersionIdOrDraftId ||
         (r.draftId === draftVersionIdOrDraftId && (version === undefined || r.draftVersionId.endsWith(`v${version}`))),
     ) ?? null;
+    if (!rev) return null;
+    if (!rev.decision) {
+      const orgDecisions = this.decisions.get(ctx.organizationId) ?? [];
+      const matchDec = orgDecisions
+        .filter((d) => d.draftHash === rev.draftHash)
+        .slice(-1)[0];
+      if (matchDec && matchDec.state !== "REOPENED") {
+        rev.decision = {
+          state: matchDec.state,
+          by: matchDec.by ?? "reviewer",
+          at: matchDec.at,
+          draftHash: matchDec.draftHash,
+          sourceSnapshotHash: matchDec.sourceSnapshotHash,
+        };
+      }
+    }
+    return rev;
+  }
+
+  async getReviewById(ctx: TenantContext, reviewId: string): Promise<Review | null> {
+    const orgReviews = this.reviews.get(ctx.organizationId) ?? [];
+    const rev = orgReviews.find((r) => r.id === reviewId || r.draftHash === reviewId) ?? null;
     if (!rev) return null;
     if (!rev.decision) {
       const orgDecisions = this.decisions.get(ctx.organizationId) ?? [];
@@ -798,6 +820,98 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       };
     }),
       () => this.inMemoryFallback.getReviewByDraftVersion(ctx, draftVersionIdOrDraftId, version),
+    );
+  }
+
+  async getReviewById(ctx: TenantContext, reviewId: string): Promise<Review | null> {
+    return this.executeWithFallback<Review | null>(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const isReviewUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(reviewId);
+          const reviewRows = await tx
+            .select()
+            .from(schema.reviews)
+            .where(
+              and(
+                eq(schema.reviews.organizationId, ctx.organizationId),
+                isReviewUuid
+                  ? eq(schema.reviews.id, reviewId)
+                  : or(eq(schema.reviews.id, reviewId), eq(schema.reviews.draftHash, reviewId)),
+              ),
+            )
+            .limit(1);
+
+          if (!reviewRows.length) return null;
+          const r = reviewRows[0];
+
+          const findingRows = await tx
+            .select()
+            .from(schema.findings)
+            .where(and(
+              eq(schema.findings.organizationId, ctx.organizationId),
+              eq(schema.findings.reviewId, r.id),
+            ));
+
+          const decisionRows = await tx
+            .select()
+            .from(schema.decisions)
+            .where(and(
+              eq(schema.decisions.organizationId, ctx.organizationId),
+              eq(schema.decisions.reviewId, r.id),
+            ))
+            .orderBy(desc(schema.decisions.createdAt));
+
+          const latestDecision = decisionRows[0];
+          const decisionObj = (latestDecision && latestDecision.decision !== "REOPENED") ? {
+            state: latestDecision.decision as "APPROVED" | "CHANGES_REQUESTED" | "REJECTED",
+            by: latestDecision.decidedBy,
+            at: latestDecision.createdAt.toISOString(),
+            draftHash: latestDecision.draftHash,
+            sourceSnapshotHash: latestDecision.sourceSnapshotHash,
+          } : undefined;
+
+          const decisionHistory = decisionRows.map((d: typeof schema.decisions.$inferSelect) => ({
+            action: d.decision === "REOPENED" ? ("DECISION_REOPENED" as const) : ("DECISION_RECORDED" as const),
+            state: d.decision === "REOPENED" ? undefined : (d.decision as "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"),
+            by: d.decidedBy,
+            at: d.createdAt.toISOString(),
+            draftHash: d.draftHash,
+            sourceSnapshotHash: d.sourceSnapshotHash,
+          }));
+
+          return {
+            id: r.id,
+            draftId: r.draftId,
+            draftVersionId: r.draftVersionId,
+            draftHash: r.draftHash,
+            sourceSnapshotHash: r.sourceSnapshotHash,
+            createdAt: r.createdAt.toISOString(),
+            findings: findingRows.map((f: typeof schema.findings.$inferSelect) => ({
+              finding_id: f.id,
+              review_id: r.id,
+              draft_id: r.draftId,
+              draft_version_id: r.draftVersionId,
+              draft_hash: r.draftHash,
+              claim_id: f.id,
+              claim_text: f.claimText,
+              start: f.startOffset,
+              end: f.endOffset,
+              category: f.category,
+              evidence_status: f.evidenceStatus as any,
+              severity: f.severity as any,
+              blocking_for_review: f.blockingForReview,
+              explanation: f.explanation,
+              source_evidence: (f.evidence as any) ?? [],
+              suggestion: f.suggestion ?? undefined,
+              created_at: f.createdAt.toISOString(),
+            })),
+            comments: [],
+            decision: decisionObj,
+            decisionHistory,
+          };
+        }),
+      () => this.inMemoryFallback.getReviewById(ctx, reviewId),
     );
   }
 
