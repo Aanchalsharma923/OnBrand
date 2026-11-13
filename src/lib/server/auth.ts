@@ -11,6 +11,7 @@ import {
   getSupabaseAdmin,
   extractAuthToken,
   resolveUserMembershipFromDb,
+  SupabaseConfigurationError,
 } from "./supabase";
 
 export const DEMO_ORGS = {
@@ -83,6 +84,9 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
       };
     } catch (err) {
       if (err instanceof UnauthorizedError) throw err;
+      // SupabaseConfigurationError means the server is misconfigured — not an
+      // auth failure. Surface it explicitly so it appears in deployment logs.
+      if (err instanceof SupabaseConfigurationError) throw err;
       console.error("Supabase session verification failed:", err);
       throw new UnauthorizedError("Could not verify session credentials.");
     }
