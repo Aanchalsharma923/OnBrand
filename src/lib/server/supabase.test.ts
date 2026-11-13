@@ -36,7 +36,9 @@ import {
 } from "@/lib/supabase-client";
 import {
   isSupabaseConfigured,
+  isSupabaseAuthConfigured,
   getSupabaseAdmin,
+  getSupabaseAuthClient,
   extractAuthToken,
   SupabaseConfigurationError,
   _resetAdminClientForTests,
@@ -387,7 +389,126 @@ describe("isSupabaseConfigured — requires SERVICE_ROLE_KEY", () => {
 // 3. Token extraction
 // ---------------------------------------------------------------------------
 
+describe("getSupabaseAuthClient — user JWT verification client", () => {
+  beforeEach(() => {
+    _resetAdminClientForTests();
+  });
+
+  afterEach(() => {
+    _resetAdminClientForTests();
+  });
+
+  it("throws SupabaseConfigurationError when NEXT_PUBLIC_SUPABASE_URL is absent", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: undefined,
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      },
+      () => {
+        expect(() => getSupabaseAuthClient()).toThrow(SupabaseConfigurationError);
+      }
+    );
+  });
+
+  it("throws SupabaseConfigurationError when no key is set", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: undefined,
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: undefined,
+        SUPABASE_SERVICE_ROLE_KEY: undefined,
+      },
+      () => {
+        expect(() => getSupabaseAuthClient()).toThrow(SupabaseConfigurationError);
+      }
+    );
+  });
+
+  it("creates an auth client using NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (no service-role key required)", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test123",
+        SUPABASE_SERVICE_ROLE_KEY: undefined,
+      },
+      () => {
+        const client = getSupabaseAuthClient();
+        expect(client).not.toBeNull();
+        expect(typeof client.auth.getUser).toBe("function");
+      }
+    );
+  });
+
+  it("creates an auth client using SUPABASE_SERVICE_ROLE_KEY if provided", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: undefined,
+        SUPABASE_SERVICE_ROLE_KEY: "service_role.test.key",
+      },
+      () => {
+        const client = getSupabaseAuthClient();
+        expect(client).not.toBeNull();
+      }
+    );
+  });
+});
+
+describe("isSupabaseAuthConfigured — supports publishable key", () => {
+  it("returns true when URL and PUBLISHABLE_KEY are set", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+        SUPABASE_SERVICE_ROLE_KEY: undefined,
+      },
+      () => {
+        expect(isSupabaseAuthConfigured()).toBe(true);
+      }
+    );
+  });
+
+  it("returns true when URL and legacy ANON_KEY are set", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon.key",
+        SUPABASE_SERVICE_ROLE_KEY: undefined,
+      },
+      () => {
+        expect(isSupabaseAuthConfigured()).toBe(true);
+      }
+    );
+  });
+
+  it("returns false when URL is missing", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_URL: undefined,
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      },
+      () => {
+        expect(isSupabaseAuthConfigured()).toBe(false);
+      }
+    );
+  });
+});
+
 describe("extractAuthToken", () => {
+  it("rejects an API key passed as Bearer token (never treats API key as user access token)", () => {
+    const publishableKey = "sb_publishable_Zsl92BCZLRv0JoFNvKQXhg_X3rKg-Qh";
+    withEnv(
+      {
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+      },
+      () => {
+        const req = new Request("http://localhost/api/reviews", {
+          headers: { authorization: `Bearer ${publishableKey}` },
+        });
+        expect(extractAuthToken(req)).toBeNull();
+      }
+    );
+  });
   it("extracts token from standard Bearer Authorization header", () => {
     const req = new Request("http://localhost/api/reviews", {
       headers: { authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sample" },

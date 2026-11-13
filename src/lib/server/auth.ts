@@ -8,7 +8,9 @@ import type { ServerRole, TenantContext } from "@/lib/types";
 import { databaseConfigured } from "./db";
 import {
   isSupabaseConfigured,
+  isSupabaseAuthConfigured,
   getSupabaseAdmin,
+  getSupabaseAuthClient,
   extractAuthToken,
   resolveUserMembershipFromDb,
   SupabaseConfigurationError,
@@ -50,9 +52,18 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
   const token = extractAuthToken(request);
 
   // 1. Verified Supabase Session Resolution
-  if (token && isSupabaseConfigured()) {
+  // When an authorization token or session cookie is provided, verify it strictly.
+  // Missing server configuration produces an explicit SupabaseConfigurationError (HTTP 503),
+  // NEVER a silent degrade to demo mode.
+  if (token) {
+    if (!isSupabaseAuthConfigured()) {
+      throw new SupabaseConfigurationError(
+        "Supabase Authentication is not configured on the server. Unable to verify user session credentials."
+      );
+    }
+
     try {
-      const supabase = getSupabaseAdmin();
+      const supabase = getSupabaseAuthClient();
       const { data: { user }, error } = await supabase.auth.getUser(token);
 
       if (error || !user) {
@@ -71,6 +82,11 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
         };
       }
 
+      // If user explicitly requested an organization that they do NOT have membership in:
+      if (requestedOrgId && databaseConfigured()) {
+        throw new ForbiddenError("You are not an authorized member of the requested organization.");
+      }
+
       // Authenticated user with no explicit membership record yet:
       // Safe default to standard enterprise workspace with reviewer role
       return {
@@ -83,10 +99,9 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
         role: "reviewer",
       };
     } catch (err) {
-      if (err instanceof UnauthorizedError) throw err;
-      // SupabaseConfigurationError means the server is misconfigured — not an
-      // auth failure. Surface it explicitly so it appears in deployment logs.
-      if (err instanceof SupabaseConfigurationError) throw err;
+      if (err instanceof UnauthorizedError || err instanceof ForbiddenError || err instanceof SupabaseConfigurationError) {
+        throw err;
+      }
       console.error("Supabase session verification failed:", err);
       throw new UnauthorizedError("Could not verify session credentials.");
     }

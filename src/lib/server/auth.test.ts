@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveTenantContext, requireRole, ForbiddenError, DEMO_ORGS } from "./auth";
+import { resolveTenantContext, requireRole, ForbiddenError, UnauthorizedError, DEMO_ORGS } from "./auth";
+import { SupabaseConfigurationError } from "./supabase";
 import type { TenantContext } from "@/lib/types";
 
 describe("Server-Side Auth & Tenant Context Resolution", () => {
@@ -49,6 +50,37 @@ describe("Server-Side Auth & Tenant Context Resolution", () => {
 
     // Reviewer can review and decide
     expect(() => requireRole(reviewerCtx, ["reviewer", "maintainer"])).not.toThrow();
+  });
+
+  it("throws SupabaseConfigurationError when Bearer token is provided but Supabase is unconfigured", async () => {
+    // When a client explicitly provides an Authorization token, but the server is not
+    // configured to verify it, do NOT silently degrade to demo mode. Fail explicitly (HTTP 503).
+    const req = new Request("http://localhost/api/reviews", {
+      headers: {
+        authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.unverified.token",
+      },
+    });
+
+    const origUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    try {
+      delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+      await expect(resolveTenantContext(req)).rejects.toThrow(SupabaseConfigurationError);
+    } finally {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = origUrl;
+    }
+  });
+
+  it("rejects an API key supplied as a Bearer token without attempting JWT verification", async () => {
+    const apiKey = "sb_publishable_Zsl92BCZLRv0JoFNvKQXhg_X3rKg-Qh";
+    const req = new Request("http://localhost/api/reviews", {
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    // An API key must not be accepted as an auth token, so it falls back to unauthenticated resolution
+    const ctx = await resolveTenantContext(req);
+    expect(ctx.organizationId).toBe(DEMO_ORGS.ALPHA.id);
   });
 });
 

@@ -25,6 +25,7 @@ import { eq, and } from "drizzle-orm";
 import type { ServerRole, VerifiedActor } from "@/lib/types";
 
 let supabaseAdminClient: SupabaseClient | null = null;
+let supabaseAuthClient: SupabaseClient | null = null;
 
 // ---------------------------------------------------------------------------
 // Configuration helpers
@@ -43,16 +44,68 @@ export class SupabaseConfigurationError extends Error {
 }
 
 /**
+ * Returns true when Supabase is configured for user authentication and JWT verification.
+ * User JWT verification requires NEXT_PUBLIC_SUPABASE_URL and a valid key
+ * (either NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+ * or SUPABASE_SERVICE_ROLE_KEY).
+ */
+export function isSupabaseAuthConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY)
+  );
+}
+
+/**
  * Returns true when both the Supabase URL and the service-role key are set.
- * isSupabaseConfigured() === false means the system cannot perform server-side
- * JWT verification or privileged database operations; it will operate in
- * demo/sandbox mode only.
+ * Required for administrative operations that bypass Row Level Security.
  */
 export function isSupabaseConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.SUPABASE_SERVICE_ROLE_KEY
   );
+}
+
+/**
+ * Returns a Supabase client suitable for verifying user access tokens (JWTs)
+ * via supabase.auth.getUser(userAccessToken).
+ *
+ * Does NOT require the service-role key; the publishable key or anon key is
+ * fully sufficient because Supabase Auth validates the user's JWT cryptographically
+ * on the Auth server against the project's JWT secret.
+ */
+export function getSupabaseAuthClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url) {
+    throw new SupabaseConfigurationError(
+      "NEXT_PUBLIC_SUPABASE_URL is not set. Add it to .env.local."
+    );
+  }
+
+  if (!key) {
+    throw new SupabaseConfigurationError(
+      "Supabase key is not configured. Set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
+
+  if (!supabaseAuthClient) {
+    supabaseAuthClient = createClient(url, key, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+  }
+
+  return supabaseAuthClient;
 }
 
 /**
@@ -115,38 +168,59 @@ export function getSupabaseAdmin(): SupabaseClient {
  *  3. sb-<projectref>-auth-token cookie (Supabase JS SDK default)
  */
 export function extractAuthToken(request: Request): string | null {
+  let token: string | null = null;
   const authHeader = request.headers.get("authorization");
   if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-    const token = authHeader.slice(7).trim();
-    if (token) return token;
+    token = authHeader.slice(7).trim();
   }
 
-  const cookieHeader = request.headers.get("cookie");
-  if (cookieHeader) {
-    const cookies = cookieHeader.split(";").map((c) => c.trim());
-    for (const cookie of cookies) {
-      const [name, ...val] = cookie.split("=");
-      const trimmedName = name.trim();
-      if (
-        trimmedName === "sb-access-token" ||
-        (trimmedName.startsWith("sb-") && trimmedName.endsWith("-auth-token"))
-      ) {
-        const value = decodeURIComponent(val.join("=").trim());
-        try {
-          // Supabase JS SDK may store session as JSON array [accessToken, refreshToken]
-          if (value.startsWith("[")) {
-            const parsed = JSON.parse(value);
-            if (Array.isArray(parsed) && parsed[0]) return parsed[0];
+  if (!token) {
+    const cookieHeader = request.headers.get("cookie");
+    if (cookieHeader) {
+      const cookies = cookieHeader.split(";").map((c) => c.trim());
+      for (const cookie of cookies) {
+        const [name, ...val] = cookie.split("=");
+        const trimmedName = name.trim();
+        if (
+          trimmedName === "sb-access-token" ||
+          (trimmedName.startsWith("sb-") && trimmedName.endsWith("-auth-token"))
+        ) {
+          const value = decodeURIComponent(val.join("=").trim());
+          try {
+            // Supabase JS SDK may store session as JSON array [accessToken, refreshToken]
+            if (value.startsWith("[")) {
+              const parsed = JSON.parse(value);
+              if (Array.isArray(parsed) && parsed[0]) {
+                token = parsed[0];
+                break;
+              }
+            }
+            token = value;
+            break;
+          } catch {
+            token = value;
+            break;
           }
-          return value;
-        } catch {
-          return value;
         }
       }
     }
   }
 
-  return null;
+  if (!token) return null;
+
+  // Security Invariant: Never treat an API key as a user access token.
+  // API keys (publishable, anon, service-role) authenticate applications,
+  // not individual user sessions. User access tokens are signed JWTs issued on login.
+  if (
+    token.startsWith("sb_publishable_") ||
+    token === process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    token === process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    token === process.env.SUPABASE_SERVICE_ROLE_KEY
+  ) {
+    return null;
+  }
+
+  return token;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +286,8 @@ export async function resolveUserMembershipFromDb(
   }
 }
 
-/** Exposed for testing only. Resets the singleton so tests can re-initialise. */
+/** Exposed for testing only. Resets the singletons so tests can re-initialise. */
 export function _resetAdminClientForTests(): void {
   supabaseAdminClient = null;
+  supabaseAuthClient = null;
 }
