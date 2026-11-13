@@ -93,6 +93,7 @@ Open `http://localhost:3000`. Optional model settings are in `.env.example`. Wit
 ## Round 3 Architecture & Environment Setup
 
 Round 3 advances OnBrand into an enterprise multi-tenant brand governance platform:
+- **Product Completion Sprint Report:** See [`PRODUCT_COMPLETION_REPORT.md`](PRODUCT_COMPLETION_REPORT.md) for full test results, golden customer journey verification, tenant isolation audits, and production release evidence.
 - **Development Branch:** `round3-dev` (created from clean baseline tag `round2-final`).
 - **Environment Configuration:** See `.env.example` for the complete configuration matrix per PROJECT.md § 5.5, including Supabase PostgreSQL connection strings (`DATABASE_URL`, `DIRECT_URL`), client & admin Supabase keys (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), hosted model settings (`OPENAI_API_KEY`, `OPENAI_MODEL`), and deployment URL (`NEXT_PUBLIC_APP_URL`).
 - **Interface Contracts:** Programmatic DTOs and repository contracts are defined in `src/lib/types.ts` (`TenantContext`, `OnBrandRepository`, `ModelGateway`, `VisualAnalysisEngine`).
