@@ -14,7 +14,16 @@ export function databaseConfigured() {
 export function getDatabase() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not configured.");
-  if (!client) client = postgres(url, { max: 4, prepare: false, connect_timeout: 5, idle_timeout: 20 });
+  if (!client) {
+    const isLocalhost = url.includes("localhost") || url.includes("127.0.0.1");
+    client = postgres(url, {
+      max: 4,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      ssl: isLocalhost ? false : "require",
+    });
+  }
   return drizzle(client, { schema });
 }
 

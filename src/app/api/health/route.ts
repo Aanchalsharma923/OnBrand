@@ -10,7 +10,8 @@ export async function GET() {
       const database = getDatabase();
       const result = await database.execute(sql`select to_regclass('public.organizations') as organizations_table`);
       persistence = result[0]?.organizations_table ? "postgresql-ready" : "postgresql-connected-schema-pending";
-    } catch {
+    } catch (err) {
+      console.error("Health check DB error:", err);
       persistence = "postgresql-connection-unavailable";
     }
   }
