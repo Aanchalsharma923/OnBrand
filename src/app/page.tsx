@@ -247,6 +247,7 @@ export default function Home() {
 
   useEffect(() => {
     if (supabaseSession?.accessToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       refreshOrganizations(supabaseSession.accessToken);
     } else {
       setUserOrganizations([]);
@@ -462,7 +463,7 @@ export default function Home() {
     conflicts: findings.filter((f) => f.evidence_status === "CONFLICT").length,
     unsupported: findings.filter((f) => f.evidence_status === "NO_APPROVED_EVIDENCE").length,
   }), [findings]);
-  const approvalDisabledReason = role !== "reviewer" ? "Switch to Reviewer to record the human decision."
+  const approvalDisabledReason = (role !== "reviewer" && role !== "maintainer") ? "Switch to Reviewer or Maintainer to record the human decision."
     : !review ? "Run a review before recording a decision."
       : !hasCurrentReview ? "This report is stale. Run a fresh review before deciding."
         : counts.blocking > 0 ? `Resolve or escalate ${counts.blocking} blocking finding${counts.blocking === 1 ? "" : "s"} before approval.`
@@ -852,8 +853,8 @@ export default function Home() {
   }
 
   function makeDecision(state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED") {
-    if (!review || !hasCurrentReview || role !== "reviewer") {
-      announce("Only a reviewer can decide on the current, fully reviewed version.");
+    if (!review || !hasCurrentReview || (role !== "reviewer" && role !== "maintainer")) {
+      announce("Only a reviewer or maintainer can decide on the current, fully reviewed version.");
       return;
     }
     if (state === "APPROVED" && findings.some((f) => f.blocking_for_review)) {
@@ -865,7 +866,7 @@ export default function Home() {
       return;
     }
     const at = new Date().toISOString();
-    const by = "Workspace reviewer";
+    const by = role === "maintainer" ? "Workspace maintainer" : "Workspace reviewer";
     const decision = { state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash };
     setReview({ ...review, decision, decisionHistory: [...(review.decisionHistory ?? []), { action: "DECISION_RECORDED", state, by, at, draftHash: draft.hash, sourceSnapshotHash: review.sourceSnapshotHash }] });
     setLastDecision(state.replaceAll("_", " "));
@@ -883,8 +884,8 @@ export default function Home() {
   }
 
   function assignReviewer(name: string) {
-    if (!review || role !== "reviewer") {
-      announce("Only a reviewer can assign this review.");
+    if (!review || (role !== "reviewer" && role !== "maintainer")) {
+      announce("Only a reviewer or maintainer can assign this review.");
       return;
     }
     setReview({ ...review, assignedTo: name });
@@ -892,8 +893,8 @@ export default function Home() {
   }
 
   function reopenDecision() {
-    if (!review?.decision || role !== "reviewer" || !hasCurrentReview) {
-      announce("Only a reviewer can reopen a decision on the current version.");
+    if (!review?.decision || (role !== "reviewer" && role !== "maintainer") || !hasCurrentReview) {
+      announce("Only a reviewer or maintainer can reopen a decision on the current version.");
       return;
     }
     const at = new Date().toISOString();
@@ -902,7 +903,7 @@ export default function Home() {
       decision: undefined,
       decisionHistory: [...(review.decisionHistory ?? []), {
         action: "DECISION_REOPENED",
-        by: "Workspace reviewer",
+        by: role === "maintainer" ? "Workspace maintainer" : "Workspace reviewer",
         at,
         draftHash: review.draftHash,
         sourceSnapshotHash: review.sourceSnapshotHash,
@@ -1139,6 +1140,11 @@ export default function Home() {
     setReview(null);
     setLastDecision("");
     setProfileEditing(false);
+    fetch("/api/sources", {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(nextSource),
+    }).catch((err) => console.error("Failed to persist brand profile source:", err));
     announce(`Brand profile saved as approved version v${version}. Earlier reviews need a fresh check.`);
   }
 
@@ -1626,13 +1632,13 @@ export default function Home() {
                   <p>AI recommends. <b>People decide.</b><br />Nothing is published from this workspace.</p>
                 </div>
                 <div className="decision-actions">
-                  <button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || role !== "reviewer"}>
+                  <button className="request-button" onClick={() => makeDecision("CHANGES_REQUESTED")} disabled={!hasCurrentReview || (role !== "reviewer" && role !== "maintainer")}>
                     Request changes
                   </button>
                   <button
                     className="approve-button"
                     onClick={() => makeDecision("APPROVED")}
-                    disabled={!hasCurrentReview || role !== "reviewer" || counts.blocking > 0 || counts.unsupported > 0}
+                    disabled={!hasCurrentReview || (role !== "reviewer" && role !== "maintainer") || counts.blocking > 0 || counts.unsupported > 0}
                     title={approvalDisabledReason || undefined}
                     aria-describedby={approvalDisabledReason ? "approval-disabled-reason" : undefined}
                   >
@@ -1641,7 +1647,7 @@ export default function Home() {
                 </div>
                 {approvalDisabledReason && <div className="role-hint" id="approval-disabled-reason">{approvalDisabledReason}</div>}
                 {review?.decision && (
-                  <button className="reopen-button" onClick={reopenDecision} disabled={role !== "reviewer" || !hasCurrentReview}>
+                  <button className="reopen-button" onClick={reopenDecision} disabled={(role !== "reviewer" && role !== "maintainer") || !hasCurrentReview}>
                     Reopen {review.decision.state.replaceAll("_", " ").toLowerCase()}
                   </button>
                 )}

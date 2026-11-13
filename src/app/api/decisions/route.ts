@@ -21,8 +21,8 @@ export async function POST(request: Request) {
     const decision = {
       state: body.state,
       decision: body.state,
-      by: ctx.actor.displayName,
-      decidedBy: ctx.actor.displayName,
+      by: ctx.actor?.displayName ?? ctx.userId ?? "reviewer",
+      decidedBy: ctx.actor?.displayName ?? ctx.userId ?? "reviewer",
       at: new Date().toISOString(),
       draftHash: body.draftHash,
       sourceSnapshotHash: body.sourceSnapshotHash ?? "",

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveAuthenticatedUser, UnauthorizedError, ForbiddenError } from "@/lib/server/auth";
+import { resolveAuthenticatedUser, UnauthorizedError } from "@/lib/server/auth";
 import { SupabaseConfigurationError } from "@/lib/server/supabase";
 import { getDatabase } from "@/lib/server/db";
 import * as schema from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const createOrgSchema = z.object({
   name: z.string().trim().min(2, "Organization name must be at least 2 characters").max(100),

@@ -130,7 +130,7 @@ export class InMemoryRepository implements OnBrandRepository {
       orgReviews.find(
         (r) =>
           r.draftVersionId === draftVersionIdOrDraftId ||
-          (r.draftId === draftVersionIdOrDraftId && (version === undefined || r.id.includes(`v${version}`))),
+          (r.draftId === draftVersionIdOrDraftId && (version === undefined || r.draftVersionId.endsWith(`v${version}`))),
       ) ?? null
     );
   }

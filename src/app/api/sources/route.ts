@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const saved = await repo.createSource(ctx, source);
 
     await repo.recordAuditEvent(ctx, {
-      actorId: ctx.actor.userId,
+      actorId: ctx.actor?.userId ?? ctx.userId ?? "system",
       action: "SOURCE_CREATED",
       entityType: "SOURCE",
       entityId: saved.id,
@@ -95,7 +95,7 @@ export async function PATCH(request: Request) {
     await repo.updateSourceStatus(ctx, body.id, body.status);
 
     await repo.recordAuditEvent(ctx, {
-      actorId: ctx.actor.userId,
+      actorId: ctx.actor?.userId ?? ctx.userId ?? "system",
       action: `SOURCE_STATUS_${body.status}`,
       entityType: "SOURCE",
       entityId: body.id,
