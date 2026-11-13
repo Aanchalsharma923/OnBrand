@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/lib/server/repository";
-import { resolveTenantContext, requireRole, ForbiddenError } from "@/lib/server/auth";
+import { resolveTenantContext, requireRole, ForbiddenError, UnauthorizedError } from "@/lib/server/auth";
 
 const assetSchema = z.object({
   name: z.string().min(1).max(255),
@@ -19,7 +19,13 @@ export async function GET(request: Request) {
     const repo = getRepository();
     const assets = await repo.getAssets(ctx);
     return NextResponse.json({ assets, organizationId: ctx.organizationId });
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json({ error: "Failed to fetch assets." }, { status: 500 });
   }
 }
@@ -51,6 +57,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ asset: saved }, { status: 201 });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error instanceof ForbiddenError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
