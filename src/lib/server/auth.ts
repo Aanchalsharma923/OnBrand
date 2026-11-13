@@ -7,9 +7,7 @@
 import type { ServerRole, TenantContext } from "@/lib/types";
 import { databaseConfigured } from "./db";
 import {
-  isSupabaseConfigured,
   isSupabaseAuthConfigured,
-  getSupabaseAdmin,
   getSupabaseAuthClient,
   extractAuthToken,
   resolveUserMembershipFromDb,
@@ -176,16 +174,20 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
     };
   }
 
-  // 4. Default Enterprise Workspace Alpha (Acme Foods)
+  // 4. Default Enterprise Workspace Alpha (Acme Foods) or Specified Custom Tenant
   const rawRole = (request.headers.get("x-onbrand-role") || request.headers.get("x-demo-role") || "reviewer").toLowerCase() as ServerRole;
   const validRoles: ServerRole[] = ["creator", "reviewer", "maintainer"];
   const role: ServerRole = validRoles.includes(rawRole) ? rawRole : "reviewer";
 
+  const targetOrgId = tenantHeader && tenantHeader !== "alpha" && tenantHeader !== "org_alpha"
+    ? tenantHeader
+    : DEMO_ORGS.ALPHA.id;
+
   return {
-    organizationId: DEMO_ORGS.ALPHA.id,
-    userId: `user-alpha-${role}`,
+    organizationId: targetOrgId,
+    userId: `user-${targetOrgId.slice(0, 8)}-${role}`,
     actor: {
-      userId: `user-alpha-${role}`,
+      userId: `user-${targetOrgId.slice(0, 8)}-${role}`,
       displayName:
         role === "creator"
           ? "Content Creator"

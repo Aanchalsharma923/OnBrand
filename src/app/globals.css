@@ -2387,8 +2387,47 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 /* ==========================================================================
-   Multi-Format Viewer Enhancements (DOCX, CSV, MD, HTML, TXT, Legacy)
+   Interactive Version History Chips & Mobile Toolbar Enhancements
    ========================================================================== */
+
+.history-chip {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.history-chip:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+.history-chip.history-current {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .review-workspace-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar-left, .toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+  .finding-navigator {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
 
 .viewer-mode-tabs {
   display: inline-flex;

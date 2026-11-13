@@ -126,13 +126,28 @@ export class InMemoryRepository implements OnBrandRepository {
 
   async getReviewByDraftVersion(ctx: TenantContext, draftVersionIdOrDraftId: string, version?: number): Promise<Review | null> {
     const orgReviews = this.reviews.get(ctx.organizationId) ?? [];
-    return (
-      orgReviews.find(
-        (r) =>
-          r.draftVersionId === draftVersionIdOrDraftId ||
-          (r.draftId === draftVersionIdOrDraftId && (version === undefined || r.draftVersionId.endsWith(`v${version}`))),
-      ) ?? null
-    );
+    const rev = orgReviews.find(
+      (r) =>
+        r.draftVersionId === draftVersionIdOrDraftId ||
+        (r.draftId === draftVersionIdOrDraftId && (version === undefined || r.draftVersionId.endsWith(`v${version}`))),
+    ) ?? null;
+    if (!rev) return null;
+    if (!rev.decision) {
+      const orgDecisions = this.decisions.get(ctx.organizationId) ?? [];
+      const matchDec = orgDecisions
+        .filter((d) => d.draftHash === rev.draftHash)
+        .slice(-1)[0];
+      if (matchDec && matchDec.state !== "REOPENED") {
+        rev.decision = {
+          state: matchDec.state,
+          by: matchDec.by ?? "reviewer",
+          at: matchDec.at,
+          draftHash: matchDec.draftHash,
+          sourceSnapshotHash: matchDec.sourceSnapshotHash,
+        };
+      }
+    }
+    return rev;
   }
 
   async recordDecision(ctx: TenantContext, reviewId: string, decision: ReviewDecision): Promise<void> {
@@ -143,6 +158,34 @@ export class InMemoryRepository implements OnBrandRepository {
     };
     orgDecisions.push(decisionRecord);
     this.decisions.set(ctx.organizationId, orgDecisions);
+
+    // Synchronize review object in in-memory store so retrieved reviews have decision history
+    const orgReviews = this.reviews.get(ctx.organizationId) ?? [];
+    const targetReview = orgReviews.find((r) => r.id === reviewId || r.draftHash === decision.draftHash);
+    if (targetReview) {
+      if (decision.state === "REOPENED") {
+        targetReview.decision = undefined;
+      } else {
+        targetReview.decision = {
+          state: decision.state,
+          by: decision.by ?? "reviewer",
+          at: decisionRecord.at,
+          draftHash: decisionRecord.draftHash,
+          sourceSnapshotHash: decisionRecord.sourceSnapshotHash,
+        };
+      }
+      targetReview.decisionHistory = [
+        ...(targetReview.decisionHistory ?? []),
+        {
+          action: decision.state === "REOPENED" ? "DECISION_REOPENED" : "DECISION_RECORDED",
+          state: decision.state === "REOPENED" ? undefined : decision.state,
+          by: decisionRecord.by ?? "reviewer",
+          at: decisionRecord.at,
+          draftHash: decisionRecord.draftHash,
+          sourceSnapshotHash: decisionRecord.sourceSnapshotHash ?? "",
+        },
+      ];
+    }
 
     // Record immutable audit event
     const actionState = decision.state ?? "RECORDED";
@@ -648,6 +691,34 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           eq(schema.findings.reviewId, r.id),
         ));
 
+      // Retrieve decision history and latest active decision for this review
+      const decisionRows = await tx
+        .select()
+        .from(schema.decisions)
+        .where(and(
+          eq(schema.decisions.organizationId, ctx.organizationId),
+          eq(schema.decisions.reviewId, r.id),
+        ))
+        .orderBy(desc(schema.decisions.createdAt));
+
+      const latestDecision = decisionRows[0];
+      const decisionObj = (latestDecision && latestDecision.decision !== "REOPENED") ? {
+        state: latestDecision.decision as "APPROVED" | "CHANGES_REQUESTED" | "REJECTED",
+        by: latestDecision.decidedBy,
+        at: latestDecision.createdAt.toISOString(),
+        draftHash: latestDecision.draftHash,
+        sourceSnapshotHash: latestDecision.sourceSnapshotHash,
+      } : undefined;
+
+      const decisionHistory = decisionRows.map((d: typeof schema.decisions.$inferSelect) => ({
+        action: d.decision === "REOPENED" ? ("DECISION_REOPENED" as const) : ("DECISION_RECORDED" as const),
+        state: d.decision === "REOPENED" ? undefined : (d.decision as "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"),
+        by: d.decidedBy,
+        at: d.createdAt.toISOString(),
+        draftHash: d.draftHash,
+        sourceSnapshotHash: d.sourceSnapshotHash,
+      }));
+
       return {
         id: r.id,
         draftId: r.draftId,
@@ -675,6 +746,8 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           created_at: f.createdAt.toISOString(),
         })),
         comments: [],
+        decision: decisionObj,
+        decisionHistory,
       };
     });
   }

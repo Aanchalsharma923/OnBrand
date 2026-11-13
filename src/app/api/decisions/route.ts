@@ -5,7 +5,7 @@ import { resolveTenantContext, requireRole, ForbiddenError } from "@/lib/server/
 
 const decisionSchema = z.object({
   reviewId: z.string().min(1),
-  state: z.enum(["APPROVED", "CHANGES_REQUESTED"]),
+  state: z.enum(["APPROVED", "CHANGES_REQUESTED", "REOPENED"]),
   draftHash: z.string().length(64),
   sourceSnapshotHash: z.string().length(64).optional(),
   reason: z.string().max(1000).optional(),

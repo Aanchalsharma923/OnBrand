@@ -62,7 +62,7 @@ export interface TenantContext {
 }
 
 export interface ReviewDecision {
-  state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED";
+  state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED" | "REOPENED";
   by?: string;
   at: string;
   draftHash: string;
@@ -72,7 +72,7 @@ export interface ReviewDecision {
 
 declare module "@/lib/onbrand" {
   export interface ReviewDecision {
-    state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED";
+    state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED" | "REOPENED";
     by?: string;
     at: string;
     draftHash: string;

@@ -2,6 +2,7 @@
 
 import { ChangeEvent, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Draft,
   createDraft,
   computeDraftHash,
   codePointToUtf16Offset,
@@ -288,29 +289,84 @@ export default function Home() {
 
         if (srcRes.ok) {
           const sData = await srcRes.json();
-          if (isMounted && Array.isArray(sData.sources) && sData.sources.length > 0) {
-            setSources(sData.sources);
+          if (isMounted && Array.isArray(sData.sources)) {
+            if (sData.sources.length > 0) {
+              setSources(sData.sources);
+            } else if (currentOrg !== "org_alpha" && currentOrg !== "org_beta") {
+              const matchedOrg = userOrganizations.find((o) => o.id === currentOrg);
+              const orgName = matchedOrg?.name || "Workspace";
+              const templateSource: Source = {
+                id: "SRC-VOICE",
+                title: `${orgName} brand profile`,
+                kind: "GUIDELINE",
+                authority: 10,
+                owner: "Workspace maintainer",
+                approvalState: "APPROVED",
+                effectiveFrom: new Date().toISOString().slice(0, 10),
+                channels: ["social", "web", "email", "packaging"],
+                version: 1,
+                facts: [
+                  { id: "SRC-VOICE-F1", sourceId: "SRC-VOICE", subject: orgName, attribute: "voice", value: "clear, professional and evidence-led", statement: `${orgName}: voice — clear, professional and evidence-led.` },
+                  { id: "SRC-VOICE-F2", sourceId: "SRC-VOICE", subject: orgName, attribute: "audience", value: "General Audience", statement: `${orgName}: audience — General Audience.` },
+                  { id: "SRC-VOICE-F3", sourceId: "SRC-VOICE", subject: orgName, attribute: "avoid wording", value: "guaranteed, miracle, zero-risk", statement: `${orgName}: avoid wording — guaranteed, miracle, zero-risk.` },
+                ],
+              };
+              setSources([templateSource]);
+              fetch("/api/sources", {
+                method: "POST",
+                headers: getAuthHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify(templateSource),
+              }).catch(() => {});
+            }
           }
         }
 
         if (draftRes.ok) {
           const dData = await draftRes.json();
-          if (isMounted && Array.isArray(dData.drafts) && dData.drafts.length > 0) {
-            const activeDraft = dData.drafts[0];
-            setDraft(activeDraft);
-            setVersions(dData.drafts);
+          if (isMounted && Array.isArray(dData.drafts)) {
+            if (dData.drafts.length > 0) {
+              const activeDraft = dData.drafts[0];
+              setDraft(activeDraft);
+              setVersions(dData.drafts);
 
-            // Fetch persisted review from database for this draft version
-            try {
-              const revRes = await fetch(`/api/reviews?draftId=${encodeURIComponent(activeDraft.id)}&version=${activeDraft.version}`, { headers });
-              if (revRes.ok) {
-                const rData = await revRes.json();
-                if (isMounted && rData.review) {
-                  setReview(sanitizeReviewAttribution(rData.review));
+              // Fetch persisted review from database for this draft version
+              try {
+                const revRes = await fetch(`/api/reviews?draftId=${encodeURIComponent(activeDraft.id)}&version=${activeDraft.version}`, { headers });
+                if (revRes.ok) {
+                  const rData = await revRes.json();
+                  if (isMounted && rData.review) {
+                    const sanitized = sanitizeReviewAttribution(rData.review);
+                    setReview(sanitized);
+                    if (sanitized.decision?.state) {
+                      setLastDecision(sanitized.decision.state.replaceAll("_", " "));
+                    } else {
+                      setLastDecision("");
+                    }
+                  } else if (isMounted) {
+                    setReview(null);
+                    setLastDecision("");
+                  }
+                }
+              } catch {
+                if (isMounted) {
+                  setReview(null);
+                  setLastDecision("");
                 }
               }
-            } catch {
-              // No prior review recorded
+            } else if (currentOrg !== "org_alpha" && currentOrg !== "org_beta") {
+              const matchedOrg = userOrganizations.find((o) => o.id === currentOrg);
+              const orgName = matchedOrg?.name || "Workspace";
+              const cleanDraft = createDraft("", {
+                id: `DRAFT-${currentOrg.slice(0, 8).toUpperCase()}-1`,
+                title: "Untitled content draft",
+                product: orgName,
+                audience: "General Audience",
+                version: 1,
+              });
+              setDraft(cleanDraft);
+              setVersions([cleanDraft]);
+              setReview(null);
+              setLastDecision("");
             }
           }
         }
@@ -794,7 +850,7 @@ export default function Home() {
     }
   }
 
-  function acceptSuggestion(finding: Finding) {
+  async function acceptSuggestion(finding: Finding) {
     const result = recheckSuggestion(draft, finding, sources);
     if (!result.ok || !result.candidate) {
       setReview((current) => current ? { ...current, findings: current.findings.map((f) => f.finding_id === finding.finding_id ? { ...f, suggestion_state: "REJECTED" } : f) } : current);
@@ -805,9 +861,28 @@ export default function Home() {
     setDraft(updated);
     setVersions((current) => [...current, updated]);
     setLastDecision("");
-    const newReview = reviewDraft({ draft: updated, sources, includeDemoRules: workspaceMode === "demo" });
+    // Persist draft to PostgreSQL database
+    fetch("/api/drafts", {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(updated),
+    }).catch((err) => console.error("Failed to persist draft after suggestion:", err));
+
+    const newReview = reviewDraft({ draft: updated, sources, includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha" });
     setReview(newReview);
     setSelectedFinding(newReview.findings[0]?.finding_id ?? null);
+    // Persist rechecked review to database
+    fetch("/api/reviews", {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        draft: updated,
+        sources,
+        includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha",
+        useAdvisoryModel: false,
+        visualChecks: true,
+      }),
+    }).catch((err) => console.error("Failed to persist review after suggestion:", err));
     announce("Suggestion rechecked and applied to a new draft version. Review the new findings.");
   }
 
@@ -830,11 +905,11 @@ export default function Home() {
     }
   }
 
-  function handleApplySuggestion(findingId: string, suggestionText: string) {
+  async function handleApplySuggestion(findingId: string, suggestionText: string) {
     const target = findings.find((f) => f.finding_id === findingId);
     if (!target) return;
     if (suggestionText === target.suggestion) {
-      acceptSuggestion(target);
+      await acceptSuggestion(target);
     } else {
       const quote = target.claim_text;
       let newContent = draft.content;
@@ -845,11 +920,58 @@ export default function Home() {
       setDraft(updated);
       setVersions((current) => [...current, updated]);
       setLastDecision("");
-      const newReview = reviewDraft({ draft: updated, sources, includeDemoRules: workspaceMode === "demo" });
+      fetch("/api/drafts", {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(updated),
+      }).catch((err) => console.error("Failed to persist custom corrected draft:", err));
+
+      const newReview = reviewDraft({ draft: updated, sources, includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha" });
       setReview(newReview);
       setSelectedFinding(newReview.findings[0]?.finding_id ?? null);
+      fetch("/api/reviews", {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          draft: updated,
+          sources,
+          includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha",
+          useAdvisoryModel: false,
+          visualChecks: true,
+        }),
+      }).catch((err) => console.error("Failed to persist review after custom correction:", err));
       announce("Custom correction applied to a new draft version. Review the new findings.");
     }
+  }
+
+  async function selectVersion(targetDraft: Draft) {
+    if (targetDraft.version === draft.version && targetDraft.hash === draft.hash) return;
+    setDraft(targetDraft);
+    setSelectedFinding(null);
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`/api/reviews?draftId=${encodeURIComponent(targetDraft.id)}&version=${targetDraft.version}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.review) {
+          const sanitized = sanitizeReviewAttribution(data.review);
+          setReview(sanitized);
+          if (sanitized.decision?.state) {
+            setLastDecision(sanitized.decision.state.replaceAll("_", " "));
+          } else {
+            setLastDecision("");
+          }
+          announce(`Loaded version v${targetDraft.version} with saved review.`);
+          return;
+        }
+      }
+    } catch {
+      // Local fallback
+    }
+    const localReview = reviewDraft({ draft: targetDraft, sources, includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha" });
+    setReview(localReview);
+    setLastDecision("");
+    announce(`Loaded version v${targetDraft.version}.`);
   }
 
   function makeDecision(state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED") {
@@ -910,6 +1032,17 @@ export default function Home() {
       }],
     });
     setLastDecision("");
+    fetch("/api/decisions", {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        reviewId: review.id,
+        state: "REOPENED",
+        draftHash: review.draftHash,
+        sourceSnapshotHash: review.sourceSnapshotHash,
+        reason: "Review decision reopened by authorized reviewer.",
+      }),
+    }).catch(() => {});
     announce("Decision reopened. The review remains tied to the same content and knowledge snapshot.");
   }
 
@@ -922,7 +1055,7 @@ export default function Home() {
   }
 
   function resolveComment(commentId: string) {
-    if (!review || role !== "reviewer") return;
+    if (!review || (role !== "reviewer" && role !== "maintainer")) return;
     setReview({ ...review, comments: review.comments.map((item) => item.id === commentId ? { ...item, resolved: true } : item) });
     announce("Comment resolved in this review thread.");
   }
@@ -969,6 +1102,16 @@ export default function Home() {
         });
         setSources((current) => [...current, ...imported]);
         setReview(null);
+        // Persist valid imported sources to PostgreSQL
+        for (const s of imported) {
+          if (!s.ingestionWarnings?.length) {
+            fetch("/api/sources", {
+              method: "POST",
+              headers: getAuthHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify(s),
+            }).catch((err) => console.error("Failed to persist imported source to database:", err));
+          }
+        }
         const quarantined = imported.filter((source) => source.ingestionWarnings?.length).length;
         announce(`${imported.length} knowledge source${imported.length === 1 ? "" : "s"} imported${quarantined ? `; ${quarantined} quarantined for embedded-instruction review` : ""}.`);
       } catch (error) {
@@ -1489,7 +1632,23 @@ export default function Home() {
           </ol>
           {workspaceMode === "own" && activeSources.length <= 1 && <div className="next-step-banner"><span className="next-step-number">1</span><div><b>Start by adding your approved brand knowledge</b><small>Bring in your claims, product facts, policies or guidelines. Review each passage and approve it before running a content check.</small></div><button className="small-ghost" onClick={() => setView("knowledge")}>Set up knowledge <Icon name="arrow" /></button></div>}
           {!hasCurrentReview && review && <div className="stale-banner"><span>↻</span> This draft or its approved knowledge changed. The previous decision is no longer current. Run a fresh review.</div>}
-          {showAudit && <div className="history-strip"><b>Version history</b>{versions.slice().reverse().map((item) => <span key={`${item.id}-${item.version}-${item.hash}`} className={item.hash === draft.hash && item.version === draft.version ? "history-current" : ""}>v{item.version} · {item.hash.slice(0, 10)}</span>)}{review && <span>Last review · {new Date(review.createdAt).toLocaleString()}</span>}</div>}
+          {showAudit && (
+            <div className="history-strip">
+              <b>Version history</b>
+              {versions.slice().reverse().map((item) => (
+                <button
+                  key={`${item.id}-${item.version}-${item.hash}`}
+                  type="button"
+                  className={`history-chip ${item.hash === draft.hash && item.version === draft.version ? "history-current" : ""}`}
+                  onClick={() => selectVersion(item)}
+                  title={`Inspect version v${item.version} (${item.hash.slice(0, 10)})`}
+                >
+                  v{item.version} · {item.hash.slice(0, 10)}
+                </button>
+              ))}
+              {review && <span>Last review · {new Date(review.createdAt).toLocaleString()}</span>}
+            </div>
+          )}
 
           <section className="summary-strip" aria-label="Review overview">
             <div className="summary-title"><span className="summary-icon">◉</span><div><b>{review ? hasCurrentReview ? "Review ready" : "Review out of date" : "Draft ready for review"}</b><small>{review ? hasCurrentReview ? `${findings.length} claims checked · evidence snapshot locked` : "Refresh the report before a decision" : "Add or edit content, then run an evidence check"}</small></div></div>
@@ -1594,6 +1753,7 @@ export default function Home() {
                   onBack={() => setSelectedFinding(null)}
                   onApplySuggestion={handleApplySuggestion}
                   onDismissFinding={openDismissModal}
+                  onEscalate={(fId) => announce(`Finding ${fId} marked for senior legal/medical escalation.`)}
                   activeOccurrenceIndex={activeOccurrenceMap[selectedEnriched.finding_id] ?? 0}
                   onStepOccurrence={(delta) => stepOccurrence(selectedEnriched, delta)}
                 />

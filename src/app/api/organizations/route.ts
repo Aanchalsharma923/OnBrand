@@ -89,12 +89,12 @@ export async function POST(request: Request) {
       slug: finalSlug,
     });
 
-    // Server-enforced role assignment: the first authorized member is assigned role 'creator'
-    const displayName = user.email ? user.email.split("@")[0] : "Organization Creator";
+    // Server-enforced role assignment: the first authorized founding member is assigned role 'maintainer'
+    const displayName = user.email ? user.email.split("@")[0] : "Organization Maintainer";
     await db.insert(schema.memberships).values({
       organizationId: orgId,
       userId: user.id,
-      role: "creator",
+      role: "maintainer",
       displayName,
     });
 
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
         membership: {
           organizationId: orgId,
           userId: user.id,
-          role: "creator",
+          role: "maintainer",
           displayName,
         },
       },

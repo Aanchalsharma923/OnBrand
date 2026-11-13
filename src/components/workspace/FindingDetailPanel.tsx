@@ -8,6 +8,7 @@ export interface FindingDetailPanelProps {
   onBack: () => void;
   onApplySuggestion?: (findingId: string, suggestion: string) => void;
   onDismissFinding?: (findingId: string) => void;
+  onEscalate?: (findingId: string) => void;
   activeOccurrenceIndex: number;
   onStepOccurrence: (delta: number) => void;
 }
@@ -17,11 +18,13 @@ export function FindingDetailPanel({
   onBack,
   onApplySuggestion,
   onDismissFinding,
+  onEscalate,
   activeOccurrenceIndex,
   onStepOccurrence,
 }: FindingDetailPanelProps) {
   const [customCorrection, setCustomCorrection] = useState(finding.suggestedCorrection ?? "");
   const [isEditingCorrection, setIsEditingCorrection] = useState(false);
+  const [escalated, setEscalated] = useState(false);
 
   const severityCls = finding.severity.toLowerCase();
 
@@ -225,11 +228,16 @@ export function FindingDetailPanel({
         <button
           type="button"
           className="escalate-btn"
+          disabled={escalated}
           onClick={() => {
-            alert(`Finding "${finding.title}" marked for escalation to senior legal / medical reviewer.`);
+            setEscalated(true);
+            if (onEscalate) {
+              onEscalate(finding.finding_id);
+            }
           }}
+          title={escalated ? "Escalation requested" : "Escalate to senior legal/medical review"}
         >
-          Request Senior Review
+          {escalated ? "✓ Senior Review Requested" : "Request Senior Review"}
         </button>
       </div>
     </div>
