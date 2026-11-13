@@ -44,6 +44,7 @@ export interface NavigationSidebarProps {
   supabaseSession: { user: { email?: string; id: string } } | null;
   onOpenAuth: () => void;
   onOpenWelcome: () => void;
+  userOrganizations?: Array<{ id: string; name: string; role: string; slug?: string }>;
 }
 
 export function NavigationSidebar({
@@ -60,7 +61,17 @@ export function NavigationSidebar({
   supabaseSession,
   onOpenAuth,
   onOpenWelcome,
+  userOrganizations,
 }: NavigationSidebarProps) {
+  const isDemoAlpha = currentOrg === "org_alpha";
+  const isDemoBeta = currentOrg === "org_beta";
+  const orgInitial = isDemoBeta ? "N" : isDemoAlpha ? "A" : (currentBrandName.charAt(0) || "W").toUpperCase();
+  const orgSublabel = isDemoBeta
+    ? "Clinical Trial · Demo"
+    : isDemoAlpha
+    ? "Consumer Packaged Goods · Demo"
+    : "Enterprise Tenant Workspace";
+
   return (
     <aside className="workspace-nav-sidebar" aria-label="Application navigation">
       {/* Brand & Organization Header */}
@@ -78,13 +89,14 @@ export function NavigationSidebar({
             className="workspace-switcher-compact"
             aria-label="Switch organization workspace"
             onClick={onOpenWelcome}
+            title="Switch or configure organization workspace"
           >
-            <span className="workspace-avatar-compact">
-              {currentOrg === "org_beta" ? "N" : "A"}
+            <span className="workspace-avatar-compact" style={{ background: isDemoBeta ? "#059669" : isDemoAlpha ? "#183f35" : "#2563eb" }}>
+              {orgInitial}
             </span>
             <div className="workspace-text-compact">
-              <b>{currentOrg === "org_beta" ? "Nova Biopharma" : currentBrandName}</b>
-              <small>{currentOrg === "org_beta" ? "Clinical · Beta" : "Enterprise · Alpha"}</small>
+              <b>{isDemoBeta ? "Nova Biopharma" : currentBrandName}</b>
+              <small>{orgSublabel}</small>
             </div>
             <span className="chevron">⌄</span>
           </button>
@@ -104,7 +116,7 @@ export function NavigationSidebar({
             <NavIcon name="review" />
             <span className="nav-label">Reviews</span>
             {counts.blocking > 0 && (
-              <span className="nav-count-badge">{counts.blocking}</span>
+              <span className="nav-count-badge" title={`${counts.blocking} blocking issues`}>{counts.blocking}</span>
             )}
           </button>
 
@@ -131,31 +143,11 @@ export function NavigationSidebar({
           <button
             type="button"
             className="nav-item secondary"
-            onClick={() => setView("knowledge")}
-            title="Brand guidelines and voice profiles"
-          >
-            <NavIcon name="guidelines" />
-            <span className="nav-label">Brand Guidelines</span>
-          </button>
-
-          <button
-            type="button"
-            className="nav-item secondary"
-            onClick={() => setView("review")}
-            title="Uploaded creative assets and source documents"
-          >
-            <NavIcon name="assets" />
-            <span className="nav-label">Assets</span>
-          </button>
-
-          <button
-            type="button"
-            className="nav-item secondary"
             onClick={onOpenWelcome}
-            title="Workspace configuration and settings"
+            title="Workspace configuration and tenant onboarding"
           >
             <NavIcon name="settings" />
-            <span className="nav-label">Settings</span>
+            <span className="nav-label">Workspace Settings</span>
           </button>
         </nav>
       </div>

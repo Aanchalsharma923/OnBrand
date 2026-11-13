@@ -24,6 +24,7 @@ export interface ContentViewerProps {
   actionableRanges: Array<{ id: string; start: number; end: number; classification?: string }>;
   enrichedList: EnrichedFinding[];
   directFile?: File | Blob;
+  onSetEditorMode?: (mode: "original" | "reading" | "raw") => void;
 }
 
 export function ContentViewer({
@@ -38,6 +39,7 @@ export function ContentViewer({
   actionableRanges,
   enrichedList: _enrichedList,
   directFile,
+  onSetEditorMode,
 }: ContentViewerProps) {
   const draftEditorRef = useRef<HTMLTextAreaElement>(null);
   const findingsMap = React.useMemo(() => new Map(findings.map((f) => [f.finding_id, f])), [findings]);
@@ -107,10 +109,24 @@ export function ContentViewer({
               );
             })
           ) : (
-            <div className="empty-content-state">
-              <span className="empty-doc-icon">📄</span>
-              <b>No content in draft</b>
-              <p>Upload a document, presentation, spreadsheet or creative asset to begin.</p>
+            <div className="empty-content-state" style={{ padding: "48px 20px", textAlign: "center" }}>
+              <span className="empty-doc-icon" style={{ fontSize: "40px", display: "block", marginBottom: "12px" }}>📄</span>
+              <b style={{ fontSize: "16px", color: "var(--foreground, #1e293b)", display: "block" }}>No Content in Draft</b>
+              <p style={{ margin: "8px auto 16px", maxWidth: "400px", fontSize: "13px", opacity: 0.8, lineHeight: 1.5 }}>
+                Upload a document (.docx, .pdf, .pptx), poster image, or write draft copy to verify against brand governance rules.
+              </p>
+              <div style={{ display: "inline-flex", gap: "10px", justifyContent: "center" }}>
+                {onSetEditorMode && (
+                  <button
+                    type="button"
+                    className="primary-button-small"
+                    onClick={() => onSetEditorMode("raw")}
+                    style={{ cursor: "pointer", padding: "6px 14px", fontSize: "13px" }}
+                  >
+                    ✎ Write or Paste Copy
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

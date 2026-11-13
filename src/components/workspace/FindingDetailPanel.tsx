@@ -154,7 +154,7 @@ export function FindingDetailPanel({
       </div>
 
       {/* Section 4: Recommended Action / Suggestion */}
-      {(finding.suggestedCorrection || isEditingCorrection) && (
+      {finding.suggestedCorrection || isEditingCorrection ? (
         <div className="detail-block">
           <div className="block-label">RECOMMENDED CORRECTION</div>
           {isEditingCorrection ? (
@@ -211,6 +211,29 @@ export function FindingDetailPanel({
               </div>
             </div>
           )}
+        </div>
+      ) : (
+        <div className="detail-block next-steps-block">
+          <div className="block-label">RECOMMENDED NEXT STEPS</div>
+          <div className="resolution-guide-box" style={{ background: "rgba(255,255,255,0.03)", padding: "10px 12px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.08)", fontSize: "12px", lineHeight: "1.5" }}>
+            {finding.evidence_status === "NO_APPROVED_EVIDENCE" || (finding.evidence_status as string) === "UNSUPPORTED" ? (
+              <div style={{ display: "grid", gap: "6px" }}>
+                <div><b>1. Add Approved Evidence:</b> If this claim is true, upload a supporting product specification or claim register to the Knowledge Base.</div>
+                <div><b>2. Edit Copy:</b> Switch to <b>✎ Edit Copy</b> in the toolbar to qualify or rephrase this unverified assertion.</div>
+                <div><b>3. Request Senior Review:</b> If this is an approved promotional exception, request senior escalation below.</div>
+              </div>
+            ) : finding.evidence_status === "CONFLICT" ? (
+              <div style={{ display: "grid", gap: "6px" }}>
+                <div><b>1. Reconcile Sources:</b> Multiple active approved sources declare differing values at the same authority level. Reconcile or retire the outdated source in the Knowledge Base.</div>
+                <div><b>2. Edit Copy:</b> Select the confirmed approved commercial quantity in <b>✎ Edit Copy</b>.</div>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "6px" }}>
+                <div><b>1. Human Editorial Review:</b> This statement requires reviewer or regulatory judgment. Inspect the flagged context against brand guidelines.</div>
+                <div><b>2. Edit Copy:</b> Refine the phrasing in <b>✎ Edit Copy</b> to align with approved tone.</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

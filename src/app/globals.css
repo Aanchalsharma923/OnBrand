@@ -2757,3 +2757,64 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   color: #14b8a6 !important;
   border-color: rgba(20, 184, 166, 0.3) !important;
 }
+
+/* Toast alert variations */
+.toast.toast-warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+.toast.toast-warn .toast-mark {
+  background: #f59e0b;
+  color: #fff;
+}
+
+/* Resolution tips list */
+.resolution-tips {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.resolution-tips li {
+  line-height: 1.5;
+}
+
+/* Responsive sidebar adaptation */
+@media (max-width: 820px) {
+  .workspace-nav-sidebar {
+    width: 60px;
+    padding: 14px 6px;
+  }
+  .workspace-nav-sidebar .brand-name,
+  .workspace-nav-sidebar .brand-enterprise-pill,
+  .workspace-nav-sidebar .workspace-text-compact,
+  .workspace-nav-sidebar .chevron,
+  .workspace-nav-sidebar .nav-group-label,
+  .workspace-nav-sidebar .nav-label,
+  .workspace-nav-sidebar .nav-count-badge,
+  .workspace-nav-sidebar .sidebar-safe-badge,
+  .workspace-nav-sidebar .profile-info-compact {
+    display: none !important;
+  }
+  .workspace-nav-sidebar .nav-item {
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .workspace-nav-sidebar .brand-lockup {
+    justify-content: center;
+  }
+  .workspace-nav-sidebar .workspace-switcher-compact {
+    justify-content: center;
+    padding: 4px;
+  }
+  .workspace-nav-sidebar .sidebar-profile-card {
+    justify-content: center;
+    padding: 4px 0;
+  }
+  .main-area {
+    width: calc(100% - 60px) !important;
+    margin-left: 60px !important;
+    padding: 0 16px !important;
+  }
+}

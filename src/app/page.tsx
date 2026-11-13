@@ -127,6 +127,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [comment, setComment] = useState("");
   const [showAudit, setShowAudit] = useState(false);
+  const [showVersioningInfo, setShowVersioningInfo] = useState(false);
   const [lastDecision, setLastDecision] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("demo");
@@ -1300,7 +1301,32 @@ export default function Home() {
     <div className="app-shell">
       {showWelcome && (
         <div className="welcome-backdrop">
-          <section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+          <section className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title" style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="welcome-close-btn"
+              onClick={() => setShowWelcome(false)}
+              aria-label="Close workspace selector"
+              title="Close"
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: "#94a3b8",
+                width: "28px",
+                height: "28px",
+                borderRadius: "50%",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                fontSize: "13px",
+                fontWeight: 600,
+              }}
+            >
+              ✕
+            </button>
             <div className="welcome-brand">
               <BrandMark />
               <span>OnBrand Enterprise</span>
@@ -1527,6 +1553,7 @@ export default function Home() {
         supabaseSession={supabaseSession}
         onOpenAuth={() => setShowAuthModal(true)}
         onOpenWelcome={() => setShowWelcome(true)}
+        userOrganizations={userOrganizations}
       />
 
       <main className="main-area">
@@ -1704,6 +1731,7 @@ export default function Home() {
                 actionableRanges={actionableRanges}
                 enrichedList={enrichedList}
                 directFile={uploadedFile ?? undefined}
+                onSetEditorMode={setEditorMode}
               />
 
               {/* Review Context & Channel Metadata */}
@@ -1767,6 +1795,8 @@ export default function Home() {
                   onSelectFinding={(f) => selectFinding(f)}
                   activeFilter={productFilter}
                   onSetFilter={(filterId) => setProductFilter(filterId as typeof productFilter)}
+                  hasRunReview={Boolean(review)}
+                  onRunReview={runReview}
                   summaryCounts={summaryCounts}
                 />
               )}
@@ -1889,7 +1919,7 @@ export default function Home() {
           <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> APPROVED ORGANISATIONAL MEMORY</div><h1>Knowledge base</h1><p>Current, owned sources that ground this review.</p></div><div className="heading-actions"><label className={`quiet-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Add a knowledge document<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.txt,.md,.markdown,.html,.htm" onChange={handleKnowledgeDocument} disabled={role !== "maintainer" || isExtracting} /></label><label className={`primary-button import-button ${role !== "maintainer" ? "disabled-label" : ""}`}><Icon name="upload" /> Import JSON/CSV<input type="file" accept=".json,.csv" onChange={handleImport} disabled={role !== "maintainer"} /></label></div></div>
           {extractionStatus && <div className="knowledge-upload-status" aria-live="polite">{extractionStatus}<small>Uploaded knowledge is always pending review. Check its source and passages, then a maintainer may approve it. Embedded instructions are quarantined.</small></div>}
           <div className="knowledge-summary"><div className="knowledge-stat"><span className="stat-mark">▤</span><div><b>{activeSources.length}</b><small>ACTIVE SOURCES</small></div></div><div className="knowledge-stat"><span className="stat-mark">◈</span><div><b>{activeSources.reduce((sum, source) => sum + source.facts.length, 0)}</b><small>APPROVED PASSAGES / FACTS</small></div></div><div className="knowledge-stat"><span className="stat-mark">◎</span><div><b>{currentProfileSource ? "1" : "0"}</b><small>BRAND PROFILE</small></div></div><div className="coverage-card"><div><b>{workspaceMode === "demo" ? "Demo knowledge coverage" : "Approved knowledge"}</b><small>{workspaceMode === "demo" ? "Sample set indicator · not a quality score" : `${Math.max(0, activeSources.length - 1)} approved knowledge document${activeSources.length - 1 === 1 ? "" : "s"}; pending documents are excluded`}</small></div>{workspaceMode === "demo" ? <><div className="coverage-bar"><span style={{ width: `${Math.min(coverage, 100)}%` }} /></div><strong>{Math.min(coverage, 100)}%</strong></> : <strong>{activeSources.length > 1 ? "Ready" : "Add sources"}</strong>}</div></div>
-          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button className="quiet-button" onClick={() => announce("Imports enter a maintainer review queue before they can support findings.")}>How versioning works <span>↗</span></button></div><div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); const quarantined = Boolean(source.ingestionWarnings?.length); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{quarantined ? "Possible embedded instruction · quarantined" : `${source.facts.length} ${source.kind === "GUIDELINE" ? "passages" : "structured facts"} · ${source.channels.slice(0, 2).join(", ")}`}</small><details className="source-preview"><summary>Preview {Math.min(3, source.facts.length)} of {source.facts.length} passages</summary>{source.facts.slice(0, 3).map((fact) => <blockquote key={fact.id}>{fact.value || fact.statement}</blockquote>)}{source.facts.length > 3 && <small>Showing first 3 passages. The full source is retained in this browser.</small>}</details></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : quarantined ? "Quarantined" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? quarantined ? <button className="comment-resolve" onClick={() => removeImportedSource(source.id)}>Remove</button> : <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
+          <section className="knowledge-layout"><div className="panel source-table-panel"><div className="panel-header"><div><span className="panel-kicker">SOURCE REGISTER</span><h2>Approved sources</h2></div><button type="button" className="quiet-button" onClick={() => setShowVersioningInfo((v) => !v)}>How versioning works {showVersioningInfo ? "▴" : "▾"}</button></div>{showVersioningInfo && <div className="versioning-help-card" style={{ margin: "0 15px 12px", padding: "10px 14px", background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "6px", fontSize: "12px", lineHeight: "1.5" }}><b style={{ color: "#60a5fa", display: "block", marginBottom: "3px" }}>Immutable Source Snapshot Policy:</b><span>Approved sources are cryptographically fingerprinted. When a source is modified or replaced, earlier review decisions are immediately marked out of date to prevent stale approvals. Imported sources enter a maintainer approval queue before they can substantiate claims.</span></div>}<div className="table-wrap"><table className="source-table"><thead><tr><th>SOURCE</th><th>TYPE</th><th>VERSION</th><th>OWNER</th><th>STATUS</th><th>ACCESS</th></tr></thead><tbody>{sources.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center", padding: "40px 16px" }}><div style={{ maxWidth: "420px", margin: "0 auto" }}><span style={{ fontSize: "32px", display: "block", marginBottom: "8px" }}>📚</span><b style={{ fontSize: "15px", color: "var(--foreground, #1e293b)", display: "block" }}>No Sources Registered Yet</b><p style={{ margin: "6px 0 14px", fontSize: "12px", opacity: 0.8, lineHeight: "1.5" }}>Approved sources form your organization’s grounded knowledge base. Claims in reviewed drafts are checked against these facts and guidelines.</p>{role === "maintainer" ? <label className="primary-button" style={{ display: "inline-flex", cursor: "pointer", padding: "6px 14px", fontSize: "12px" }}><Icon name="upload" /> Add Knowledge Document<input type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.html,.csv,.json" onChange={handleKnowledgeDocument} style={{ display: "none" }} /></label> : <small style={{ color: "#d97706", display: "block" }}>Switch to Maintainer role to upload or approve sources.</small>}</div></td></tr> : sources.map((source) => { const approved = source.approvalState === "APPROVED" && !source.revokedAt; const revoked = source.approvalState === "REVOKED" || Boolean(source.revokedAt); const quarantined = Boolean(source.ingestionWarnings?.length); return <tr key={source.id}><td><span className="table-doc">▤</span><span className="source-name"><b>{source.title}</b><small>{quarantined ? "Possible embedded instruction · quarantined" : `${source.facts.length} ${source.kind === "GUIDELINE" ? "passages" : "structured facts"} · ${source.channels.slice(0, 2).join(", ")}`}</small><details className="source-preview"><summary>Preview {Math.min(3, source.facts.length)} of {source.facts.length} passages</summary>{source.facts.slice(0, 3).map((fact) => <blockquote key={fact.id}>{fact.value || fact.statement}</blockquote>)}{source.facts.length > 3 && <small>Showing first 3 passages. The full source is retained in this browser.</small>}</details></span></td><td><span className="kind-pill">{source.kind.replaceAll("_", " ")}</span></td><td>v{source.version}</td><td>{source.owner}</td><td><span className={approved ? "validity-active" : "validity-revoked"}><i />{approved ? "Approved" : quarantined ? "Quarantined" : revoked ? "Archived" : "Pending review"}</span></td><td>{source.approvalState === "PENDING_REVIEW" && role === "maintainer" ? quarantined ? <button className="comment-resolve" onClick={() => removeImportedSource(source.id)}>Remove</button> : <button className="table-approve" onClick={() => approveSource(source.id)}>Approve</button> : <span className="small-note">{revoked ? "Archived" : source.approvalState === "PENDING_REVIEW" ? "Maintainer only" : "In use"}</span>}</td></tr>; })}</tbody></table></div><div className="panel-footnote">Source updates invalidate earlier reviews. Revoked or out-of-date sources cannot support an automatic pass.</div></div>
             <aside className="panel profile-panel"><span className="panel-kicker">{workspaceMode === "demo" ? "SYNTHETIC CLIENT PROFILE" : "YOUR BRAND PROFILE"}</span><h2>{currentBrandName}</h2><p className="profile-intro">{workspaceMode === "demo" ? "Fictional demo brand used to demonstrate OnBrand’s review workflow." : "This profile stays in this browser and guides review context."}</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Brand palette colors and contrast are automatically inspected against uploaded drafts via the Visual Intelligence &amp; Multimodal Accessibility engine.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small>{profilePalette.length ? <div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div> : <b>Not provided</b>}</div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
           </section>
           <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">{workspaceMode === "demo" ? "DEMO POLICY LAYER" : "YOUR REVIEW CONTROLS"}</span><h2>{workspaceMode === "demo" ? "Sample Foods review rules" : "How your own-brand review works"}</h2></div><span className="rules-count">{workspaceMode === "demo" ? `${seedRules.length} demo rules` : "Your approved knowledge"}</span></div>{workspaceMode === "demo" ? <div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · Sample Foods demo policy</small></div></div>)}</div> : <div className="own-policy-note"><p>Sample Foods rules are switched off in your workspace. OnBrand checks claims against the knowledge you add and approve, and checks your “words to avoid” list.</p><p>General claim meaning and design checks remain limited in this deterministic build. Review each suggestion and evidence passage yourself before approval.</p><button className="small-ghost" onClick={() => setView("review")}>Go to content review <Icon name="arrow" /></button></div>}</section>
@@ -1946,7 +1976,12 @@ export default function Home() {
 
         <footer className="app-footer"><span>OnBrand Enterprise · Intelligent AI Brand Governance Platform. <button onClick={resetDemo}>Reset workspace</button></span><span><span className="footer-lock">⌑</span> Human in Control · Enforced Pre-Publication Gate <span className="footer-sep">·</span> <button onClick={() => announce(modelDisclosure)}>AI disclosure</button></span></footer>
       </main>
-      {toast && <div className="toast" role="status"><span className="toast-mark">✓</span>{toast}</div>}
+      {toast && (
+        <div className={`toast ${/error|fail|reject|invalid|stale|cannot/i.test(toast) ? "toast-warn" : "toast-success"}`} role="status">
+          <span className="toast-mark">{/error|fail|reject|invalid|stale|cannot/i.test(toast) ? "⚠" : "✓"}</span>
+          {toast}
+        </div>
+      )}
 
       {showAuthModal && (
         <div

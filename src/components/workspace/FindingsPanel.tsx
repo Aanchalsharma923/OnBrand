@@ -11,6 +11,8 @@ export interface FindingsPanelProps {
   onSelectFinding: (finding: EnrichedFinding) => void;
   activeFilter: string;
   onSetFilter: (filter: string) => void;
+  hasRunReview?: boolean;
+  onRunReview?: () => void;
   summaryCounts: {
     totalActionable: number;
     critical: number;
@@ -35,6 +37,8 @@ export function FindingsPanel({
   onSelectFinding,
   activeFilter,
   onSetFilter,
+  hasRunReview,
+  onRunReview,
   summaryCounts,
 }: FindingsPanelProps) {
   const confirmedCount = summaryCounts.confirmedIssues ?? (summaryCounts.critical + summaryCounts.high);
@@ -139,11 +143,49 @@ export function FindingsPanel({
       {/* Grouped Findings List */}
       <div className="findings-cards-list" role="list">
         {filteredList.length === 0 ? (
-          <div className="empty-findings-box">
-            <span className="empty-icon">✓</span>
-            <b>No items in this filter</b>
-            <small>Content satisfies all selected governance rules.</small>
-          </div>
+          !hasRunReview ? (
+            <div className="empty-findings-box not-reviewed" style={{ padding: "28px 16px", textAlign: "center" }}>
+              <span className="empty-icon" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }}>🔍</span>
+              <b>Review Not Yet Run</b>
+              <small style={{ display: "block", margin: "6px 0 14px", opacity: 0.8 }}>
+                Click below to verify this content against approved brand facts, guidelines, and regulatory rules.
+              </small>
+              {onRunReview && (
+                <button
+                  type="button"
+                  className="primary-button-small"
+                  onClick={onRunReview}
+                  style={{ margin: "0 auto", cursor: "pointer" }}
+                >
+                  ✳ Run Review Now
+                </button>
+              )}
+            </div>
+          ) : actionableList.length === 0 ? (
+            <div className="empty-findings-box success" style={{ padding: "28px 16px", textAlign: "center" }}>
+              <span className="empty-icon" style={{ fontSize: "28px", display: "block", marginBottom: "8px", color: "#4ade80" }}>✓</span>
+              <b>All Claims Grounded &amp; Compliant</b>
+              <small style={{ display: "block", marginTop: "6px", opacity: 0.8 }}>
+                Zero blocking issues detected. Content complies with approved evidence.
+              </small>
+            </div>
+          ) : (
+            <div className="empty-findings-box filtered" style={{ padding: "24px 16px", textAlign: "center" }}>
+              <span className="empty-icon" style={{ fontSize: "24px", display: "block", marginBottom: "6px" }}>⚲</span>
+              <b>No findings in &ldquo;{activeFilter}&rdquo;</b>
+              <small style={{ display: "block", margin: "4px 0 10px", opacity: 0.8 }}>
+                {actionableList.length} total issues found across other categories.
+              </small>
+              <button
+                type="button"
+                className="small-ghost-btn"
+                onClick={() => onSetFilter("all")}
+                style={{ margin: "0 auto", cursor: "pointer" }}
+              >
+                Show All Actionable ({actionableList.length})
+              </button>
+            </div>
+          )
         ) : (
           filteredList.map((f) => {
             const isSelected = selectedFindingId === f.finding_id || selectedFindingId === f.rawFindingId;
