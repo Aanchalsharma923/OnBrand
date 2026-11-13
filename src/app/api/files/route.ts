@@ -52,8 +52,6 @@ export async function POST(request: Request) {
     };
 
     serverFileStore.set(`${ctx.organizationId}:${key}`, record);
-    // Also index by key directly for lookup convenience
-    serverFileStore.set(key, record);
 
     return NextResponse.json(
       {
@@ -91,11 +89,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ files: orgFiles, organizationId: ctx.organizationId });
     }
 
-    // Retrieve specific file
-    const record =
-      serverFileStore.get(`${ctx.organizationId}:${key}`) || serverFileStore.get(key);
+    // Retrieve specific file scoped strictly to the authenticated organization
+    const record = serverFileStore.get(`${ctx.organizationId}:${key}`);
 
-    if (!record) {
+    if (!record || record.organizationId !== ctx.organizationId) {
       return NextResponse.json({ error: "File not found in this organization." }, { status: 404 });
     }
 

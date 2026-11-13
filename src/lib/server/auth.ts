@@ -83,12 +83,17 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
       }
 
       // If user explicitly requested an organization that they do NOT have membership in:
-      if (requestedOrgId && databaseConfigured()) {
+      if (requestedOrgId) {
         throw new ForbiddenError("You are not an authorized member of the requested organization.");
       }
 
-      // Authenticated user with no explicit membership record yet:
-      // Safe default to standard enterprise workspace with reviewer role
+      // When database is configured in production, fail closed: do NOT silently assign
+      // arbitrary authenticated users to a production organization without verified membership.
+      if (databaseConfigured()) {
+        throw new ForbiddenError("You are not an authorized member of any organization.");
+      }
+
+      // Authenticated user with no explicit membership record yet (offline/sandbox test mode only):
       return {
         organizationId: DEMO_ORGS.ALPHA.id,
         userId: user.id,
@@ -118,6 +123,11 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
     tenantHeader === "org_alpha" ||
     tenantHeader === DEMO_ORGS.ALPHA.id ||
     !tenantHeader;
+
+  // In production or when strict authentication is required, unauthenticated requests fail closed
+  if (process.env.NODE_ENV === "production" || process.env.STRICT_AUTH === "true") {
+    throw new UnauthorizedError("Authentication required. Please sign in to access this organization.");
+  }
 
   // When database is configured in production, reject unauthenticated access to non-demo tenants
   if (databaseConfigured() && !isBeta && !isAlpha) {
