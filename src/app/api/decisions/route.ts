@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid decision schema." }, { status: 400 });
     }
+    console.error("Decision recording error:", error);
     return NextResponse.json({ error: "Failed to record decision." }, { status: 500 });
   }
 }

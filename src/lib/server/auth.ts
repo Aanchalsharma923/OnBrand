@@ -44,6 +44,36 @@ export class ForbiddenError extends Error {
 }
 
 /**
+ * Resolves the cryptographically verified user identity from Supabase Auth session token.
+ * Does not require an existing organization membership. Used for onboarding and organization creation.
+ */
+export async function resolveAuthenticatedUser(request: Request): Promise<{ id: string; email?: string; metadata?: any }> {
+  const token = extractAuthToken(request);
+  if (!token) {
+    throw new UnauthorizedError("Authentication required. Please sign in.");
+  }
+
+  if (!isSupabaseAuthConfigured()) {
+    throw new SupabaseConfigurationError(
+      "Supabase Authentication is not configured on the server. Unable to verify user session credentials."
+    );
+  }
+
+  const supabase = getSupabaseAuthClient();
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
+    throw new UnauthorizedError(`Invalid or expired session: ${error?.message || "User not found"}`);
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    metadata: user.user_metadata,
+  };
+}
+
+/**
  * Resolves the authenticated tenant context strictly from verified server-side credentials
  * (Supabase Auth session + database-backed memberships) or authenticated sandbox workspaces.
  * Client-controlled role claims are never trusted for production organizations.

@@ -139,8 +139,14 @@ export default function Home() {
   const [structuralData, setStructuralData] = useState<StructuralDocumentData | undefined>(undefined);
   const [uploadedFile, setUploadedFile] = useState<File | Blob | null>(null);
 
-  // Verified authentication and backend health state
+  // Verified authentication, organizations, and onboarding state
   const [supabaseSession, setSupabaseSession] = useState<{ user: { email?: string; id: string }; accessToken: string } | null>(null);
+  const [userOrganizations, setUserOrganizations] = useState<Array<{ id: string; name: string; slug: string; role: string }>>([]);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgSlug, setNewOrgSlug] = useState("");
+  const [isOnboardingLoading, setIsOnboardingLoading] = useState(false);
+  const [onboardingError, setOnboardingError] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -210,10 +216,49 @@ export default function Home() {
     }
   }, []);
 
+  const refreshOrganizations = useCallback(async (token?: string) => {
+    const authToken = token || supabaseSession?.accessToken;
+    if (!authToken) {
+      setUserOrganizations([]);
+      return;
+    }
+    try {
+      const res = await fetch("/api/organizations", {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const orgs = (data.organizations || []) as Array<{ id: string; name: string; slug: string; role: string }>;
+        setUserOrganizations(orgs);
+        if (orgs.length === 0) {
+          setShowOnboardingModal(true);
+        } else {
+          setCurrentOrg((prev) => {
+            const exists = orgs.some((o) => o.id === prev);
+            return exists ? prev : orgs[0].id;
+          });
+          setShowOnboardingModal(false);
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+  }, [supabaseSession?.accessToken]);
+
+  useEffect(() => {
+    if (supabaseSession?.accessToken) {
+      refreshOrganizations(supabaseSession.accessToken);
+    } else {
+      setUserOrganizations([]);
+      setShowOnboardingModal(false);
+    }
+  }, [supabaseSession, refreshOrganizations]);
+
   const getAuthHeaders = useCallback((extra: Record<string, string> = {}) => {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentOrg);
     const headers: Record<string, string> = {
       "x-demo-org": currentOrg,
-      "x-onbrand-tenant": currentOrg === "org_beta" ? "beta" : "alpha",
+      "x-onbrand-tenant": isUuid ? currentOrg : (currentOrg === "org_beta" ? "beta" : "alpha"),
       "x-onbrand-role": role,
       "x-demo-role": role.toUpperCase(),
       ...extra,
@@ -679,6 +724,14 @@ export default function Home() {
     setCurrentOrg(orgId);
     setReview(null);
     setLastDecision("");
+    const matchedUserOrg = userOrganizations.find((o) => o.id === orgId);
+    if (matchedUserOrg) {
+      if (matchedUserOrg.role && ["creator", "reviewer", "maintainer"].includes(matchedUserOrg.role)) {
+        setRole(matchedUserOrg.role as Role);
+      }
+      announce(`Switched to ${matchedUserOrg.name} workspace. Verified tenant isolation active.`);
+      return;
+    }
     if (orgId === "org_beta") {
       const betaDraft = createDraft("NovaBio CardioShield supports healthy arterial elasticity. Clinically demonstrated in double-blind trials.", {
         id: "DRAFT-BETA-01",
@@ -1091,7 +1144,8 @@ export default function Home() {
 
   const activeSources = sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt);
   const coverage = Math.round((activeSources.reduce((sum, source) => sum + source.facts.length, 0) / 40) * 100);
-  const currentBrandName = currentProfileSource?.facts[0]?.subject ?? (workspaceMode === "demo" ? "Sample Foods" : "Your brand");
+  const activeUserOrg = userOrganizations.find((o) => o.id === currentOrg);
+  const currentBrandName = activeUserOrg ? activeUserOrg.name : (currentProfileSource?.facts[0]?.subject ?? (workspaceMode === "demo" ? "Sample Foods" : "Your brand"));
 
   return (
     <div className="app-shell">
@@ -1158,6 +1212,158 @@ export default function Home() {
           </section>
         </div>
       )}
+      {showOnboardingModal && (
+        <div
+          className="auth-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="onboarding-modal-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.8)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="auth-modal-card"
+            style={{
+              background: "#161b22",
+              border: "1px solid rgba(255,255,255,0.16)",
+              borderRadius: "12px",
+              padding: "28px",
+              maxWidth: "460px",
+              width: "90%",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.6)",
+            }}
+          >
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(37,99,235,0.2)", color: "#60a5fa", padding: "3px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, marginBottom: "8px" }}>
+                <span>◈</span> NEW WORKSPACE SETUP
+              </div>
+              <h3 id="onboarding-modal-title" style={{ margin: 0, fontSize: "20px", fontWeight: 600, color: "#fff" }}>
+                Create Your Organization
+              </h3>
+              <p style={{ margin: "6px 0 0", fontSize: "13px", opacity: 0.75, color: "#cbd5e1", lineHeight: 1.5 }}>
+                You are signed in as <strong>{supabaseSession?.user.email}</strong>. Create an organization workspace to start managing documents with verified tenant isolation.
+              </p>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!newOrgName.trim()) return;
+                setIsOnboardingLoading(true);
+                setOnboardingError("");
+                try {
+                  const token = supabaseSession?.accessToken;
+                  if (!token) throw new Error("Sign in required.");
+                  const res = await fetch("/api/organizations", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                      name: newOrgName.trim(),
+                      slug: newOrgSlug.trim() || undefined,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Failed to create organization.");
+                  const created = data.organization;
+                  announce(`Organization ${created.name} created.`);
+                  setNewOrgName("");
+                  setNewOrgSlug("");
+                  setShowOnboardingModal(false);
+                  setCurrentOrg(created.id);
+                  setRole("creator");
+                  await refreshOrganizations(token);
+                } catch (err) {
+                  setOnboardingError(err instanceof Error ? err.message : "Failed to create organization.");
+                } finally {
+                  setIsOnboardingLoading(false);
+                }
+              }}
+            >
+              <div style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px", color: "#e2e8f0" }}>Organization Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newOrgName}
+                  onChange={(e) => {
+                    setNewOrgName(e.target.value);
+                    if (!newOrgSlug || newOrgSlug === newOrgName.toLowerCase().replace(/[^a-z0-9]+/g, "-")) {
+                      setNewOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+                    }
+                  }}
+                  placeholder="e.g. Apex Consumer Brands"
+                  style={{
+                    width: "100%",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    borderRadius: "6px",
+                    padding: "9px 12px",
+                    color: "#fff",
+                    fontSize: "13px",
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px", color: "#e2e8f0" }}>Workspace Slug (URL Identifier)</label>
+                <input
+                  type="text"
+                  value={newOrgSlug}
+                  onChange={(e) => setNewOrgSlug(e.target.value)}
+                  placeholder="e.g. apex-consumer-brands"
+                  style={{
+                    width: "100%",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    borderRadius: "6px",
+                    padding: "9px 12px",
+                    color: "#fff",
+                    fontSize: "13px",
+                  }}
+                />
+                <small style={{ display: "block", fontSize: "11px", opacity: 0.6, marginTop: "4px" }}>
+                  Used to generate your secure tenant partition and database scope.
+                </small>
+              </div>
+
+              {onboardingError && (
+                <div style={{ fontSize: "12px", color: "#f87171", background: "rgba(239,68,68,0.1)", padding: "8px 10px", borderRadius: "6px", marginBottom: "14px", border: "1px solid rgba(239,68,68,0.2)" }}>
+                  {onboardingError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+                <button
+                  type="submit"
+                  disabled={isOnboardingLoading}
+                  className="primary-button"
+                  style={{ flex: 1, justifyContent: "center" }}
+                >
+                  {isOnboardingLoading ? "Creating Organization…" : "Create Organization & Workspace"}
+                </button>
+                <button
+                  type="button"
+                  className="quiet-button"
+                  onClick={() => setShowOnboardingModal(false)}
+                >
+                  Skip for Now
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <NavigationSidebar
         currentOrg={currentOrg}
         currentBrandName={currentBrandName}
@@ -1186,8 +1392,18 @@ export default function Home() {
                 style={{ background: "transparent", color: "inherit", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", outline: "none" }}
                 aria-label="Switch organization workspace"
               >
-                <option value="org_alpha" style={{ background: "#1c222c" }}>Acme Foods (Alpha)</option>
-                <option value="org_beta" style={{ background: "#1c222c" }}>Nova Biopharma (Beta)</option>
+                {userOrganizations.length > 0 ? (
+                  userOrganizations.map((org) => (
+                    <option key={org.id} value={org.id} style={{ background: "#1c222c" }}>
+                      {org.name} ({org.role})
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="org_alpha" style={{ background: "#1c222c" }}>Acme Foods (Demo)</option>
+                    <option value="org_beta" style={{ background: "#1c222c" }}>Nova Biopharma (Demo)</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="secure-indicator" title={backendHealth?.persistence ? `Database Status: ${backendHealth.persistence}` : undefined}>
@@ -1624,7 +1840,35 @@ export default function Home() {
                   <div style={{ fontSize: "12px", opacity: 0.6 }}>Signed in as</div>
                   <div style={{ fontSize: "14px", fontWeight: 600, marginTop: "2px" }}>{supabaseSession.user.email}</div>
                   <div style={{ fontSize: "11px", opacity: 0.6, marginTop: "6px" }}>User ID: {supabaseSession.user.id}</div>
-                  <div style={{ fontSize: "11px", opacity: 0.6 }}>Active Org: {currentOrg === "org_beta" ? "Nova Biopharma" : "Acme Foods"}</div>
+                  <div style={{ fontSize: "11px", opacity: 0.6 }}>Active Org: {activeUserOrg ? activeUserOrg.name : currentOrg === "org_beta" ? "Nova Biopharma" : "Acme Foods"}</div>
+                  {userOrganizations.length > 0 && (
+                    <div style={{ marginTop: "10px", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "8px" }}>
+                      <div style={{ fontSize: "11px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>Your Organizations ({userOrganizations.length}):</div>
+                      {userOrganizations.map((org) => (
+                        <div key={org.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: "12px" }}>
+                          <span>{org.name} <small style={{ opacity: 0.6 }}>({org.role})</small></span>
+                          {currentOrg === org.id ? (
+                            <span style={{ color: "#34d399", fontSize: "11px" }}>● Active</span>
+                          ) : (
+                            <button type="button" className="text-button" style={{ fontSize: "11px", padding: 0 }} onClick={() => switchOrg(org.id)}>Switch</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ marginTop: "10px", textAlign: "right" }}>
+                    <button
+                      type="button"
+                      className="text-button"
+                      style={{ fontSize: "11px", color: "#60a5fa" }}
+                      onClick={() => {
+                        setShowAuthModal(false);
+                        setShowOnboardingModal(true);
+                      }}
+                    >
+                      + Create another organization
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="button"

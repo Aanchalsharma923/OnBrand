@@ -550,13 +550,49 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
     }
 
     return withOrganizationScope(ctx, async (tx) => {
+      const isReviewUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(review.id);
+      const targetReviewId = isReviewUuid ? review.id : crypto.randomUUID();
+      review.id = targetReviewId;
+
+      let targetDraftVersionId = review.draftVersionId;
+      const isVersionUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetDraftVersionId);
+
+      if (!isVersionUuid) {
+        const dVersionRows = await tx
+          .select({ id: schema.draftVersions.id })
+          .from(schema.draftVersions)
+          .where(
+            and(
+              eq(schema.draftVersions.organizationId, ctx.organizationId),
+              eq(schema.draftVersions.draftId, review.draftId)
+            )
+          )
+          .limit(1);
+
+        if (dVersionRows.length > 0) {
+          targetDraftVersionId = dVersionRows[0].id;
+        } else {
+          const newVersionId = crypto.randomUUID();
+          await tx.insert(schema.draftVersions).values({
+            id: newVersionId,
+            organizationId: ctx.organizationId,
+            draftId: review.draftId,
+            version: 1,
+            content: "",
+            contentHash: review.draftHash,
+            createdBy: ctx.userId ?? "system",
+          });
+          targetDraftVersionId = newVersionId;
+        }
+      }
+
       await tx
         .insert(schema.reviews)
         .values({
-          id: review.id,
+          id: targetReviewId,
           organizationId: ctx.organizationId,
           draftId: review.draftId,
-          draftVersionId: review.draftVersionId,
+          draftVersionId: targetDraftVersionId,
           draftHash: review.draftHash,
           sourceSnapshotHash: review.sourceSnapshotHash,
           status: review.findings.some((f: Finding) => f.blocking_for_review) ? "FLAGGED" : "CLEAN",
@@ -569,7 +605,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         await tx.insert(schema.findings).values(
           review.findings.map((f: Finding) => ({
             organizationId: ctx.organizationId,
-            reviewId: review.id,
+            reviewId: targetReviewId,
             claimText: f.claim_text,
             startOffset: f.start,
             endOffset: f.end,
@@ -652,9 +688,41 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       const decidedBy = decision.by ?? ctx.actor?.displayName ?? ctx.userId ?? "reviewer";
       const decisionVal = decision.state ?? "APPROVED";
 
+      const isReviewUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(reviewId);
+      let targetReviewId = reviewId;
+
+      if (!isReviewUuid) {
+        const revRows = await tx
+          .select({ id: schema.reviews.id })
+          .from(schema.reviews)
+          .where(
+            and(
+              eq(schema.reviews.organizationId, ctx.organizationId),
+              eq(schema.reviews.draftHash, decision.draftHash)
+            )
+          )
+          .orderBy(desc(schema.reviews.createdAt))
+          .limit(1);
+
+        if (revRows.length > 0) {
+          targetReviewId = revRows[0].id;
+        } else {
+          const anyRevRows = await tx
+            .select({ id: schema.reviews.id })
+            .from(schema.reviews)
+            .where(eq(schema.reviews.organizationId, ctx.organizationId))
+            .orderBy(desc(schema.reviews.createdAt))
+            .limit(1);
+
+          if (anyRevRows.length > 0) {
+            targetReviewId = anyRevRows[0].id;
+          }
+        }
+      }
+
       await tx.insert(schema.decisions).values({
         organizationId: ctx.organizationId,
-        reviewId,
+        reviewId: targetReviewId,
         draftHash: decision.draftHash,
         sourceSnapshotHash: decision.sourceSnapshotHash ?? "",
         decision: decisionVal,
@@ -667,7 +735,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         actorId: ctx.actor?.userId ?? ctx.userId ?? decidedBy,
         action: `DECISION_${decisionVal}`,
         entityType: "review",
-        entityId: reviewId,
+        entityId: targetReviewId,
         metadata: {
           draftHash: decision.draftHash,
           sourceSnapshotHash: decision.sourceSnapshotHash,
@@ -683,9 +751,10 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
     }
 
     return withOrganizationScope(ctx, async (tx) => {
+      const actorId = event.actorId ?? ctx.actor?.userId ?? ctx.userId ?? "system";
       await tx.insert(schema.auditEvents).values({
         organizationId: ctx.organizationId,
-        actorId: event.actorId,
+        actorId,
         action: event.action,
         entityType: event.entityType,
         entityId: event.entityId,
