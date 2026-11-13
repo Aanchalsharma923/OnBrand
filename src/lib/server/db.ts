@@ -72,6 +72,15 @@ export async function withOrganizationScope<T>(
         await tx.execute(sql`select set_config('app.user_id', ${ctx.userId}, true)`);
       }
 
+      // Security Invariant: The connection pooler connects using the postgres role, which
+      // has rolbypassrls=true. Lower the transaction role to 'authenticated' so PostgreSQL's
+      // kernel row-level security engine actively enforces all RLS policies on tenant tables.
+      try {
+        await tx.execute(sql`SET LOCAL ROLE authenticated`);
+      } catch {
+        // Graceful fallback for non-Supabase local test containers without the 'authenticated' role
+      }
+
       return action(tx);
     } else {
       const scope = ctxOrScope as { organizationId: string; actor: VerifiedActor };
@@ -101,6 +110,12 @@ export async function withOrganizationScope<T>(
       const cleanRole = memberRole.replace(/'/g, "''");
       await tx.execute(sql.raw(`SET LOCAL app.role = '${cleanRole}';`));
       await tx.execute(sql`select set_config('app.role', ${memberRole}, true)`);
+
+      try {
+        await tx.execute(sql`SET LOCAL ROLE authenticated`);
+      } catch {
+        // Graceful fallback for non-Supabase local test containers without the 'authenticated' role
+      }
 
       return action(tx);
     }

@@ -196,3 +196,12 @@ CREATE POLICY comments_scope ON comments USING (organization_id = onbrand_org_id
 CREATE POLICY decisions_scope ON decisions USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('reviewer','maintainer'));
 CREATE POLICY audit_events_scope ON audit_events USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('creator','reviewer','maintainer'));
 CREATE POLICY assets_scope ON assets USING (organization_id = onbrand_org_id()) WITH CHECK (organization_id = onbrand_org_id() AND onbrand_role() IN ('maintainer'));
+
+-- Grants for Supabase authenticated and service_role roles to allow RLS enforcement under lowered privileges
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated, service_role;
+

@@ -96,4 +96,55 @@ describe("R1.10 Tenant Isolation & Cross-Tenant Boundary Security", () => {
     const betaLogs = await repo.getAuditLog(orgBeta);
     expect(betaLogs.some((e) => e.id === "AUDIT-ALPHA-EVENT-1")).toBe(false);
   });
+
+  it("prevents Org Beta from viewing or modifying Org Alpha brand assets", async () => {
+    await repo.registerAsset(orgAlpha, {
+      id: "ASSET-ALPHA-LOGO-1",
+      name: "Alpha Master Logo",
+      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      phash: "0000000000000000",
+      pHash: "0000000000000000",
+      mimeType: "image/png",
+      organizationId: orgAlpha.organizationId,
+      createdAt: new Date().toISOString(),
+    });
+
+    const alphaAssets = await repo.getAssets(orgAlpha);
+    expect(alphaAssets.some((a) => a.id === "ASSET-ALPHA-LOGO-1")).toBe(true);
+
+    const betaAssets = await repo.getAssets(orgBeta);
+    expect(betaAssets.some((a) => a.id === "ASSET-ALPHA-LOGO-1")).toBe(false);
+  });
+
+  it("prevents cross-tenant source modification (Beta maintainer cannot revoke Alpha source)", async () => {
+    // Org Alpha creates a source
+    const alphaSource = {
+      ...seedSources[0],
+      id: "SRC-ALPHA-TO-REVOKE",
+      title: "Alpha Active Source",
+      owner: "Alpha Legal",
+      approvalState: "APPROVED" as const,
+    };
+    await repo.createSource(orgAlphaMaintainer, alphaSource);
+
+    // Beta attempts to revoke Alpha's source
+    await repo.updateSourceStatus(orgBeta, "SRC-ALPHA-TO-REVOKE", "REVOKED");
+
+    // Verify that Alpha's source remains APPROVED and unrevoked
+    const alphaCheck = await repo.getSourceById(orgAlphaMaintainer, "SRC-ALPHA-TO-REVOKE");
+    expect(alphaCheck).not.toBeNull();
+    expect(alphaCheck?.approvalState).toBe("APPROVED");
+    expect(alphaCheck?.revokedAt).toBeUndefined();
+  });
+
+  it("verifies alternating pooled transactions cannot leak tenant context between requests", async () => {
+    // Alternating between Alpha and Beta sequentially (simulating connection pool reuse)
+    for (let i = 0; i < 5; i++) {
+      const alphaSources = await repo.getSources(orgAlphaMaintainer);
+      expect(alphaSources.every((s) => s.id !== "SRC-BETA-EXCLUSIVE")).toBe(true);
+
+      const betaSources = await repo.getSources(orgBeta);
+      expect(betaSources.every((s) => s.id !== "SRC-ALPHA-SECRET")).toBe(true);
+    }
+  });
 });
