@@ -1,117 +1,184 @@
 # OnBrand
 
-**Evidence-led review for people who publish.** OnBrand checks draft content against approved brand knowledge, identifies supported claims, gaps, conflicts, policy risks and selected accessibility issues, then offers a rechecked revision for a human to consider.
+**Evidence-led brand and regulatory governance for people who publish.**
 
-**Live judge build:** [Open OnBrand at outcoded.xyz](https://outcoded.xyz). [Vercel fallback](https://on-brand-zeta.vercel.app) is also available.
+OnBrand checks marketing copy, packaging labels, regulatory disclosures, and enterprise communications against approved brand guidelines and statutory regulations. It identifies verified claims, unsupported gaps, formulation contradictions, and policy risks, providing rechecked, defensible corrections for human compliance sign-off.
 
-OnBrand analyses and recommends. It does **not** publish content or execute external actions. A human reviewer retains approval authority. The current Round 2 build is a judge-ready prototype: demo records use browser-local storage, the role switch is simulated, and there is no production login or shared database connected. Public demo attribution uses role labels rather than team-member names; older saved review records are normalized when restored.
+- **Live Production Application**: [https://outcoded.xyz](https://outcoded.xyz)
+- **Fallback URL**: [https://on-brand-zeta.vercel.app](https://on-brand-zeta.vercel.app)
+- **Primary Repository**: [https://github.com/Aanchalsharma923/OnBrand](https://github.com/Aanchalsharma923/OnBrand)
 
-## Three improvements visible in the build
+---
 
-1. **Evidence is inspectable.** Findings show the retrieved source, version and quotation. Retrieval combines lexical/trigram ranking with a separate attribute/value topic gate. Code checks source identity, version/date, channel scope and exact quote (C1–C4). When a model provider is configured, two independent semantic passes must agree on a free-text claim and cite exact passage text (C5); disagreement or a fabricated quote routes to human review. The semantic model has not been independently benchmarked, and production runs without it in disclosed deterministic mode.
-2. **Uncertainty stays distinct.** OnBrand separates unsupported claims, contradictions and same-precedence source conflicts on single-value facts; list-valued facts such as ingredients do not conflict merely because several approved values exist. Unresolved high-risk items keep approval blocked.
-3. **A suggestion must earn acceptance.** A proposed edit is checked against the complete review pipeline again, saved as a new version, and remains subject to a human decision tied to the reviewed draft and source snapshot.
+## 1. Problem Statement & Mission
 
-## Try the core flow
+Marketing and compliance teams face severe challenges when publishing regulated copy:
+1. **Regulatory Penalties**: Advertising watchdogs (FDA, FTC, EFSA, ASA) penalize misleading claims, improper nutrient descriptors, and unapproved health benefits.
+2. **Formulation Drift**: Marketing copy frequently diverges from approved product specifications, ingredient levels, or manufacturing documentation.
+3. **The "Black Box AI" Hazard**: Generic LLM assistants hallucinate citations, invent regulatory standards, and deliver ungrounded compliance assertions that cannot be audited.
+4. **Approval Bottlenecks**: Manual copy audits create friction, delaying launches without guaranteeing cross-channel consistency.
 
-1. Open the demo and inspect the draft, channel and review findings.
-2. Filter findings to all, needs attention, blocking or evidence-aligned items, then select one to see its precise draft span, status, explanation and approved source quote.
-3. Edit the draft or select **Recheck & apply** on an eligible suggestion. OnBrand creates a new content version and runs a fresh review.
-4. Add or resolve a human review comment. Switch to the demo maintainer role to import a JSON or CSV knowledge source; imported material stays pending until approved. In the Knowledge base, maintainers can also edit the synthetic brand voice, audience, avoided wording and palette. Saving creates an approved knowledge version, archives the previous one and invalidates existing review decisions; profile-specific avoided wording is checked in new reviews.
-5. Review the current version as a reviewer. Approval stays disabled while the report is stale or blocking findings remain.
-6. Use **Reset demo** to return to the initial workspace.
+**OnBrand** eliminates compliance uncertainty by combining deterministic rule-based verification, approved brand knowledge retrieval, and transparent human approval workflows. OnBrand analyzes and recommends; it never publishes content without explicit, authorized human sign-off.
 
-### Draft formats accepted in Round 2
+---
 
-| Format | What OnBrand reads | Current limit |
-| --- | --- | --- |
-| Plain text, Markdown and HTML | Text content; HTML also receives the selected accessibility checks | 20,000 extracted characters |
-| Word DOCX | Paragraph and table text from the document body | 10 MB file; formatting and embedded images are not analyzed |
-| PowerPoint PPTX | Text from slide text boxes, in slide order | 10 MB compressed; 10 MB per XML part and 30 MB total uncompressed; visuals, charts, notes and embedded images are not analyzed |
-| Excel XLSX and CSV | Cell values as tabular text | 10 MB compressed; 10 MB per XML part and 30 MB total uncompressed; formulas, formatting and chart visuals are not analyzed |
-| PDF | Selectable text; scanned pages without a text layer use browser OCR | 10 MB and 20 pages per file |
-| PNG, JPG, WebP, BMP and TIFF | Visible text through English OCR, processed in the browser | 10 MB; OCR quality depends on image clarity |
-| MP4 and WebM reels | Visible text from up to six sampled video frames through English OCR; the frame text becomes editable draft text | 50 MB and 3 minutes per file; spoken audio, colors, logos, layout and visual consistency are not analysed |
+## 2. Core Capabilities
 
-Files are parsed in the browser, and uploaded originals are stored in this browser's IndexedDB; the file-import step does not send the original to a server. Extracted text and an original-file reference are saved in this browser's demo workspace. Clearing browser site data or changing browsers can remove access to local originals. **Proofread imported text before review**, especially OCR output, because characters can be missed or misread; uncertain OCR is gated until corrected and confirmed. A configured external model may receive draft text during review, as described in the AI disclosure below. OCR does not check image layout, palette, logo use or visual consistency. Video speech is not transcribed. Selectable-text PDF findings navigate to and highlight matching page text; OCR-only text has no reliable page coordinates. DOCX opens in a structured reading view; PPTX and XLSX currently provide editable extracted text, not faithful page/slide/cell rendering. Complex layouts, handwriting, non-English OCR, audio transcription and arbitrary proprietary formats are not claimed as supported.
+- **Inspectable Evidence & Quotations**: Every finding links directly to an approved, versioned primary source with verbatim quotes, version numbers, and authority weights.
+- **Strict Compliance Status Composition**: Differentiates clearly between:
+  - `SUPPORTED`: Fully verified by an active, approved brand record.
+  - `NO_APPROVED_EVIDENCE`: Unverified by existing brand documentation (transparently labeled as missing evidence, not false).
+  - `CONTRADICTED`: Directly conflicts with an approved formulation record or statutory regulation (e.g. claiming *"zero sugar"* when records show 4g added sugar).
+  - `CONFLICT`: Disagreement between equal-precedence approved sources; escalated for human review rather than silently resolved.
+  - `NEEDS_HUMAN`: Ambiguous claims, expired sources, or model uncertainty.
+- **C1–C4 Code-Level Citation Validation**: Every cited source is verified against source existence (C1), version and effective dates (C2), target channel scope (C3), and verbatim quotation match (C4).
+- **1-Click Suggestion Recheck**: Suggested revisions are re-evaluated through the entire compliance pipeline before application, ensuring a suggestion never introduces new violations.
+- **Cryptographic Version Integrity**: Content modifications immediately increment the draft version and compute a new SHA-256 hash. Stale review approvals are rejected by the server (`HTTP 409 Conflict`).
+- **Multi-Tenant Isolation**: Enforced via PostgreSQL 17 Row Level Security (RLS) policies and server-side context resolution.
+- **Client-Side Multimodal Ingestion**: Supports plain text, Markdown, HTML, Word (.docx), PowerPoint (.pptx), Excel (.xlsx/.csv), PDF documents, image OCR (PNG/JPG/WebP), and video reel frame OCR.
 
-The demo fixture includes supported claims, an unsupported claim, a contradictory claim, a same-authority source conflict, an omission check, and an instruction-injection example. The product identity is **OnBrand** throughout; “Sample Foods” and its oat-bites product are synthetic client data used only to demonstrate the workflow.
+---
 
-For a ready-to-import CSV example, use [`examples/source-import-template.csv`](examples/source-import-template.csv). CSV columns are `subject`, `attribute`, `value`, `unit`, and `statement`. Imports are limited to 1 MB, validated, forced into `PENDING_REVIEW`, and only enter retrieval after the demo maintainer explicitly approves them.
-
-## Architecture
+## 3. System Architecture
 
 ```text
-Browser editor and review workspace
-  ├─ local file extraction: TXT/MD/HTML, DOCX/PDF text, image OCR and sampled MP4/WebM frame OCR
-  ├─ draft versions, comments, demo role, source register (localStorage)
-  └─ POST /api/reviews
-       ├─ validate bounded request with Zod
-       ├─ recompute draft hash; filter approved and active sources
-       ├─ hybrid lexical + character-trigram retrieval
-       ├─ resolve by source authority, effective date, version and channel
-       ├─ deterministic claim, omission, risk, citation C1–C4 and HTML accessibility checks
-       ├─ optional two-pass semantic citation verifier for eligible free-text claims
-       └─ optional four-call panel: independent Advocate, Challenger and Policy/Risk
-            └─ Judge synthesizes those notes; advisory only
-            └─ statuses, quotations and approval gates remain code-controlled
+Browser Editor & Review Studio
+  ├─ Local Document Ingestion (PDF.js, Mammoth DOCX, JSZip PPTX/XLSX, Tesseract OCR)
+  ├─ Workspace Navigation: Review Studio, Knowledge Base, Audit Log, Brand Settings
+  └─ REST APIs (Next.js 16 App Router)
+       ├─ /api/organizations  -> Tenant onboarding & membership query
+       ├─ /api/sources        -> Knowledge source registration & retrieval
+       ├─ /api/drafts         -> Content drafting & SHA-256 fingerprinting
+       ├─ /api/reviews        -> Deterministic review engine orchestration
+       ├─ /api/decisions      -> Approval workflow & version integrity gate
+       ├─ /api/audit          -> Tenant-partitioned audit log queries
+       └─ /api/assets         -> Multimodal brand asset registry
+            │
+            ├─ PostgreSQL 17 (Supabase Pooler) + Row Level Security (RLS)
+            └─ Pure Review Engine (src/lib/onbrand.ts)
+                 ├─ Topic-gated lexical & character-trigram fact matching
+                 ├─ Authority & version precedence resolution
+                 ├─ Statutory rules (FDA 21 CFR 101.60, FTC Endorsement Guides)
+                 ├─ Citation verification (C1–C4)
+                 └─ Optional Two-Pass Semantic Verifier (C5)
 ```
 
-`src/lib/onbrand.ts` contains the finding contract, demo source/fact model, retrieval, precedence, status assignment, injection detection, accessibility checks, and suggestion recheck. Retrieval first requires overlap with fact attributes/values after removing product-subject terms, then uses lexical/trigram ranking to order relevant approved sources. Each finding carries a stable ID, source draft/version/hash, exact half-open Unicode code-point offsets into the original draft, evidence status, severity, blocking flag, explanation, source IDs/versions/quotes, and optional suggestion state. Suggested edits convert those offsets to JavaScript's UTF-16 indexing only when replacing text. `src/app/api/reviews/route.ts` validates incoming data and recomputes the draft fingerprint before analysis. `db/0001_initial.sql` and `src/lib/schema.ts` document the planned PostgreSQL schema and row-scope policies; they are **not connected to the demo UI** without a verified authentication layer and database setup.
+For comprehensive architectural design, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-### Evidence and precedence
+---
 
-Only approved, unrevoked sources effective for the selected date and channel enter retrieval. Candidate facts are ranked by lexical overlap and trigram similarity; a bounded candidate set is then ordered by configured source authority, effective date and version. A source snapshot hash makes changes invalidate the review. If equally authoritative applicable sources disagree on a single-value fact, OnBrand reports a conflict and requires a human to resolve ownership or effective dates instead of guessing. List-valued attributes such as ingredients, allergens and approved claims can contain multiple valid entries without being treated as contradictions. A weaker source cannot override a higher-authority approved source. The demo's source register shows owner, type, version, scope and lifecycle status.
+## 4. Technology Stack
 
-### Safety and decision boundary
+| Layer | Technologies | Purpose |
+| :--- | :--- | :--- |
+| **Frontend Framework** | Next.js 16 (App Router), React 19, TypeScript | Server and client-rendered interactive workspace |
+| **Styling & UI** | Tailwind CSS, Radix UI, Accessible Custom Modals | Responsive, high-contrast, accessible interface |
+| **Database & Auth** | Supabase (PostgreSQL 17, GoTrue Auth, PgBouncer) | Multi-tenant persistent storage with RLS policies |
+| **Database ORM** | Drizzle ORM | Type-safe schema definitions and relational queries |
+| **Review Engine** | Deterministic TypeScript Core (`src/lib/onbrand.ts`) | Reproducible claim extraction, fact matching, and citation checks |
+| **Document Parsers** | Mammoth.js, JSZip, PDF.js, PapaParse, Tesseract.js | In-browser file parsing and client-side OCR |
+| **Testing Framework** | Vitest, Playwright | 259 unit/integration tests and visual browser E2E automation |
+| **Deployment** | Vercel Serverless Edge | Production hosting with custom domain and TLS |
 
-Drafts and imported source text are untrusted data. The browser limits review-file size and extracted text; knowledge files are parsed as structured JSON/CSV, never executed. Prompt-injection patterns are flagged, and optional model instructions explicitly treat draft/evidence as data. Semantic verifier failure or disagreement sends the affected claim to human review. The advisory panel is optional and can be unavailable without suppressing deterministic findings. The model cannot write findings, citations, statuses or decisions. The UI offers no publishing connector or external action tool. Browser role selection is a demonstration aid, **not access control**; do not use this prototype with confidential company material.
+---
 
-## Technology choices
+## 5. Getting Started & Running Locally
 
-| Area | Choice | Why it fits this build |
-| --- | --- | --- |
-| User interface | Next.js App Router, React, TypeScript | Fast interactive review workspace with a typed application boundary |
-| Styling | CSS and Tailwind tooling | Responsive, consistent interface without a component-library dependency |
-| Request validation | Zod | Reject malformed or oversized review requests before analysis |
-| Review engine | Deterministic TypeScript rules + hybrid lexical/trigram retrieval | Reproducible evidence status, citations, source precedence and demo behavior |
-| Optional semantic verifier and advisory panel | OpenAI-compatible API through the official OpenAI SDK | Two differently worded, reordered verifier passes must agree on relation and exact quote; three independent advisory perspectives run concurrently, then a fourth Judge call synthesizes them. Code composes evidence status and humans decide |
-| Planned persistence | PostgreSQL + Drizzle ORM | Versioned, tenant-scoped records when verified auth and database credentials are available |
-| Current demo persistence | Browser `localStorage` | Lets judges use the full prototype without account setup; data stays in that browser |
+### Prerequisites
+- Node.js 22.x or 24.x
+- npm 10.x or higher
 
-## Run locally
+### 1. Clone the Repository
+```bash
+git clone https://github.com/Aanchalsharma923/OnBrand.git
+cd OnBrand
+git checkout round3-dev
+```
 
-Requirements: Node.js 24.x and npm.
-
+### 2. Install Dependencies
 ```bash
 npm install
-npm run dev
 ```
 
-Open `http://localhost:3000`. Optional model settings are in `.env.example`. Without `OPENAI_API_KEY`, reviews run in disclosed deterministic mode. `OPENAI_BASE_URL` and `OPENAI_MODEL` are optional. Do not commit secrets. `DATABASE_URL` is only a reserved configuration for the planned database path and does not activate persistence in this prototype.
+### 3. Environment Configuration
+Copy `.env.example` to `.env.local`:
+```bash
+cp .env.example .env.local
+```
+Configure your Supabase database and authentication credentials:
+```ini
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgres://postgres.your-project:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgres://postgres:password@db.your-project.supabase.co:5432/postgres
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+*(Reviews operate in full deterministic mode by default. To enable optional hosted model verification, add `OPENAI_API_KEY` and set `ENABLE_HOSTED_MODEL=true`.)*
 
-## Round 3 Architecture & Environment Setup
+### 4. Database Setup & Migrations
+Apply the PostgreSQL migrations in order:
+```bash
+node scripts/migrate-database.mjs
+```
+*(Or execute `db/0001_initial.sql`, `db/0002_seed.sql`, and `db/0003_multimodal_workspace.sql` in your Supabase SQL Editor.)*
 
-Round 3 advances OnBrand into an enterprise multi-tenant brand governance platform:
-- **Product Completion Sprint Report:** See [`PRODUCT_COMPLETION_REPORT.md`](PRODUCT_COMPLETION_REPORT.md) for full test results, golden customer journey verification, tenant isolation audits, and production release evidence.
-- **Development Branch:** `round3-dev` (created from clean baseline tag `round2-final`).
-- **Environment Configuration:** See `.env.example` for the complete configuration matrix per PROJECT.md § 5.5, including Supabase PostgreSQL connection strings (`DATABASE_URL`, `DIRECT_URL`), client & admin Supabase keys (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), hosted model settings (`OPENAI_API_KEY`, `OPENAI_MODEL`), and deployment URL (`NEXT_PUBLIC_APP_URL`).
-- **Interface Contracts:** Programmatic DTOs and repository contracts are defined in `src/lib/types.ts` (`TenantContext`, `OnBrandRepository`, `ModelGateway`, `VisualAnalysisEngine`).
-- **Pure Core Invariant:** `src/lib/onbrand.ts` is strictly isolated from database, network, and external API calls. All persistent and AI integrations interface at the API and repository layers.
+### 5. Start the Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Team responsibilities
+---
 
-| Member | Primary ownership | Shared work |
-| --- | --- | --- |
-| Siddhesh Songare | Evidence model, retrieval/precedence, risk and injection controls, evaluation cases | Product decisions, integration, end-to-end checks and demo |
-| Aanchal Sharma | Review interface, draft/version workflow, knowledge and reviewer experience | Product decisions, integration, end-to-end checks and demo |
+## 6. Running Tests & Quality Verification
 
-The work is intentionally split across technical and product responsibilities; both members contribute to integration, validation and the final demonstration.
+### Run Automated Unit & Integration Suite
+```bash
+npm test
+```
+*Executes all 30 test files and 259 tests across unit, integration, database, security, and ablation suites.*
 
-## Round 2 scope and next steps
+### Run Frozen Accuracy Benchmark
+```bash
+npx vitest run src/eval/accuracy-benchmark.test.ts
+```
 
-The functional slice prioritizes the complete review loop: write or import a draft → retrieve approved evidence → inspect claim-level findings → revise and recheck → human review decision. Round 2 accepts text, Markdown, HTML, DOCX, text/scanned PDFs, common image files and MP4/WebM reels through local extraction. Reel extraction samples 3 to 6 evenly spaced frames for text OCR; it does not transcribe speech or inspect visual design. Remaining production steps are verified sign-in and server-enforced membership, connected PostgreSQL persistence with tenant isolation, broader semantic retrieval, complete visual-consistency analysis, stronger accessibility validation, and hosted model configuration. No external credentials are included in this repository.
+### Run Release Acceptance Audit against Production
+```bash
+npx tsx scripts/release-acceptance-audit.mjs
+```
 
-## AI and third-party disclosure
+### Run Adversarial Integrity & Tenant Isolation Audit
+```bash
+npx tsx scripts/phase4-phase5-audit.mjs
+```
 
-This prototype was built on the official Next.js starter. The Vercel judge build uses deterministic review mode because no hosted model key is configured; it does not send draft content to an external model provider. The temporary Cloudflare preview uses locally hosted Ollama `qwen2.5:3b`. Other installations can use an OpenAI-compatible endpoint. When configured, eligible free-text claims and their limited evidence quotes are sent to two independent semantic-verification passes. The draft, code findings and limited source metadata/quotes are also sent in four advisory calls: Advocate, Challenger and Policy/Risk run independently, followed by a Judge synthesis. A verifier disagreement, invalid quote or unavailable verifier routes affected claims to human review. The advisory panel is optional. The model cannot change source facts, human decisions or approval gates; code composes final evidence statuses. The semantic model's accuracy has not been independently benchmarked. Local models can take longer on a cold start; each provider call is allowed up to 75 seconds. Image and scanned-page OCR uses Tesseract.js in the browser; its worker, WebAssembly engine and English language data are fetched from the jsDelivr CDN on demand. The image/PDF bytes stay in the browser and are not sent to that CDN. OCR output is editable and should be proofread before review.
+### Run Playwright Browser Automation Journey
+```bash
+node scripts/browser-e2e-journey.mjs
+```
+*Captures 10 visual milestone screenshots in `tests/screenshots/`.*
+
+### TypeScript Compile & Lint
+```bash
+npx tsc --noEmit
+npm run lint
+```
+
+---
+
+## 7. Project Documentation Index
+
+- [`docs/PRODUCT_OVERVIEW.md`](docs/PRODUCT_OVERVIEW.md): Problem definition, target customer personas, and core product workflows.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Deep-dive system topology, relational schema, RLS policies, and pipeline design.
+- [`docs/SECURITY.md`](docs/SECURITY.md): Threat modeling, RBAC permission matrix, session management, and secret sanitization.
+- [`docs/EVALUATION.md`](docs/EVALUATION.md): Benchmark results (52-passage frozen set, 10-industry evaluation, 4-condition ablation study).
+- [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md): Transparent boundaries regarding model gateways, document parsers, and deployment prerequisites.
+- [`db/README.md`](db/README.md): Database migration documentation and PostgreSQL setup instructions.
+
+---
+
+## 8. License
+
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.
