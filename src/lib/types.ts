@@ -145,6 +145,11 @@ export interface OnBrandRepository {
     asset: AssetRecord | Omit<AssetRecord, "id" | "createdAt">
   ): Promise<AssetRecord>;
   getAssets(ctx: TenantContext): Promise<AssetRecord[]>;
+  updateAsset?(
+    ctx: TenantContext,
+    assetId: string,
+    updates: Partial<AssetRecord>
+  ): Promise<AssetRecord | null>;
 }
 
 // ============================================================================
@@ -194,8 +199,17 @@ export interface ModelGateway {
 
 export interface LogoMatchResult {
   matchType: "EXACT" | "NEAR_VARIANT" | "NOT_IN_REGISTRY";
+  matchedAsset?: AssetRecord;
   matchedAssetId?: string;
   hammingDistance?: number;
+  confidence?: number;
+  isExactBinary?: boolean;
+  perceptualSimilarity?: number;
+  isCandidateMatch?: boolean;
+  humanConfirmedApproval?: boolean;
+  isExperimental?: boolean;
+  requiresHumanReview?: boolean;
+  explanation?: string;
 }
 
 export interface ContrastSampleResult {
@@ -204,6 +218,10 @@ export interface ContrastSampleResult {
   bgHex: string;
   meetsAA: boolean;
   isEstimate: true;
+  isAmbiguous?: boolean;
+  ambiguityReason?: string;
+  perimeterConfidence?: number;
+  samplingMethod?: string;
 }
 
 export interface DominantPaletteResult {

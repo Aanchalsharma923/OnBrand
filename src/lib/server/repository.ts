@@ -260,6 +260,20 @@ export class InMemoryRepository implements OnBrandRepository {
   async getAssets(ctx: TenantContext): Promise<AssetRecord[]> {
     return this.assets.get(ctx.organizationId) ?? [];
   }
+
+  async updateAsset(
+    ctx: TenantContext,
+    assetId: string,
+    updates: Partial<AssetRecord>
+  ): Promise<AssetRecord | null> {
+    const orgAssets = this.assets.get(ctx.organizationId) ?? [];
+    const idx = orgAssets.findIndex((a) => a.id === assetId);
+    if (idx === -1) return null;
+    const updated = { ...orgAssets[idx], ...updates };
+    orgAssets[idx] = updated;
+    this.assets.set(ctx.organizationId, orgAssets);
+    return updated;
+  }
 }
 
 function isDatabaseConnectionError(err: unknown): boolean {
@@ -1145,6 +1159,49 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           }));
         }),
       () => this.inMemoryFallback.getAssets(ctx),
+    );
+  }
+
+  async updateAsset(
+    ctx: TenantContext,
+    assetId: string,
+    updates: Partial<AssetRecord>
+  ): Promise<AssetRecord | null> {
+    return this.executeWithFallback<AssetRecord | null>(
+      ctx,
+      async () =>
+        withOrganizationScope(ctx, async (tx) => {
+          const updateData: Record<string, unknown> = {};
+          if (updates.approvalState) updateData.approvalState = updates.approvalState;
+          if (updates.name) updateData.name = updates.name;
+          if (updates.allowedUsage) updateData.allowedUsage = updates.allowedUsage;
+          const rows = await tx
+            .update(schema.assets)
+            .set(updateData)
+            .where(
+              and(
+                eq(schema.assets.id, assetId),
+                eq(schema.assets.organizationId, ctx.organizationId)
+              )
+            )
+            .returning();
+          if (rows.length === 0) return null;
+          const r = rows[0];
+          const record: AssetRecord = {
+            id: r.id,
+            organizationId: r.organizationId,
+            name: r.name,
+            sha256: r.sha256,
+            phash: r.phash ?? undefined,
+            pHash: r.phash ?? undefined,
+            mimeType: r.mimeType,
+            byteSize: r.byteSize,
+            approvalState: r.approvalState,
+            createdAt: r.createdAt.toISOString(),
+          };
+          return record;
+        }),
+      () => this.inMemoryFallback.updateAsset!(ctx, assetId, updates)
     );
   }
 }

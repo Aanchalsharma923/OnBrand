@@ -26,6 +26,12 @@
 | **ACT-AI-04** | AI / Tests | 16-test AI reliability & gateway safety suite | QA / AI | **COMPLETED** | `ai-reliability-suite.test.ts` 16/16 passing (100%) |
 | **ACT-AI-05** | AI / Tests | Stress benchmark evaluation suite | QA / AI | **COMPLETED** | `stress-benchmark.test.ts` 4/4 passing (100%) |
 | **ACT-AI-06** | Documentation | Complete `docs/AI_RELIABILITY_ACCEPTANCE_REPORT.md` | AI Researcher | **COMPLETED** | Forensic AI acceptance report published |
+| **ACT-VIS-01** | Visual / Asset Registry | Complete Asset Registry lifecycle & binary storage | SecEng / CV | **COMPLETED** | SHA-256 binary validation, 2D dHash, replacement & revocation |
+| **ACT-VIS-02** | Visual / Logo Matching | Logo matching calibration & Round 1 95% gate enforcement | CV Eng | **COMPLETED** | Autonomous blocking disabled; experimental flags & `NEEDS_HUMAN` |
+| **ACT-VIS-03** | Visual / OCR & Pipeline | OCR coordinate bounding boxes & proofread review gate | OCR / FullStack | **COMPLETED** | HTTP 409 review gate on low-confidence OCR; injection rejection |
+| **ACT-VIS-04** | Visual / Color & Contrast | CIE76 Delta-E photo exemption & ambiguous perimeter check | CV / A11y | **COMPLETED** | Photo exemption prevents false blocks; border check escalates to `NEEDS_HUMAN` |
+| **ACT-VIS-05** | Visual / Doc A11y | DOCX & PDF structural accessibility inspections | Doc / A11y | **COMPLETED** | True XML/tag inspection; untagged PDF `NEEDS_HUMAN` disclosure; no false WCAG claims |
+| **ACT-VIS-06** | Visual / Audit & Docs | 12-test audit suite, 38 fixtures & acceptance report | QA / CV | **COMPLETED** | `visual-intelligence-audit.test.ts` 12/12 passing; `VISUAL_INTELLIGENCE_ACCEPTANCE_REPORT.md` |
 
 ---
 
@@ -105,3 +111,33 @@
 - **Target File**: `docs/AI_RELIABILITY_ACCEPTANCE_REPORT.md`
 - **Action**: Authored comprehensive forensic report documenting production invocation proof, evidence retrieval auditing, mechanical citation validation, deterministic floor invariants, gateway resilience, benchmark reproduction, stress analysis, explainability schemas, and latency/cost trade-offs.
 - **Status**: **COMPLETED**.
+
+### ACT-VIS-01: Complete Asset Registry Lifecycle & Binary Storage
+- **Target Files**: `src/app/api/assets/route.ts`, `src/lib/server/repository.ts`, `src/lib/types.ts`
+- **Action**: Enforced server-side binary validation against uploaded binary content, cryptographically calculating SHA-256 and computing 64-bit 2D dHash via Sharp. Built secure server binary storage (`serverAssetBinaryStore`) with binary retrieval endpoint (`GET /api/assets?id=xxx&binary=true`). Added `replacesAssetId` support in `POST /api/assets` to supersede older assets while preserving historic review findings, and added `PATCH /api/assets` for status updates (`APPROVED`, `REVOKED`) with complete audit trails.
+- **Status**: **COMPLETED** (Verified by `visual-intelligence-audit.test.ts` Tests 1, 2, 3).
+
+### ACT-VIS-02: Logo Matching Calibration & Round 1 95% Gate Enforcement
+- **Target File**: `src/lib/visual-analysis.ts`
+- **Action**: Calibrated 64-bit dHash matching algorithm. Demonstrated empirically that while exact binary matches achieve 0-bit Hamming distance, rotations $\ge 45^\circ$, cropping $> 30\%$, and embedded graphics degrade to 20-30 bit distance, failing the 95% precision gate for autonomous blocking. Disabled autonomous blocking for near-variant logos, flagged results with `isExperimental: true`, enforced neutral non-accusatory language (*"Asset not found in approved registry"*), and routed all near-matches and unregistered logos to `NEEDS_HUMAN` review.
+- **Status**: **COMPLETED** (Verified by `visual-intelligence-audit.test.ts` Tests 4, 5).
+
+### ACT-VIS-03: OCR Coordinate Bounding Boxes & Low-Confidence Proofread Gate
+- **Target Files**: `src/lib/file-extraction.ts`, `src/app/api/reviews/route.ts`
+- **Action**: Standardized OCR output on `[ymin, xmin, ymax, xmax]` normalized coordinates (0-1000 scale). Added strict low-confidence OCR review gate in `POST /api/reviews`: if OCR quality is `NEEDS_PROOFREAD` or `UNREADABLE`, review submission is blocked with HTTP 409 Conflict until the user manually edits and acknowledges the text via `reviewedTextHash`. Added prompt injection rejection to prevent printed text instructions from altering visual audit decisions.
+- **Status**: **COMPLETED** (Verified by `visual-intelligence-audit.test.ts` Tests 6, 7).
+
+### ACT-VIS-04: CIE76 Delta-E Lifestyle Photo Exemption & Ambiguous Perimeter Check
+- **Target File**: `src/lib/visual-analysis.ts`
+- **Action**: Enhanced palette compliance in `createPaletteFinding`: exempted lifestyle photography (`assetType: "PHOTOGRAPH"` or `isPhotography`) from blocking palette violations, emitting non-blocking informational advisories (`evidence_status: "SUPPORTED"`, `severity: "LOW"`). In `sampleBoundingBoxContrast`, added border perimeter distribution analysis: when border pixel counts between 2-means clusters differ by $< 15\%$, the sample is flagged `isAmbiguous: true` with reduced `perimeterConfidence`, escalating to `NEEDS_HUMAN` with clear `[ESTIMATE]` disclosure.
+- **Status**: **COMPLETED** (Verified by `visual-intelligence-audit.test.ts` Tests 8, 9).
+
+### ACT-VIS-05: Real DOCX & Tagged PDF Structural Accessibility Inspections
+- **Target Files**: `src/lib/visual-analysis.ts`, `src/lib/file-extraction.ts`
+- **Action**: Replaced filename heuristic inspection with genuine OpenXML DOM extraction in DOCX: inspects `word/document.xml` for missing alt text on drawings, flags generic single-word alt text (`"image"`, `"photo"`), exempts `<w14:decorative/>` shapes, detects skipped heading levels (e.g. H1 to H3), flags unheaded tables lacking `<w:tblHeader>`, and warns on ambiguous hyperlink text (*"click here"*). For PDFs, detects untagged documents lacking `/StructTreeRoot` and emits an honest `NEEDS_HUMAN` disclosure; inspects tagged PDFs for figure tags missing `/Alt` attributes without making false WCAG or PDF/UA certification claims.
+- **Status**: **COMPLETED** (Verified by `visual-intelligence-audit.test.ts` Tests 10, 11).
+
+### ACT-VIS-06: 12-Test Forensic Audit Suite, 38 Fixtures & Acceptance Report
+- **Target Files**: `src/lib/server/visual-intelligence-audit.test.ts`, `evaluation/visual-fixtures/fixtures.json`, `docs/VISUAL_INTELLIGENCE_ACCEPTANCE_REPORT.md`
+- **Action**: Created 38 ground-truth labelled fixtures covering all 4 visual and accessibility subsystems. Implemented comprehensive 12-test forensic audit suite verifying all Prompt 5 requirements (12/12 passing). Authored exhaustive 10-section acceptance report documenting algorithms, metrics, confusion matrices, failure modes, and production boundaries.
+- **Status**: **COMPLETED** (12/12 tests passing, 100% green).

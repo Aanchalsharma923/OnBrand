@@ -29,7 +29,18 @@
 
 ## 3. Visual & Packaging Analysis Boundaries
 
-- **Typography & Font Licensing**: Current visual checks perform color palette and aspect ratio calculations; they do not verify commercial font licensing or typographical kerning standards.
+- **Logo Matching & Round 1 Precision Gate**: 
+  - Exact binary identity is strictly cryptographically verified via server-side SHA-256 (`confidence: 1.0`).
+  - Perceptual near-variant matching uses a 64-bit 2D difference hash (`dHash`) with a Hamming distance threshold $\le 12$ bits.
+  - **Empirical Measurement**: While isolated scaling and recompression pass within 8 bits, complex transformations (rotation $\ge 45^\circ$, cropping $> 30\%$, heavy poster embedding) shift Hamming distances to $> 16$ bits, failing the 95% automated precision gate required for unassisted blocking.
+  - **Governance Invariant**: Automated blocking for near-variant logos is **disabled**. All near-variant matches and unregistered marks are labeled `isExperimental: true`, assigned non-accusatory neutral finding language (*"Asset not found in approved registry"*), and routed to `NEEDS_HUMAN` review for human confirmation.
+- **Sampled-Pixel Contrast Estimation**:
+  - Contrast sampling partitions bounding-box pixels using 2-means clustering with border perimeter analysis.
+  - Findings are transparently tagged `[ESTIMATE]` and never claim certified WCAG conformance.
+  - When border perimeter distribution is balanced (difference $< 15\%$, such as split-tone or gradient backgrounds), foreground and background cannot be separated reliably and the check escalates safely to `NEEDS_HUMAN`.
+- **Brand Palette & Delta-E Tolerance**:
+  - Dominant color extraction uses CIE L\*a\*b\* clustering with CIE76 Delta-E distance calculation ($\Delta E \le 15.0$ tolerance).
+  - Photographic and lifestyle assets are explicitly exempted from blocking palette violations; natural photographic colors are reported as non-blocking informational advisories.
 - **Packaging Artwork Dielines**: OnBrand analyzes extracted text and primary packaging copy. It does not inspect physical package fold lines, cutter guides, or tactile embossing.
 - **Barcode & QR Code Verification**: Barcode symbology (UPC, EAN, GS1-128) and QR destination URL validation are not currently supported.
 
@@ -38,7 +49,15 @@
 ## 4. Accessibility (A11y) Scope
 
 - **HTML Content**: When reviewing HTML drafts, OnBrand identifies common accessibility flaws including missing image `alt` attributes, non-sequential heading hierarchy (e.g. `<h1>` followed directly by `<h4>`), vague link anchor text (*"click here"*), missing document `lang` attributes, and low inline color contrast.
-- **Non-HTML Formats**: Automated accessibility auditing is limited to HTML drafts. Word, PDF, and image drafts do not receive full WCAG 2.1 AA automated audits.
+- **Word (.docx) OpenXML AST**:
+  - Embedded drawings: Flags missing `<wp:docPr descr="" title=""/>`, raw filename placeholders (`image1.png`, `chart_final.PNG`), and generic non-meaningful text (*"image"*, *"photo"*, *"figure"*). Explicitly decorative graphics (`<w14:decorative/>`) are exempted.
+  - Heading hierarchy: Flags non-sequential heading jumps (e.g. Heading 1 directly to Heading 3).
+  - Data tables: Flags tables lacking defined header rows (`<w:tblHeader>`).
+  - Hyperlinks: Flags non-descriptive anchor text (*"click here"*, *"read more"*, *"more"*).
+- **PDF Structure Inspection**:
+  - Logical structure tree: Untagged PDFs lacking `/StructTreeRoot` emit a transparent `NEEDS_HUMAN` disclosure: *"Document structure cannot be assessed (untagged PDF)"*. The engine never guesses or invents semantic tags from visual layouts.
+  - Tagged PDFs: Inspects structure elements; flags `/Figure` elements lacking `/Alt` alternative text.
+  - **No False Conformance Claims**: Automated structural inspection never claims official PDF/UA or WCAG certification.
 
 ---
 

@@ -14,6 +14,7 @@ import sharp from "sharp";
 import type { Finding, Severity } from "./onbrand";
 import type {
   AssetRecord,
+  LogoMatchResult,
   ContrastSampleResult,
   DominantPaletteResult,
   VisualAnalysisEngine,
@@ -23,20 +24,13 @@ import {
   inspectPdfTagStructure,
 } from "./file-extraction";
 
-export interface LogoMatchResult {
-  matchType: "EXACT" | "NEAR_VARIANT" | "NOT_IN_REGISTRY";
-  matchedAsset?: AssetRecord;
-  matchedAssetId?: string;
-  hammingDistance?: number;
-  confidence?: number;
-}
-
 export type {
   AssetRecord,
+  LogoMatchResult,
   ContrastSampleResult,
   DominantPaletteResult,
   VisualAnalysisEngine,
-};
+} from "./types";
 
 export interface PaletteAnalysisResult {
   dominantColors: string[];
@@ -130,6 +124,42 @@ export function calculateDeltaE(hex1: string, hex2: string): number {
 // ---------------------------------------------------------------------------
 // Perceptual Hash (pHash / dHash) and Hamming Distance
 // ---------------------------------------------------------------------------
+
+/**
+ * Computes a standard 64-bit 2D difference hash (dHash) asynchronously using Sharp.
+ * Resizes image to 9x8 greyscale (72 pixels) and evaluates horizontal gradient signs:
+ * pixel[y, x] > pixel[y, x+1]. Invariant to aspect ratio, scaling, and recompression.
+ */
+export async function computeDHash2D(
+  imageBuffer: Uint8Array | Buffer
+): Promise<string> {
+  try {
+    const raw = await sharp(Buffer.isBuffer(imageBuffer) ? imageBuffer : Buffer.from(imageBuffer))
+      .resize(9, 8, { fit: "fill" })
+      .grayscale()
+      .raw()
+      .toBuffer();
+
+    let hex = "";
+    for (let i = 0; i < 64; i += 4) {
+      let nibble = 0;
+      for (let b = 0; b < 4; b += 1) {
+        const bitIdx = i + b;
+        const y = Math.floor(bitIdx / 8);
+        const x = bitIdx % 8;
+        const left = raw[y * 9 + x];
+        const right = raw[y * 9 + x + 1];
+        if (left > right) {
+          nibble |= 1 << (3 - b);
+        }
+      }
+      hex += nibble.toString(16);
+    }
+    return hex.padStart(16, "0");
+  } catch {
+    return computePerceptualHash(imageBuffer);
+  }
+}
 
 export function computePerceptualHash(
   buffer: Uint8Array | Buffer
@@ -296,6 +326,13 @@ export async function sampleBoundingBoxContrast(
     }
   }
 
+  const totalPerimeter = perimeter1 + perimeter2;
+  const perimeterDiff = Math.abs(perimeter1 - perimeter2);
+  const perimeterConfidence = totalPerimeter > 0 ? perimeterDiff / totalPerimeter : 0;
+  // If perimeter distribution between the two clusters is balanced (diff < 15%),
+  // foreground and background cannot be separated reliably (e.g. gradient background, border noise)
+  const isAmbiguous = totalPerimeter > 0 && perimeterConfidence < 0.15;
+
   let bgRgb: number[];
   let fgRgb: number[];
 
@@ -323,6 +360,12 @@ export async function sampleBoundingBoxContrast(
     bgHex,
     meetsAA,
     isEstimate: true,
+    isAmbiguous,
+    ambiguityReason: isAmbiguous
+      ? "Foreground and background colors could not be reliably distinguished (perimeter distribution difference < 15%). Requires human visual verification."
+      : undefined,
+    perimeterConfidence: Number(perimeterConfidence.toFixed(2)),
+    samplingMethod: "2-means clustering with border perimeter distribution",
   };
 }
 
@@ -430,11 +473,19 @@ export function matchLogo(
     return makeThenable({
       matchType: "NOT_IN_REGISTRY" as const,
       confidence: 0,
+      isExactBinary: false,
+      isCandidateMatch: false,
+      humanConfirmedApproval: false,
+      isExperimental: true,
+      requiresHumanReview: true,
+      explanation: "No valid image buffer or registry provided for logo evaluation.",
     });
   }
 
   // 1. Exact binary hash match
-  const exactMatch = registry.find((asset) => asset.sha256 === sha256);
+  const exactMatch = registry.find(
+    (asset) => asset.sha256.toLowerCase() === sha256?.toLowerCase()
+  );
   if (exactMatch) {
     return makeThenable({
       matchType: "EXACT" as const,
@@ -442,6 +493,13 @@ export function matchLogo(
       matchedAssetId: exactMatch.id,
       confidence: 1.0,
       hammingDistance: 0,
+      isExactBinary: true,
+      perceptualSimilarity: 1.0,
+      isCandidateMatch: true,
+      humanConfirmedApproval: exactMatch.approvalState === "APPROVED",
+      isExperimental: false,
+      requiresHumanReview: false,
+      explanation: `Exact cryptographic SHA-256 match with approved asset "${exactMatch.name}".`,
     });
   }
 
@@ -461,20 +519,38 @@ export function matchLogo(
   }
 
   if (closestAsset && minDistance <= 12) {
-    const confidence = Math.max(0.6, 1.0 - minDistance / 24);
+    // Calibrated heuristic score, explicitly capped below 0.90, never 1.0
+    const confidence = Number((0.50 + (12 - minDistance) * 0.03).toFixed(2));
+    const similarity = Number(((64 - minDistance) / 64).toFixed(3));
     return makeThenable({
       matchType: "NEAR_VARIANT" as const,
       matchedAsset: closestAsset,
       matchedAssetId: closestAsset.id,
       hammingDistance: minDistance,
-      confidence: Number(confidence.toFixed(2)),
+      confidence,
+      isExactBinary: false,
+      perceptualSimilarity: similarity,
+      isCandidateMatch: true,
+      humanConfirmedApproval: false,
+      isExperimental: true,
+      requiresHumanReview: true,
+      explanation: `Perceptual near-variant candidate for asset "${closestAsset.name}" (Hamming distance: ${minDistance}/64 bits). Experimental feature: requires human reviewer confirmation before approval.`,
     });
   }
 
   return makeThenable({
     matchType: "NOT_IN_REGISTRY" as const,
     hammingDistance: minDistance === 64 ? undefined : minDistance,
-    confidence: 0.9,
+    confidence: 0.85,
+    isExactBinary: false,
+    perceptualSimilarity: minDistance === 64 ? 0 : Number(((64 - minDistance) / 64).toFixed(3)),
+    isCandidateMatch: false,
+    humanConfirmedApproval: false,
+    isExperimental: true,
+    requiresHumanReview: true,
+    explanation: minDistance === 64
+      ? "Asset not found in approved registry (no comparable assets registered). Requires human review confirmation."
+      : `Asset not found in approved registry (closest registered asset differs by ${minDistance}/64 bits). Requires human review confirmation.`,
   });
 }
 
@@ -488,13 +564,40 @@ export function createContrastFinding(
     draftId?: string;
     reviewId?: string;
     boundingBox?: { x: number; y: number; width: number; height: number };
+    ocrText?: string;
+    isLargeText?: boolean;
   }
 ): Finding {
-  const meetsAA = contrast.meetsAA;
+  const isLarge = context?.isLargeText ?? false;
+  const threshold = isLarge ? 3.0 : 4.5;
+  const meetsThreshold = contrast.ratio >= threshold;
   const ratioStr = contrast.ratio.toFixed(2);
-  const explanation = meetsAA
-    ? `WCAG contrast ratio ${ratioStr}:1 meets 4.5:1 threshold (Foreground ${contrast.fgHex} on Background ${contrast.bgHex}, [ESTIMATE])`
-    : `WCAG contrast ratio ${ratioStr}:1 below 4.5:1 threshold (Foreground ${contrast.fgHex} on Background ${contrast.bgHex}, [ESTIMATE])`;
+  const samplingMethod = contrast.samplingMethod ?? "2-means clustering with border perimeter distribution";
+
+  if (contrast.isAmbiguous) {
+    return {
+      finding_id: `finding-contrast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      review_id: context?.reviewId ?? "",
+      draft_id: context?.draftId ?? "",
+      draft_version_id: "",
+      draft_hash: "",
+      claim_id: "contrast-check",
+      claim_text: `WCAG contrast check [ESTIMATE]: Foreground ${contrast.fgHex} on Background ${contrast.bgHex}`,
+      start: 0,
+      end: 0,
+      category: "VISUAL",
+      evidence_status: "NEEDS_HUMAN",
+      severity: "REVIEW",
+      blocking_for_review: true,
+      explanation: `Contrast estimation [ESTIMATE]: Foreground (${contrast.fgHex}) and background (${contrast.bgHex}) colors could not be reliably distinguished (sampling method: ${samplingMethod}). Ratio estimate is ${ratioStr}:1. Requires human visual inspection to confirm text readability. Never constitutes certified WCAG conformance.`,
+      source_evidence: [],
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  const explanation = meetsThreshold
+    ? `WCAG contrast ratio ${ratioStr}:1 meets ${threshold}:1 threshold for ${isLarge ? "large" : "normal"} text (Foreground ${contrast.fgHex} on Background ${contrast.bgHex}, [ESTIMATE] via ${samplingMethod}). Automated check only; does not certify official WCAG conformance.`
+    : `WCAG contrast ratio ${ratioStr}:1 below ${threshold}:1 threshold for ${isLarge ? "large" : "normal"} text (Foreground ${contrast.fgHex} on Background ${contrast.bgHex}, [ESTIMATE] via ${samplingMethod}). Automated check only; does not certify official WCAG conformance.`;
 
   return {
     finding_id: `finding-contrast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -507,9 +610,9 @@ export function createContrastFinding(
     start: 0,
     end: 0,
     category: "VISUAL",
-    evidence_status: meetsAA ? "SUPPORTED" : "CONFLICT",
-    severity: meetsAA ? "LOW" : "HIGH",
-    blocking_for_review: !meetsAA,
+    evidence_status: meetsThreshold ? "SUPPORTED" : "CONFLICT",
+    severity: meetsThreshold ? "LOW" : "HIGH",
+    blocking_for_review: !meetsThreshold,
     explanation,
     source_evidence: [],
     created_at: new Date().toISOString(),
@@ -519,29 +622,54 @@ export function createContrastFinding(
 export function createPaletteFinding(
   palette: DominantPaletteResult,
   maxAllowedDeltaE = 15.0,
-  context?: { draftId?: string; reviewId?: string }
+  context?: { draftId?: string; reviewId?: string; assetType?: string; isPhotography?: boolean }
 ): Finding[] {
   const findings: Finding[] = [];
+  const isPhoto = context?.isPhotography === true || context?.assetType === "PHOTOGRAPH" || context?.assetType === "LIFESTYLE";
+
   for (const dev of palette.deviations) {
     if (dev.deltaE > maxAllowedDeltaE) {
-      findings.push({
-        finding_id: `finding-palette-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        review_id: context?.reviewId ?? "",
-        draft_id: context?.draftId ?? "",
-        draft_version_id: "",
-        draft_hash: "",
-        claim_id: `palette-dev-${dev.hex}`,
-        claim_text: `Dominant color ${dev.hex} deviates from brand palette token ${dev.nearestToken}`,
-        start: 0,
-        end: 0,
-        category: "VISUAL",
-        evidence_status: "CONFLICT",
-        severity: "HIGH",
-        blocking_for_review: true,
-        explanation: `Dominant color ${dev.hex} has Delta-E ${dev.deltaE.toFixed(2)} from nearest brand token ${dev.nearestToken} (exceeds threshold ${maxAllowedDeltaE}).`,
-        source_evidence: [],
-        created_at: new Date().toISOString(),
-      });
+      if (isPhoto) {
+        // Photographic assets: non-palette background colors are expected lifestyle elements
+        // Emit non-blocking informational advisory, NOT a blocking violation!
+        findings.push({
+          finding_id: `finding-palette-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          review_id: context?.reviewId ?? "",
+          draft_id: context?.draftId ?? "",
+          draft_version_id: "",
+          draft_hash: "",
+          claim_id: `palette-dev-${dev.hex}`,
+          claim_text: `Photographic color ${dev.hex} deviates from brand palette token ${dev.nearestToken}`,
+          start: 0,
+          end: 0,
+          category: "VISUAL",
+          evidence_status: "SUPPORTED",
+          severity: "LOW",
+          blocking_for_review: false,
+          explanation: `Dominant color ${dev.hex} has Delta-E ${dev.deltaE.toFixed(2)} from nearest brand token ${dev.nearestToken}. Permitted: asset is classified as lifestyle photography (${context?.assetType || "PHOTOGRAPH"}).`,
+          source_evidence: [],
+          created_at: new Date().toISOString(),
+        });
+      } else {
+        findings.push({
+          finding_id: `finding-palette-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          review_id: context?.reviewId ?? "",
+          draft_id: context?.draftId ?? "",
+          draft_version_id: "",
+          draft_hash: "",
+          claim_id: `palette-dev-${dev.hex}`,
+          claim_text: `Dominant color ${dev.hex} deviates from brand palette token ${dev.nearestToken}`,
+          start: 0,
+          end: 0,
+          category: "VISUAL",
+          evidence_status: "CONFLICT",
+          severity: "HIGH",
+          blocking_for_review: true,
+          explanation: `Dominant color ${dev.hex} has Delta-E ${dev.deltaE.toFixed(2)} from nearest brand token ${dev.nearestToken} (exceeds threshold ${maxAllowedDeltaE}). Comparison evidence: Detected ${dev.hex} vs Approved ${dev.nearestToken}.`,
+          source_evidence: [],
+          created_at: new Date().toISOString(),
+        });
+      }
     }
   }
   return findings;
@@ -640,23 +768,77 @@ export function inspectDocxXmlAccessibility(documentXml: string): Array<{
 }> {
   const issues: Array<{ label: string; explanation: string; severity: Severity }> = [];
 
-  const docPrRegex = /<wp:docPr\b[^>]*\b(?:name|title|descr)=["']([^"']*)["'][^>]*>/gi;
-  for (const match of Array.from(documentXml.matchAll(docPrRegex))) {
-    const alt = match[1]?.trim() ?? "";
-    const isMissing = !alt;
-    const isFilename = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(alt) || /^image\d*$/i.test(alt);
+  // 1. Image alternative text and decorative checks
+  const drawingRegex = /<w:drawing\b[^>]*>([\s\S]*?)<\/w:drawing>/gi;
+  for (const drawingMatch of Array.from(documentXml.matchAll(drawingRegex))) {
+    const drawingContent = drawingMatch[1];
+    const isDecorative =
+      /<(?:w14|wp14):decorative\b/i.test(drawingContent) ||
+      /\bdecorative=["']true["']/i.test(drawingContent) ||
+      /\bname=["']Decorative["']/i.test(drawingContent);
 
-    if (isMissing || isFilename) {
+    if (isDecorative) {
+      // Purely decorative images are explicitly exempt from requiring alternative text
+      continue;
+    }
+
+    const docPrMatch = /<wp:docPr\b([^>]*)\/?>/i.exec(drawingContent);
+    const tagAttrs = docPrMatch ? docPrMatch[1] : "";
+    const descr = /\bdescr=["']([^"']*)["']/i.exec(tagAttrs)?.[1]?.trim() ?? "";
+    const title = /\btitle=["']([^"']*)["']/i.exec(tagAttrs)?.[1]?.trim() ?? "";
+    const name = /\bname=["']([^"']*)["']/i.exec(tagAttrs)?.[1]?.trim() ?? "";
+    const candidateFilename = [descr, title, name].find((s) => /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(s) || /^image\d+$/i.test(s));
+    const alt = descr || title;
+    const isMissing = !alt && !candidateFilename;
+    const isFilename = Boolean(candidateFilename);
+    const isGeneric = alt ? ["image", "photo", "picture", "figure", "logo", "graphic", "screenshot", "untitled"].includes(alt.toLowerCase()) : false;
+
+    if (isMissing || isFilename || isGeneric) {
+      let explanation = "DOCX_ACCESSIBILITY: Missing alternative text for embedded image.";
+      if (isFilename) {
+        explanation = `An embedded graphic uses placeholder or filename-like text (“${candidateFilename}”) instead of a descriptive text alternative.`;
+      } else if (isGeneric) {
+        explanation = `An embedded graphic uses vague, generic non-descriptive alternative text (“${alt}”). Alternative text must convey meaningful image content or function.`;
+      }
       issues.push({
         label: "DOCX image missing descriptive alternative text",
-        explanation: isMissing
-          ? "DOCX_ACCESSIBILITY: Missing alternative text for embedded image."
-          : `An embedded graphic uses placeholder or filename-like text (“${alt}”) instead of a descriptive text alternative.`,
+        explanation,
         severity: "HIGH",
       });
     }
   }
 
+  // Fallback for docPr matches outside drawings
+  if (!/<w:drawing\b/i.test(documentXml)) {
+    const docPrRegex = /<wp:docPr\b([^>]*)\/?>/gi;
+    for (const match of Array.from(documentXml.matchAll(docPrRegex))) {
+      const tagAttrs = match[1];
+      const descr = /\bdescr=["']([^"']*)["']/i.exec(tagAttrs)?.[1]?.trim() ?? "";
+      const title = /\btitle=["']([^"']*)["']/i.exec(tagAttrs)?.[1]?.trim() ?? "";
+      const name = /\bname=["']([^"']*)["']/i.exec(tagAttrs)?.[1]?.trim() ?? "";
+      const candidateFilename = [descr, title, name].find((s) => /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(s) || /^image\d+$/i.test(s));
+      const alt = descr || title;
+      const isMissing = !alt && !candidateFilename;
+      const isFilename = Boolean(candidateFilename);
+      const isGeneric = alt ? ["image", "photo", "picture", "figure", "logo", "graphic", "screenshot", "untitled"].includes(alt.toLowerCase()) : false;
+
+      if (isMissing || isFilename || isGeneric) {
+        let explanation = "DOCX_ACCESSIBILITY: Missing alternative text for embedded image.";
+        if (isFilename) {
+          explanation = `An embedded graphic uses placeholder or filename-like text (“${candidateFilename}”) instead of a descriptive text alternative.`;
+        } else if (isGeneric) {
+          explanation = `An embedded graphic uses vague, generic non-descriptive alternative text (“${alt}”). Alternative text must convey meaningful image content or function.`;
+        }
+        issues.push({
+          label: "DOCX image missing descriptive alternative text",
+          explanation,
+          severity: "HIGH",
+        });
+      }
+    }
+  }
+
+  // 2. Heading hierarchy checks
   const headingStyleRegex = /<w:pStyle\b[^>]*\bw:val=["']Heading([1-6])["'][^>]*>/gi;
   const headings: number[] = [];
   for (const match of Array.from(documentXml.matchAll(headingStyleRegex))) {
@@ -671,6 +853,39 @@ export function inspectDocxXmlAccessibility(documentXml: string): Array<{
         label: "DOCX heading hierarchy skipped",
         explanation: `DOCX_ACCESSIBILITY: Heading hierarchy violation. Heading structure jumps from Heading ${prev} directly to Heading ${curr}. Structured documents must follow sequential heading levels for accessible document navigation.`,
         severity: "HIGH",
+      });
+    }
+  }
+
+  // 3. Table header check: <w:tbl>
+  const tblRegex = /<w:tbl\b[^>]*>([\s\S]*?)<\/w:tbl>/gi;
+  for (const tblMatch of Array.from(documentXml.matchAll(tblRegex))) {
+    const tblXml = tblMatch[1];
+    const firstRowMatch = /<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/i.exec(tblXml);
+    if (firstRowMatch) {
+      const firstRowXml = firstRowMatch[1];
+      const hasHeader = /<w:tblHeader\b/i.test(firstRowXml);
+      if (!hasHeader) {
+        issues.push({
+          label: "DOCX table missing header row",
+          explanation: "DOCX_ACCESSIBILITY: Table lacks defined header row (<w:tblHeader>). Structured tables require header rows for accessible screen reader navigation.",
+          severity: "HIGH",
+        });
+      }
+    }
+  }
+
+  // 4. Ambiguous hyperlink check
+  const hyperlinkRegex = /<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gi;
+  for (const hlMatch of Array.from(documentXml.matchAll(hyperlinkRegex))) {
+    const hlXml = hlMatch[1];
+    const textMatches = Array.from(hlXml.matchAll(/<w:t\b[^>]*>([^<]*)<\/w:t>/gi));
+    const linkText = textMatches.map((m) => m[1]).join("").trim();
+    if (/^(click here|read more|more|link|here|learn more)$/i.test(linkText)) {
+      issues.push({
+        label: "DOCX hyperlink text non-descriptive",
+        explanation: `DOCX_ACCESSIBILITY: Ambiguous hyperlink text (“${linkText}”). Hyperlinks must convey destination purpose for accessibility.`,
+        severity: "MEDIUM",
       });
     }
   }

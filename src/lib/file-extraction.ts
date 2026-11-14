@@ -265,8 +265,35 @@ export async function inspectPdfTagStructure(
     ];
   }
 
-  // Tagged PDF: emits 0 false claims of compliance
-  return [];
+  const findings: Finding[] = [];
+
+  // Inspect tagged PDF structure elements
+  const hasFigures = /\/Figure\b/.test(text);
+  const hasFigureAlt = /\/Alt\b/.test(text);
+
+  if (hasFigures && !hasFigureAlt) {
+    findings.push({
+      finding_id: `finding-pdf-figure-alt-${Date.now()}`,
+      review_id: "",
+      draft_id: "",
+      draft_version_id: "",
+      draft_hash: "",
+      claim_id: "pdf-figure-alt-missing",
+      claim_text: "Tagged PDF contains Figure element(s) missing alternative text (/Alt)",
+      start: 0,
+      end: 0,
+      category: "ACCESSIBILITY",
+      evidence_status: "CONFLICT",
+      severity: "HIGH",
+      blocking_for_review: true,
+      explanation: "PDF accessibility check: Tagged PDF structure includes Figure element(s) lacking /Alt descriptions. In ISO 32000-1 and PDF/UA standards, figures require descriptive alternative text for assistive technologies. Automated check only; does not certify WCAG or PDF/UA conformance.",
+      source_evidence: [],
+      created_at: now,
+    });
+  }
+
+  // Tagged PDF with valid elements: emits 0 false claims of compliance
+  return findings;
 }
 
 async function extractDocx(file: File) {
