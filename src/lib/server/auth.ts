@@ -6,6 +6,7 @@
 
 import type { ServerRole, TenantContext } from "@/lib/types";
 import { databaseConfigured } from "./db";
+import { verifyDemoSessionToken } from "./demo-session";
 import {
   isSupabaseAuthConfigured,
   getSupabaseAuthClient,
@@ -51,6 +52,23 @@ export async function resolveAuthenticatedUser(request: Request): Promise<{ id: 
     throw new UnauthorizedError("Authentication required. Please sign in.");
   }
 
+  // Phase 1 Part C: Server-verified demo session token
+  if (token.startsWith("demo.")) {
+    const verifiedDemo = verifyDemoSessionToken(token);
+    if (verifiedDemo) {
+      return {
+        id: verifiedDemo.userId,
+        email: `${verifiedDemo.userId}@onbrand.demo`,
+        metadata: {
+          full_name: verifiedDemo.displayName,
+          role: verifiedDemo.role,
+          isDemo: true,
+          organizationId: verifiedDemo.organizationId,
+        },
+      };
+    }
+  }
+
   if (!isSupabaseAuthConfigured()) {
     throw new SupabaseConfigurationError(
       "Supabase Authentication is not configured on the server. Unable to verify user session credentials."
@@ -79,11 +97,47 @@ export async function resolveAuthenticatedUser(request: Request): Promise<{ id: 
 export async function resolveTenantContext(request: Request): Promise<TenantContext> {
   const token = extractAuthToken(request);
 
-  // 1. Verified Supabase Session Resolution
-  // When an authorization token or session cookie is provided, verify it strictly.
-  // Missing server configuration produces an explicit SupabaseConfigurationError (HTTP 503),
-  // NEVER a silent degrade to demo mode.
+  // 1. Verified Session Resolution
   if (token) {
+    // Phase 1 Part C: Server-verified Demo Session Resolution with strict demo isolation
+    if (token.startsWith("demo.")) {
+      const verifiedDemo = verifyDemoSessionToken(token);
+      if (!verifiedDemo) {
+        throw new UnauthorizedError("Invalid or expired demo session token.");
+      }
+
+      // Check requested tenant: Demo accounts are strictly quarantined to their demo organization!
+      const requestedOrgId = request.headers.get("x-onbrand-tenant") || request.headers.get("x-demo-org");
+      if (
+        requestedOrgId &&
+        requestedOrgId !== "alpha" &&
+        requestedOrgId !== "org_alpha" &&
+        requestedOrgId !== "beta" &&
+        requestedOrgId !== "org_beta" &&
+        requestedOrgId !== DEMO_ORGS.ALPHA.id &&
+        requestedOrgId !== DEMO_ORGS.BETA.id &&
+        requestedOrgId !== verifiedDemo.organizationId
+      ) {
+        throw new ForbiddenError(
+          "Demo accounts are isolated to demonstration workspaces and cannot access customer organizations."
+        );
+      }
+
+      return {
+        organizationId: verifiedDemo.organizationId,
+        userId: verifiedDemo.userId,
+        actor: {
+          userId: verifiedDemo.userId,
+          displayName: verifiedDemo.displayName,
+        },
+        role: verifiedDemo.role,
+      };
+    }
+
+    // Verified Supabase Session Resolution
+    // When an authorization token or session cookie is provided, verify it strictly.
+    // Missing server configuration produces an explicit SupabaseConfigurationError (HTTP 503),
+    // NEVER a silent degrade to demo mode.
     if (!isSupabaseAuthConfigured()) {
       throw new SupabaseConfigurationError(
         "Supabase Authentication is not configured on the server. Unable to verify user session credentials."
@@ -178,11 +232,15 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
     ? tenantHeader
     : DEMO_ORGS.ALPHA.id;
 
+  const isAlphaOrg = targetOrgId === DEMO_ORGS.ALPHA.id;
+  const userPrefix = isAlphaOrg ? "alpha" : targetOrgId.slice(0, 8);
+  const derivedUserId = `user-${userPrefix}-${role}`;
+
   return {
     organizationId: targetOrgId,
-    userId: `user-${targetOrgId.slice(0, 8)}-${role}`,
+    userId: derivedUserId,
     actor: {
-      userId: `user-${targetOrgId.slice(0, 8)}-${role}`,
+      userId: derivedUserId,
       displayName:
         role === "creator"
           ? "Content Creator"

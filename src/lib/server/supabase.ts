@@ -183,6 +183,7 @@ export function extractAuthToken(request: Request): string | null {
         const trimmedName = name.trim();
         if (
           trimmedName === "sb-access-token" ||
+          trimmedName === "onbrand-demo-token" ||
           (trimmedName.startsWith("sb-") && trimmedName.endsWith("-auth-token"))
         ) {
           const value = decodeURIComponent(val.join("=").trim());

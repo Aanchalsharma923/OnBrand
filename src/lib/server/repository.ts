@@ -1,4 +1,4 @@
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { seedSources, type Draft, type Fact, type Finding, type Review, type Source } from "@/lib/onbrand";
 import * as schema from "@/lib/schema";
 import { databaseConfigured, withOrganizationScope } from "./db";
@@ -484,29 +484,80 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
   }
 
   async searchFacts(ctx: TenantContext, query: string, channel: string, date: string): Promise<Fact[]> {
-    if (!databaseConfigured()) {
-      return this.inMemoryFallback.searchFacts(ctx, query, channel, date);
-    }
+    return this.executeWithFallback<Fact[]>(
+      ctx,
+      () =>
+        withOrganizationScope(ctx, async (tx) => {
+          // PostgreSQL full-text search with tsvector and GIN index
+          const trimmedQuery = query.trim();
+          const effectiveDate = date || new Date().toISOString().slice(0, 10);
 
-    const sources = await this.getSources(ctx);
-    const approved = sources.filter((s) => {
-      if (s.approvalState !== "APPROVED") return false;
-      if (s.revokedAt) return false;
-      if (date && s.effectiveFrom > date) return false;
-      if (date && s.effectiveTo && s.effectiveTo < date) return false;
-      if (channel && s.channels?.length && !s.channels.includes(channel)) return false;
-      return true;
-    });
+          let searchSql;
+          if (trimmedQuery) {
+            searchSql = sql`
+              SELECT 
+                f.id,
+                f.source_id AS "sourceId",
+                f.subject,
+                f.attribute,
+                f.value,
+                f.unit,
+                f.statement,
+                ts_rank(to_tsvector('simple', f.statement), plainto_tsquery('simple', ${trimmedQuery})) AS rank,
+                s.authority
+              FROM facts f
+              JOIN sources s ON f.source_id = s.id AND f.organization_id = s.organization_id
+              WHERE f.organization_id = ${ctx.organizationId}::uuid
+                AND s.approval_state = 'APPROVED'
+                AND s.revoked_at IS NULL
+                AND s.effective_from <= ${effectiveDate}::date
+                AND (s.effective_to IS NULL OR s.effective_to >= ${effectiveDate}::date)
+                ${channel ? sql`AND (s.channels @> jsonb_build_array(${channel}) OR jsonb_array_length(s.channels) = 0)` : sql``}
+                AND (
+                  to_tsvector('simple', f.statement) @@ plainto_tsquery('simple', ${trimmedQuery})
+                  OR f.statement ILIKE ${'%' + trimmedQuery + '%'}
+                  OR f.subject ILIKE ${'%' + trimmedQuery + '%'}
+                  OR f.attribute ILIKE ${'%' + trimmedQuery + '%'}
+                  OR f.value ILIKE ${'%' + trimmedQuery + '%'}
+                )
+              ORDER BY rank DESC, s.authority DESC, f.created_at ASC
+            `;
+          } else {
+            searchSql = sql`
+              SELECT 
+                f.id,
+                f.source_id AS "sourceId",
+                f.subject,
+                f.attribute,
+                f.value,
+                f.unit,
+                f.statement,
+                s.authority
+              FROM facts f
+              JOIN sources s ON f.source_id = s.id AND f.organization_id = s.organization_id
+              WHERE f.organization_id = ${ctx.organizationId}::uuid
+                AND s.approval_state = 'APPROVED'
+                AND s.revoked_at IS NULL
+                AND s.effective_from <= ${effectiveDate}::date
+                AND (s.effective_to IS NULL OR s.effective_to >= ${effectiveDate}::date)
+                ${channel ? sql`AND (s.channels @> jsonb_build_array(${channel}) OR jsonb_array_length(s.channels) = 0)` : sql``}
+              ORDER BY s.authority DESC, f.created_at ASC
+            `;
+          }
 
-    const allFacts = approved.flatMap((s) => s.facts ?? []);
-    if (!query.trim()) return allFacts;
-
-    const lowerQuery = query.toLowerCase();
-    return allFacts.filter((f) =>
-      f.statement.toLowerCase().includes(lowerQuery) ||
-      f.subject.toLowerCase().includes(lowerQuery) ||
-      f.attribute.toLowerCase().includes(lowerQuery) ||
-      f.value.toLowerCase().includes(lowerQuery),
+          const rows = await tx.execute(searchSql);
+          const facts: Fact[] = (rows as any[]).map((r): Fact => ({
+            id: r.id,
+            sourceId: r.sourceId,
+            subject: r.subject,
+            attribute: r.attribute,
+            value: r.value,
+            unit: r.unit ?? undefined,
+            statement: r.statement,
+          }));
+          return facts;
+        }),
+      () => this.inMemoryFallback.searchFacts(ctx, query, channel, date),
     );
   }
 

@@ -280,6 +280,37 @@ export default function Home() {
     return headers;
   }, [currentOrg, role, supabaseSession]);
 
+  const signInAsDemo = useCallback(async (demoRole: Role, demoOrg = "alpha") => {
+    setIsAuthLoading(true);
+    setAuthStatusMessage("");
+    try {
+      const res = await fetch("/api/auth/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: demoRole, org: demoOrg }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to authenticate demo user.");
+      }
+      setSupabaseSession({
+        user: data.user,
+        accessToken: data.token,
+      });
+      setRole(data.role as Role);
+      setCurrentOrg(data.organization.id);
+      setUserOrganizations([data.organization]);
+      setShowWelcome(false);
+      setShowAuthModal(false);
+      announce(`Signed in as ${data.user.displayName}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Authentication failed.";
+      setAuthStatusMessage(`Demo login failed: ${msg}`);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }, []);
+
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
   const [workspaceSyncError, setWorkspaceSyncError] = useState<string | null>(null);
 
@@ -1345,6 +1376,50 @@ export default function Home() {
             <p className="welcome-lead">
               OnBrand provides production-grade brand governance with multi-tenant data isolation, hosted semantic verification (C5), and automated visual &amp; accessibility checks. Select a workspace to explore:
             </p>
+
+            {/* Phase 1 Part C: Judge Access Within 30 Seconds */}
+            <div className="judge-access-card" style={{ marginBottom: "20px", padding: "16px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "16px" }}>⚡</span>
+                  <b style={{ color: "#38bdf8", fontSize: "13px", letterSpacing: "0.02em" }}>JUDGE / EVALUATOR QUICK ACCESS (30s Entry)</b>
+                </div>
+                <span style={{ fontSize: "10px", background: "#0284c7", color: "#fff", padding: "2px 8px", borderRadius: "4px", fontWeight: "700" }}>SERVER-VERIFIED ROLES</span>
+              </div>
+              <p style={{ fontSize: "12px", opacity: 0.85, margin: "0 0 12px 0", lineHeight: 1.5 }}>
+                One-click entry with genuine server-authenticated demo accounts and database-backed role permissions:
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
+                <button
+                  type="button"
+                  className="judge-role-btn"
+                  onClick={() => signInAsDemo("creator")}
+                  style={{ padding: "10px 14px", borderRadius: "8px", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: "4px" }}
+                >
+                  <span style={{ fontWeight: "700", fontSize: "13px", color: "#38bdf8" }}>Sign in as Demo Creator →</span>
+                  <span style={{ fontSize: "11px", opacity: 0.75 }}>Edit drafts &amp; submit reviews</span>
+                </button>
+                <button
+                  type="button"
+                  className="judge-role-btn"
+                  onClick={() => signInAsDemo("reviewer")}
+                  style={{ padding: "10px 14px", borderRadius: "8px", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: "4px" }}
+                >
+                  <span style={{ fontWeight: "700", fontSize: "13px", color: "#34d399" }}>Sign in as Demo Reviewer →</span>
+                  <span style={{ fontSize: "11px", opacity: 0.75 }}>Inspect findings &amp; approve</span>
+                </button>
+                <button
+                  type="button"
+                  className="judge-role-btn"
+                  onClick={() => signInAsDemo("maintainer")}
+                  style={{ padding: "10px 14px", borderRadius: "8px", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: "4px" }}
+                >
+                  <span style={{ fontWeight: "700", fontSize: "13px", color: "#fbbf24" }}>Sign in as Demo Maintainer →</span>
+                  <span style={{ fontSize: "11px", opacity: 0.75 }}>Import &amp; approve brand sources</span>
+                </button>
+              </div>
+            </div>
+
             <div className="welcome-options">
               <button
                 className="welcome-option"
@@ -2096,7 +2171,48 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <form
+              <div>
+                {/* One-Click Demo Login for Judges and Evaluators */}
+                <div style={{ marginBottom: "16px", padding: "12px", background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.25)", borderRadius: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#60a5fa" }}>⚡ 1-CLICK DEMO LOGIN (Judges &amp; Evaluators)</span>
+                    <span style={{ fontSize: "10px", background: "#1e3a8a", color: "#93c5fd", padding: "1px 6px", borderRadius: "3px", fontWeight: "600" }}>30s ENTRY</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+                    <button
+                      type="button"
+                      disabled={isAuthLoading}
+                      onClick={() => signInAsDemo("creator")}
+                      style={{ padding: "8px 4px", borderRadius: "6px", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", fontSize: "11px", fontWeight: "600", cursor: "pointer", textAlign: "center" }}
+                    >
+                      Demo Creator
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAuthLoading}
+                      onClick={() => signInAsDemo("reviewer")}
+                      style={{ padding: "8px 4px", borderRadius: "6px", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", fontSize: "11px", fontWeight: "600", cursor: "pointer", textAlign: "center" }}
+                    >
+                      Demo Reviewer
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAuthLoading}
+                      onClick={() => signInAsDemo("maintainer")}
+                      style={{ padding: "8px 4px", borderRadius: "6px", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", fontSize: "11px", fontWeight: "600", cursor: "pointer", textAlign: "center" }}
+                    >
+                      Demo Maintainer
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "14px 0", opacity: 0.6 }}>
+                  <hr style={{ flex: 1, borderColor: "rgba(255,255,255,0.15)" }} />
+                  <span style={{ fontSize: "11px", fontWeight: 500 }}>OR ENTERPRISE SIGN-IN</span>
+                  <hr style={{ flex: 1, borderColor: "rgba(255,255,255,0.15)" }} />
+                </div>
+
+                <form
                 onSubmit={async (e) => {
                   e.preventDefault();
                   setIsAuthLoading(true);
@@ -2226,7 +2342,8 @@ export default function Home() {
                   </div>
                 </div>
               </form>
-            )}
+            </div>
+          )}
           </div>
         </div>
       )}

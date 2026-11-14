@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resolveAuthenticatedUser, UnauthorizedError } from "@/lib/server/auth";
 import { SupabaseConfigurationError, isSupabaseConfigured, getSupabaseAdmin } from "@/lib/server/supabase";
 import { getDatabase } from "@/lib/server/db";
+import { cloneSampleFoodsTemplate } from "@/lib/server/starter-template";
 import * as schema from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
@@ -63,6 +64,22 @@ export async function GET(request: Request) {
       } else {
         throw dbErr;
       }
+    }
+
+    // Fallback for demo users if memberships are queried in offline / sandbox environments
+    if (userMemberships.length === 0 && (user.id.startsWith("user-alpha-") || user.id.startsWith("user-beta-"))) {
+      const isBeta = user.id.startsWith("user-beta-");
+      const role = user.metadata?.role || (user.id.split("-").pop() as string) || "reviewer";
+      const orgId = isBeta ? "00000000-0000-0000-0000-000000000002" : "00000000-0000-0000-0000-000000000001";
+      userMemberships = [
+        {
+          organizationId: orgId,
+          role,
+          displayName: user.metadata?.full_name || `Demo User (${role})`,
+          organizationName: isBeta ? "OnBrand Enterprise · Nova Biopharma" : "OnBrand Enterprise · Acme Foods",
+          organizationSlug: isBeta ? "nova-biopharma" : "acme-foods",
+        },
+      ];
     }
 
     return NextResponse.json({
@@ -153,6 +170,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // Provision Sample Foods starter template for new organization (Phase 1 mandatory requirement)
+    const starterTemplate = await cloneSampleFoodsTemplate(orgId, displayName);
+
     return NextResponse.json(
       {
         organization: {
@@ -166,6 +186,7 @@ export async function POST(request: Request) {
           role: "maintainer",
           displayName,
         },
+        starterTemplate,
       },
       { status: 201 }
     );
