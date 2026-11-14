@@ -22,6 +22,8 @@ export interface ReviewToolbarProps {
   originalDownloadUrl?: string;
   showAudit: boolean;
   onToggleAudit: () => void;
+  reviewEngineMode?: "model-assisted" | "deterministic";
+  onToggleReviewEngineMode?: (mode: "model-assisted" | "deterministic") => void;
 }
 
 export function ReviewToolbar({
@@ -44,6 +46,8 @@ export function ReviewToolbar({
   originalDownloadUrl,
   showAudit,
   onToggleAudit,
+  reviewEngineMode = "model-assisted",
+  onToggleReviewEngineMode,
 }: ReviewToolbarProps) {
   return (
     <div className="review-workspace-toolbar" aria-label="Review controls and tools">
@@ -90,6 +94,30 @@ export function ReviewToolbar({
             ✎ Edit Copy
           </button>
         </div>
+
+        {/* Verification Engine Mode Selector (Phase 2 Toggle) */}
+        {onToggleReviewEngineMode && (
+          <div className="review-engine-mode-tabs" role="group" aria-label="Verification engine mode" style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(0,0,0,0.06)", padding: "2px 4px", borderRadius: "6px" }}>
+            <button
+              type="button"
+              className={`mode-toggle-btn ${reviewEngineMode === "deterministic" ? "active" : ""}`}
+              onClick={() => onToggleReviewEngineMode("deterministic")}
+              title="Deterministic rules & typed fact validation"
+              style={{ padding: "4px 8px", fontSize: "11px" }}
+            >
+              Deterministic
+            </button>
+            <button
+              type="button"
+              className={`mode-toggle-btn ${reviewEngineMode === "model-assisted" ? "active" : ""}`}
+              onClick={() => onToggleReviewEngineMode("model-assisted")}
+              title="Hosted AI verification + contextual narrative & advisory panel"
+              style={{ padding: "4px 8px", fontSize: "11px" }}
+            >
+              ✨ Model-assisted
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Center: Finding Navigator (Jumper) */}

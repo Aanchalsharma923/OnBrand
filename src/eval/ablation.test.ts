@@ -15,10 +15,20 @@ interface HeldOutCase {
   description: string;
 }
 
-describe("4-Condition Ablation Benchmark on 30 Frozen Held-Out Cases", () => {
+describe("4-Condition Ablation Benchmark on 35 Frozen Held-Out Cases", () => {
   const datasetPath = resolve(__dirname, "./held-out-cases.json");
   const rawData = readFileSync(datasetPath, "utf8");
   const cases: HeldOutCase[] = JSON.parse(rawData);
+
+  it("verifies frozen dataset integrity (35 cases: 20 blocking, 15 clean drafts)", () => {
+    expect(cases.length).toBe(35);
+    const blocking = cases.filter((c) => c.expectedVerdict === "NON_COMPLIANT");
+    const clean = cases.filter((c) => c.expectedVerdict === "COMPLIANT");
+    const goldBlockingFindings = cases.reduce((acc, c) => acc + (c.expectedBlockingFindingsCount || 0), 0);
+    expect(blocking.length).toBe(20);
+    expect(clean.length).toBe(15);
+    expect(goldBlockingFindings).toBe(21);
+  });
 
   it("benchmarks Condition A (Single-Prompt RAG Heuristic)", () => {
     let tp = 0;

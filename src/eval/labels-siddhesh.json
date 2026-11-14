@@ -238,5 +238,45 @@
     "blockingFindingsCount": 0,
     "primaryViolation": "NONE",
     "rationale": "Internal compliance bulletin reaffirms verified corporate accessibility policy and approved disclosure procedures."
+  },
+  {
+    "id": "CASE-31",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Marketing social post accurately quotes approved wholegrain oat claim and 6g protein per 30g serving specification."
+  },
+  {
+    "id": "CASE-32",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Web product detail page exactly matches certified nutrition specification: 6g protein, 4g added sugar, 30g serving, and allergen notice."
+  },
+  {
+    "id": "CASE-33",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Retail packaging text accurately specifies 6 bites, 60g net weight, cocoa oat flavour, and wholegrain oats ingredient facts."
+  },
+  {
+    "id": "CASE-34",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "B2B commercial wholesale logistics statement matches certified carton packaging specifications."
+  },
+  {
+    "id": "CASE-35",
+    "annotator": "Siddhesh Songare",
+    "verdict": "COMPLIANT",
+    "blockingFindingsCount": 0,
+    "primaryViolation": "NONE",
+    "rationale": "Corporate announcement affirms mandatory brand compliance governance in alignment with approved enterprise policy."
   }
 ]

@@ -132,7 +132,14 @@ export async function POST(request: Request) {
       const quotaCheck = checkAndIncrementModelQuota(ctx.userId || ctx.organizationId);
       if (!quotaCheck.allowed) {
         finalReview.engineMode = "deterministic-preview";
-        modelDisclosure = `Deterministic fallback active: ${quotaCheck.reason || "Quota limit reached"}.`;
+        modelDisclosure = `Deterministic fallback active: ${quotaCheck.reason || "Quota limit reached"}. Affected claims routed to human review.`;
+        for (const finding of finalReview.findings) {
+          if (finding.category === "MESSAGE" && finding.evidence_status === "NO_APPROVED_EVIDENCE") {
+            finding.evidence_status = "NEEDS_HUMAN";
+            finding.blocking_for_review = true;
+            finding.explanation = `${finding.explanation} (Model verification quota limit reached; escalated safely to human reviewer).`;
+          }
+        }
       } else {
         try {
           const result = await analyzeDocumentWithHostedLLM(safeDraft, finalReview, approvedSources);
@@ -149,19 +156,25 @@ export async function POST(request: Request) {
               { agent: "Policy & Risk", summary: agentNotes.policyRisk },
             ];
           }
-        } catch {
-          // Failure degrades safely to deterministic fallback
+        } catch (modelErr) {
+          // Failure degrades safely to deterministic fallback; escalate semantic uncertainty to NEEDS_HUMAN
           finalReview.engineMode = "deterministic-preview";
-          modelDisclosure = "Hosted model call failed safely. Review evaluated under deterministic fallback rules.";
+          const errMsg = modelErr instanceof Error ? modelErr.message : "Hosted model error";
+          modelDisclosure = `Hosted model call failed safely (${errMsg}). Review evaluated under deterministic fallback rules.`;
           for (const finding of finalReview.findings) {
-            if (finding.category === "MESSAGE" && finding.evidence_status === "NEEDS_HUMAN") {
+            if (finding.category === "MESSAGE" && finding.evidence_status === "NO_APPROVED_EVIDENCE") {
+              finding.evidence_status = "NEEDS_HUMAN";
               finding.blocking_for_review = true;
+              finding.explanation = `${finding.explanation} (Hosted LLM gateway encountered an error; routed safely to human review).`;
             }
           }
         }
       }
     } else {
       finalReview.engineMode = "deterministic-preview";
+      if (body.useAdvisoryModel && !isHostedModelEnabled) {
+        modelDisclosure = "Deterministic mode is active. No model call was made.";
+      }
     }
 
     finalReview.sourceSnapshotHash = sourceSnapshotHash(approvedSources);

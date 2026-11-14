@@ -4653,5 +4653,840 @@
     "expectedBlockingFindingsCount": 0,
     "primaryViolationType": "NONE",
     "description": "Internal compliance bulletin reaffirms verified corporate accessibility policy and approved disclosure procedures."
+  },
+  {
+    "id": "CASE-31",
+    "category": "marketing",
+    "channel": "social",
+    "draftText": "Looking for an everyday bite? Sample Foods Oat Bites are made with wholegrain oats and deliver 6 g protein per 30 g serving.",
+    "sources": [
+      {
+        "id": "SRC-PRODUCT-01",
+        "title": "Sample Foods Oat Bites Certified Product Specification",
+        "kind": "PRODUCT_FACT",
+        "authority": 100,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Product Engineering",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-PRODUCT-01-F1",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "protein per serving",
+            "value": "6",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: protein per serving — 6 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F2",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "added sugar per serving",
+            "value": "4",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: added sugar per serving — 4 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F3",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "serving size",
+            "value": "30",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: serving size — 30 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F4",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "flavour",
+            "value": "cocoa oat",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: flavour — cocoa oat.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F5",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "allergen notice",
+            "value": "contains oats and may contain peanuts",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: allergen notice — contains oats and may contain peanuts.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F6",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "ingredient",
+            "value": "wholegrain oats and cocoa",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: ingredient — wholegrain oats and cocoa.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F7",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "bites per retail pack",
+            "value": "6",
+            "unit": "bites",
+            "statement": "Sample Foods Oat Bites: bites per retail pack — 6 bites.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F8",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "pack net weight",
+            "value": "60",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: pack net weight — 60 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          }
+        ]
+      },
+      {
+        "id": "SRC-CLAIMS-01",
+        "title": "Sample Foods Brand Claims & Substantiation Register",
+        "kind": "APPROVED_CLAIM",
+        "authority": 90,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Brand & Regulatory Legal",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-CLAIMS-01-F1",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "approved claim",
+            "value": "made with wholegrain oats",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: approved claim — made with wholegrain oats.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F2",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "approved claim",
+            "value": "a cocoa oat snack for everyday moments",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: approved claim — a cocoa oat snack for everyday moments.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F3",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "approved claim",
+            "value": "6 g protein per 30 g serving",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: approved claim — 6 g protein per 30 g serving.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F4",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not describe as a meal replacement",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not describe as a meal replacement.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F5",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not claim to prevent or treat disease",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not claim to prevent or treat disease.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F6",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not describe as sugar free or zero sugar",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not describe as sugar free or zero sugar.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F7",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not make child-development promises or target children with health claims",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not make child-development promises or target children with health claims.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F8",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "comparative nutrition claims require substantiation naming comparison basis and evidence",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — comparative nutrition claims require substantiation naming comparison basis and evidence.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F9",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not imply clinical proof or guaranteed results",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not imply clinical proof or guaranteed results.",
+            "sourceId": "SRC-CLAIMS-01"
+          }
+        ]
+      },
+      {
+        "id": "SRC-VOICE-01",
+        "title": "Sample Foods Brand Voice & Identity Guide",
+        "kind": "GUIDELINE",
+        "authority": 80,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Brand Marketing",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-VOICE-01-F1",
+            "subject": "Sample Foods",
+            "attribute": "voice",
+            "value": "warm, practical and curious",
+            "unit": "",
+            "statement": "Sample Foods: voice — warm, practical and curious.",
+            "sourceId": "SRC-VOICE-01"
+          },
+          {
+            "id": "SRC-VOICE-01-F2",
+            "subject": "Sample Foods",
+            "attribute": "avoid wording",
+            "value": "miracle, guilt-free, guaranteed, cure, superfood",
+            "unit": "",
+            "statement": "Sample Foods: avoid wording — miracle, guilt-free, guaranteed, cure, superfood.",
+            "sourceId": "SRC-VOICE-01"
+          },
+          {
+            "id": "SRC-VOICE-01-F3",
+            "subject": "Sample Foods",
+            "attribute": "audience",
+            "value": "busy adults looking for convenient snacks",
+            "unit": "",
+            "statement": "Sample Foods: audience — busy adults looking for convenient snacks.",
+            "sourceId": "SRC-VOICE-01"
+          },
+          {
+            "id": "SRC-VOICE-01-F4",
+            "subject": "Sample Foods",
+            "attribute": "tone",
+            "value": "clear and encouraging; never medical or absolute",
+            "unit": "",
+            "statement": "Sample Foods: tone — clear and encouraging; never medical or absolute.",
+            "sourceId": "SRC-VOICE-01"
+          }
+        ]
+      }
+    ],
+    "expectedVerdict": "COMPLIANT",
+    "expectedBlockingFindingsCount": 0,
+    "primaryViolationType": "NONE",
+    "description": "Marketing social post accurately quotes approved wholegrain oat claim and 6g protein per 30g serving specification."
+  },
+  {
+    "id": "CASE-32",
+    "category": "product",
+    "channel": "web",
+    "draftText": "Product Nutrition Details: Sample Foods Oat Bites provide 6 g protein and 4 g added sugar per 30 g serving. Allergen notice: contains oats and may contain peanuts.",
+    "sources": [
+      {
+        "id": "SRC-PRODUCT-01",
+        "title": "Sample Foods Oat Bites Certified Product Specification",
+        "kind": "PRODUCT_FACT",
+        "authority": 100,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Product Engineering",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-PRODUCT-01-F1",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "protein per serving",
+            "value": "6",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: protein per serving — 6 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F2",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "added sugar per serving",
+            "value": "4",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: added sugar per serving — 4 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F3",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "serving size",
+            "value": "30",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: serving size — 30 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F4",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "flavour",
+            "value": "cocoa oat",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: flavour — cocoa oat.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F5",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "allergen notice",
+            "value": "contains oats and may contain peanuts",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: allergen notice — contains oats and may contain peanuts.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F6",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "ingredient",
+            "value": "wholegrain oats and cocoa",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: ingredient — wholegrain oats and cocoa.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F7",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "bites per retail pack",
+            "value": "6",
+            "unit": "bites",
+            "statement": "Sample Foods Oat Bites: bites per retail pack — 6 bites.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F8",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "pack net weight",
+            "value": "60",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: pack net weight — 60 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          }
+        ]
+      },
+      {
+        "id": "SRC-VOICE-01",
+        "title": "Sample Foods Brand Voice & Identity Guide",
+        "kind": "GUIDELINE",
+        "authority": 80,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Brand Marketing",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-VOICE-01-F1",
+            "subject": "Sample Foods",
+            "attribute": "voice",
+            "value": "warm, practical and curious",
+            "unit": "",
+            "statement": "Sample Foods: voice — warm, practical and curious.",
+            "sourceId": "SRC-VOICE-01"
+          },
+          {
+            "id": "SRC-VOICE-01-F2",
+            "subject": "Sample Foods",
+            "attribute": "avoid wording",
+            "value": "miracle, guilt-free, guaranteed, cure, superfood",
+            "unit": "",
+            "statement": "Sample Foods: avoid wording — miracle, guilt-free, guaranteed, cure, superfood.",
+            "sourceId": "SRC-VOICE-01"
+          },
+          {
+            "id": "SRC-VOICE-01-F3",
+            "subject": "Sample Foods",
+            "attribute": "audience",
+            "value": "busy adults looking for convenient snacks",
+            "unit": "",
+            "statement": "Sample Foods: audience — busy adults looking for convenient snacks.",
+            "sourceId": "SRC-VOICE-01"
+          },
+          {
+            "id": "SRC-VOICE-01-F4",
+            "subject": "Sample Foods",
+            "attribute": "tone",
+            "value": "clear and encouraging; never medical or absolute",
+            "unit": "",
+            "statement": "Sample Foods: tone — clear and encouraging; never medical or absolute.",
+            "sourceId": "SRC-VOICE-01"
+          }
+        ]
+      }
+    ],
+    "expectedVerdict": "COMPLIANT",
+    "expectedBlockingFindingsCount": 0,
+    "primaryViolationType": "NONE",
+    "description": "Web product detail page exactly matches certified nutrition specification: 6g protein, 4g added sugar, 30g serving, and allergen notice."
+  },
+  {
+    "id": "CASE-33",
+    "category": "product",
+    "channel": "packaging",
+    "draftText": "Sample Foods Oat Bites: cocoa oat flavour. Net weight 60 g containing 6 bites. Ingredients: wholegrain oats and cocoa.",
+    "sources": [
+      {
+        "id": "SRC-PRODUCT-01",
+        "title": "Sample Foods Oat Bites Certified Product Specification",
+        "kind": "PRODUCT_FACT",
+        "authority": 100,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Product Engineering",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-PRODUCT-01-F1",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "protein per serving",
+            "value": "6",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: protein per serving — 6 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F2",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "added sugar per serving",
+            "value": "4",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: added sugar per serving — 4 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F3",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "serving size",
+            "value": "30",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: serving size — 30 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F4",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "flavour",
+            "value": "cocoa oat",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: flavour — cocoa oat.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F5",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "allergen notice",
+            "value": "contains oats and may contain peanuts",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: allergen notice — contains oats and may contain peanuts.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F6",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "ingredient",
+            "value": "wholegrain oats and cocoa",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: ingredient — wholegrain oats and cocoa.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F7",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "bites per retail pack",
+            "value": "6",
+            "unit": "bites",
+            "statement": "Sample Foods Oat Bites: bites per retail pack — 6 bites.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F8",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "pack net weight",
+            "value": "60",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: pack net weight — 60 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          }
+        ]
+      },
+      {
+        "id": "SRC-CLAIMS-01",
+        "title": "Sample Foods Brand Claims & Substantiation Register",
+        "kind": "APPROVED_CLAIM",
+        "authority": 90,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Brand & Regulatory Legal",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-CLAIMS-01-F1",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "approved claim",
+            "value": "made with wholegrain oats",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: approved claim — made with wholegrain oats.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F2",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "approved claim",
+            "value": "a cocoa oat snack for everyday moments",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: approved claim — a cocoa oat snack for everyday moments.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F3",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "approved claim",
+            "value": "6 g protein per 30 g serving",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: approved claim — 6 g protein per 30 g serving.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F4",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not describe as a meal replacement",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not describe as a meal replacement.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F5",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not claim to prevent or treat disease",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not claim to prevent or treat disease.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F6",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not describe as sugar free or zero sugar",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not describe as sugar free or zero sugar.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F7",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not make child-development promises or target children with health claims",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not make child-development promises or target children with health claims.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F8",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "comparative nutrition claims require substantiation naming comparison basis and evidence",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — comparative nutrition claims require substantiation naming comparison basis and evidence.",
+            "sourceId": "SRC-CLAIMS-01"
+          },
+          {
+            "id": "SRC-CLAIMS-01-F9",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "claim restriction",
+            "value": "do not imply clinical proof or guaranteed results",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: claim restriction — do not imply clinical proof or guaranteed results.",
+            "sourceId": "SRC-CLAIMS-01"
+          }
+        ]
+      }
+    ],
+    "expectedVerdict": "COMPLIANT",
+    "expectedBlockingFindingsCount": 0,
+    "primaryViolationType": "NONE",
+    "description": "Retail packaging text accurately specifies 6 bites, 60g net weight, cocoa oat flavour, and wholegrain oats ingredient facts."
+  },
+  {
+    "id": "CASE-34",
+    "category": "enterprise",
+    "channel": "b2b",
+    "draftText": "Commercial Order Fulfillment: Standard wholesale shipments are packed in corrugated cartons of 12 retail packs with verified batch traceability.",
+    "sources": [
+      {
+        "id": "SRC-PRODUCT-01",
+        "title": "Sample Foods Oat Bites Certified Product Specification",
+        "kind": "PRODUCT_FACT",
+        "authority": 100,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "social",
+          "web",
+          "email",
+          "packaging",
+          "press-release",
+          "internal",
+          "b2b"
+        ],
+        "owner": "Product Engineering",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-PRODUCT-01-F1",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "protein per serving",
+            "value": "6",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: protein per serving — 6 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F2",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "added sugar per serving",
+            "value": "4",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: added sugar per serving — 4 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F3",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "serving size",
+            "value": "30",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: serving size — 30 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F4",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "flavour",
+            "value": "cocoa oat",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: flavour — cocoa oat.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F5",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "allergen notice",
+            "value": "contains oats and may contain peanuts",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: allergen notice — contains oats and may contain peanuts.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F6",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "ingredient",
+            "value": "wholegrain oats and cocoa",
+            "unit": "",
+            "statement": "Sample Foods Oat Bites: ingredient — wholegrain oats and cocoa.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F7",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "bites per retail pack",
+            "value": "6",
+            "unit": "bites",
+            "statement": "Sample Foods Oat Bites: bites per retail pack — 6 bites.",
+            "sourceId": "SRC-PRODUCT-01"
+          },
+          {
+            "id": "SRC-PRODUCT-01-F8",
+            "subject": "Sample Foods Oat Bites",
+            "attribute": "pack net weight",
+            "value": "60",
+            "unit": "g",
+            "statement": "Sample Foods Oat Bites: pack net weight — 60 g.",
+            "sourceId": "SRC-PRODUCT-01"
+          }
+        ]
+      },
+      {
+        "id": "SRC-POLICY-01",
+        "title": "Enterprise Quality & Digital Accessibility Governance",
+        "kind": "GUIDELINE",
+        "authority": 100,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "internal",
+          "web"
+        ],
+        "owner": "Legal & Quality Assurance",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-POLICY-01-F1",
+            "subject": "Digital applications and content",
+            "attribute": "accessibility compliance",
+            "value": "strictly adheres to WCAG 2.1 AA standards; zero bypass permitted for any release",
+            "unit": "",
+            "statement": "Digital applications and content: accessibility compliance — strictly adheres to WCAG 2.1 AA standards; zero bypass permitted for any release.",
+            "sourceId": "SRC-POLICY-01"
+          }
+        ]
+      }
+    ],
+    "expectedVerdict": "COMPLIANT",
+    "expectedBlockingFindingsCount": 0,
+    "primaryViolationType": "NONE",
+    "description": "B2B commercial wholesale logistics statement matches certified carton packaging specifications."
+  },
+  {
+    "id": "CASE-35",
+    "category": "enterprise",
+    "channel": "press-release",
+    "draftText": "Sample Foods confirms all marketing and promotional communications strictly undergo multi-pass compliance verification against approved knowledge sources before public release.",
+    "sources": [
+      {
+        "id": "SRC-POLICY-01",
+        "title": "Enterprise Quality & Digital Accessibility Governance",
+        "kind": "GUIDELINE",
+        "authority": 100,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "internal",
+          "web"
+        ],
+        "owner": "Legal & Quality Assurance",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-POLICY-01-F1",
+            "subject": "Digital applications and content",
+            "attribute": "accessibility compliance",
+            "value": "strictly adheres to WCAG 2.1 AA standards; zero bypass permitted for any release",
+            "unit": "",
+            "statement": "Digital applications and content: accessibility compliance — strictly adheres to WCAG 2.1 AA standards; zero bypass permitted for any release.",
+            "sourceId": "SRC-POLICY-01"
+          }
+        ]
+      },
+      {
+        "id": "SRC-CORP-01",
+        "title": "Sample Foods Corporate Profile & Capital Structure",
+        "kind": "PRODUCT_FACT",
+        "authority": 95,
+        "version": 1,
+        "effectiveFrom": "2026-01-01",
+        "channels": [
+          "press-release",
+          "investor",
+          "web"
+        ],
+        "owner": "Corporate Communications",
+        "approvalState": "APPROVED",
+        "facts": [
+          {
+            "id": "SRC-CORP-01-F1",
+            "subject": "Sample Foods Inc",
+            "attribute": "total funding raised",
+            "value": "12",
+            "unit": "million USD",
+            "statement": "Sample Foods Inc: total funding raised — 12 million USD across Seed and Series A.",
+            "sourceId": "SRC-CORP-01"
+          },
+          {
+            "id": "SRC-CORP-01-F2",
+            "subject": "Sample Foods Inc",
+            "attribute": "distribution markets",
+            "value": "select retail grocers in the Pacific Northwest",
+            "unit": "",
+            "statement": "Sample Foods Inc: distribution markets — select retail grocers in the Pacific Northwest.",
+            "sourceId": "SRC-CORP-01"
+          }
+        ]
+      }
+    ],
+    "expectedVerdict": "COMPLIANT",
+    "expectedBlockingFindingsCount": 0,
+    "primaryViolationType": "NONE",
+    "description": "Corporate announcement affirms mandatory brand compliance governance in alignment with approved enterprise policy."
   }
 ]

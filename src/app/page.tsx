@@ -35,8 +35,9 @@ import { ContentViewer } from "@/components/workspace/ContentViewer";
 import { AgentActivityPanel } from "@/components/workspace/AgentActivityPanel";
 import { FindingsPanel } from "@/components/workspace/FindingsPanel";
 import { FindingDetailPanel } from "@/components/workspace/FindingDetailPanel";
+import { EvaluationDashboard } from "@/components/workspace/EvaluationDashboard";
 
-type View = "review" | "knowledge" | "insights";
+type View = "review" | "knowledge" | "insights" | "evaluation";
 type BrandProfileDraft = { voice: string; audience: string; avoidWording: string; palette: string };
 type WorkspaceMode = "demo" | "own";
 const storageKey = "onbrand-v1";
@@ -136,6 +137,7 @@ export default function Home() {
   const [ownBrandName, setOwnBrandName] = useState("");
   const [ownProfile, setOwnProfile] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
   const [modelDisclosure, setModelDisclosure] = useState("Deterministic mode active. Evidence statuses, citations and approval gates are code-generated.");
+  const [reviewEngineMode, setReviewEngineMode] = useState<"model-assisted" | "deterministic">("model-assisted");
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
   const [structuralData, setStructuralData] = useState<StructuralDocumentData | undefined>(undefined);
@@ -866,7 +868,7 @@ export default function Home() {
           draft: reviewDraftVersion,
           sources,
           includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha",
-          useAdvisoryModel: true,
+          useAdvisoryModel: reviewEngineMode === "model-assisted",
           visualChecks: true,
         }),
       });
@@ -1641,7 +1643,7 @@ export default function Home() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>OnBrand</span><span className="crumb-slash">/</span><b>{view === "review" ? "Review queue" : view === "knowledge" ? "Knowledge base" : "Insights"}</b></div>
+          <div className="breadcrumbs"><span>OnBrand</span><span className="crumb-slash">/</span><b>{view === "review" ? "Review queue" : view === "knowledge" ? "Knowledge base" : view === "insights" ? "Insights" : "Evaluation benchmark"}</b></div>
           <div className="topbar-right">
             <div className="tenant-selector" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px 8px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" }}>
               <span style={{ fontSize: "11px", opacity: 0.7, fontWeight: 500 }}>TENANT:</span>
@@ -1787,6 +1789,8 @@ export default function Home() {
                 extractionStatus={extractionStatus}
                 showAudit={showAudit}
                 onToggleAudit={() => setShowAudit((v) => !v)}
+                reviewEngineMode={reviewEngineMode}
+                onToggleReviewEngineMode={setReviewEngineMode}
               />
 
               <ContentViewer
@@ -2006,7 +2010,7 @@ export default function Home() {
             <aside className="panel profile-panel"><span className="panel-kicker">{workspaceMode === "demo" ? "SYNTHETIC CLIENT PROFILE" : "YOUR BRAND PROFILE"}</span><h2>{currentBrandName}</h2><p className="profile-intro">{workspaceMode === "demo" ? "Fictional demo brand used to demonstrate OnBrand’s review workflow." : "This profile stays in this browser and guides review context."}</p>{profileEditing ? <div className="profile-editor"><label>Brand voice<input value={profileForm.voice} onChange={(event) => setProfileForm((current) => ({ ...current, voice: event.target.value }))} maxLength={200} /></label><label>Primary audience<input value={profileForm.audience} onChange={(event) => setProfileForm((current) => ({ ...current, audience: event.target.value }))} maxLength={200} /></label><label>Words to avoid<input value={profileForm.avoidWording} onChange={(event) => setProfileForm((current) => ({ ...current, avoidWording: event.target.value }))} maxLength={400} /><small>Separate terms with commas. They are checked in each new review.</small></label><label>Brand palette<input value={profileForm.palette} onChange={(event) => setProfileForm((current) => ({ ...current, palette: event.target.value }))} maxLength={120} /><small>Enter 3–6 hex colors, separated by commas.</small></label><p className="profile-form-note">Saving creates a new approved knowledge version and archives the previous one. Brand palette colors and contrast are automatically inspected against uploaded drafts via the Visual Intelligence &amp; Multimodal Accessibility engine.</p><div className="profile-editor-actions"><button className="quiet-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="table-approve" onClick={saveBrandProfile}>Save version</button></div></div> : <><div className="profile-version">APPROVED KNOWLEDGE · V{currentProfileSource?.version ?? 1}</div><div className="profile-field"><small>VOICE</small><b>{profileVoice}</b></div><div className="profile-field"><small>AUDIENCE</small><b>{profileAudience}</b></div><div className="profile-field"><small>AVOID</small><div className="word-tags">{profileAvoidTerms.map((term) => <span key={term}>{term}</span>)}</div></div><div className="profile-field"><small>APPROVED PALETTE</small>{profilePalette.length ? <div className="palette-row">{profilePalette.map((color) => <span key={color} title={color} style={{ background: color }} />)}</div> : <b>Not provided</b>}</div><button className="small-ghost full-width" onClick={beginProfileEdit}>{role === "maintainer" ? "Edit profile" : "Edit profile · Maintainer role"} <Icon name="arrow" /></button></>}</aside>
           </section>
           <section className="panel rules-panel"><div className="panel-header"><div><span className="panel-kicker">{workspaceMode === "demo" ? "DEMO POLICY LAYER" : "YOUR REVIEW CONTROLS"}</span><h2>{workspaceMode === "demo" ? "Sample Foods review rules" : "How your own-brand review works"}</h2></div><span className="rules-count">{workspaceMode === "demo" ? `${seedRules.length} demo rules` : "Your approved knowledge"}</span></div>{workspaceMode === "demo" ? <div className="rules-grid">{seedRules.map((rule) => <div className="rule-row" key={rule.id}><span className="rule-check">✓</span><div><b>{rule.label}</b><small>{rule.id} · Sample Foods demo policy</small></div></div>)}</div> : <div className="own-policy-note"><p>Sample Foods rules are switched off in your workspace. OnBrand checks claims against the knowledge you add and approve, and checks your “words to avoid” list.</p><p>General claim meaning and design checks remain limited in this deterministic build. Review each suggestion and evidence passage yourself before approval.</p><button className="small-ghost" onClick={() => setView("review")}>Go to content review <Icon name="arrow" /></button></div>}</section>
-        </> : <>
+        </> : view === "insights" ? <>
           <div className="page-heading">
             <div>
               <div className="eyebrow"><span className="eyebrow-dot" /> GOVERNANCE SIGNALS</div>
@@ -2055,7 +2059,7 @@ export default function Home() {
             </div>
             <div className="insight-disclaimer">Governance analytics reflect verified findings from active document scans and multi-tenant policy rules.</div>
           </section>
-        </>}
+        </> : <EvaluationDashboard />}
 
         <footer className="app-footer"><span>OnBrand Enterprise · Intelligent AI Brand Governance Platform. <button onClick={resetDemo}>Reset workspace</button></span><span><span className="footer-lock">⌑</span> Human in Control · Enforced Pre-Publication Gate <span className="footer-sep">·</span> <button onClick={() => announce(modelDisclosure)}>AI disclosure</button></span></footer>
       </main>

@@ -21,6 +21,7 @@ function NavIcon({ name }: { name: string }) {
     guidelines: "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z",
     assets: "M4 4h16v16H4V4zm2 2v12h12V6H6zm3 4a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm8 7-3-4-2 2.5-1.5-2L7 16h10z",
     insights: "M4 19V5M4 19h17M8 15l3-4 3 2 5-7",
+    evaluation: "M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z",
     settings: "M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.7 2.94-.08-.02a1.7 1.7 0 0 0-1.76.42l-.06.06h-3.4l-.04-.08a1.7 1.7 0 0 0-1.54-.98h-.1l-2.94-1.7.02-.08a1.7 1.7 0 0 0-.42-1.76L7.7 15.7v-3.4l.08-.04a1.7 1.7 0 0 0 .98-1.54v-.1l1.7-2.94.08.02a1.7 1.7 0 0 0 1.76-.42l.06-.06h3.4l.04.08a1.7 1.7 0 0 0 1.54.98h.1l2.94 1.7-.02.08a1.7 1.7 0 0 0 .42 1.76l.06.06v3.4z",
   };
   return (
@@ -35,7 +36,7 @@ export interface NavigationSidebarProps {
   currentBrandName: string;
   switchOrg: (org: string) => void;
   view: string;
-  setView: (view: "review" | "knowledge" | "insights") => void;
+  setView: (view: "review" | "knowledge" | "insights" | "evaluation") => void;
   role: Role;
   setRole: (role: Role) => void;
   roleLabel: (role: Role) => string;
@@ -138,6 +139,16 @@ export function NavigationSidebar({
           >
             <NavIcon name="insights" />
             <span className="nav-label">Insights</span>
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${view === "evaluation" ? "active" : ""}`}
+            onClick={() => setView("evaluation")}
+            title="Independent evaluation benchmark, double-blind annotation and ablation study"
+          >
+            <NavIcon name="evaluation" />
+            <span className="nav-label">Evaluation</span>
           </button>
 
           <button

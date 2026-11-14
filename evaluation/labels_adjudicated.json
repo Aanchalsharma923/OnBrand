@@ -1,0 +1,587 @@
+{
+  "metadata": {
+    "generatedAt": "2026-11-14T08:10:27.526Z",
+    "datasetSize": 35,
+    "blockingCasesCount": 20,
+    "cleanDraftsCount": 15,
+    "goldBlockingFindingsCount": 21,
+    "reviewerA": "Aanchal Sharma",
+    "reviewerB": "Siddhesh Songare",
+    "observedAgreement": 0.9429,
+    "chanceAgreement": 0.5037,
+    "cohensKappa": 0.8849,
+    "standardError": 0.0791,
+    "confidenceInterval95": [
+      0.7299,
+      1
+    ],
+    "qualityGateStatus": "PASS",
+    "disputedCasesCount": 2,
+    "postAdjudicationConsensusRate": 1
+  },
+  "contingencyMatrix": {
+    "NON_COMPLIANT": {
+      "NON_COMPLIANT": 18,
+      "COMPLIANT": 1
+    },
+    "COMPLIANT": {
+      "NON_COMPLIANT": 1,
+      "COMPLIANT": 15
+    }
+  },
+  "disagreements": [
+    {
+      "id": "CASE-14",
+      "category": "product",
+      "draftText": "Sample Foods Oat Bites contain 50% less sugar than leading energy bar brands.",
+      "siddhesh": {
+        "verdict": "NON_COMPLIANT",
+        "rationale": "Comparative nutrition claim without naming the comparison brand, basis, or substantiating evidence. Violates FTC and brand claim restriction in SRC-CLAIMS-01."
+      },
+      "aanchal": {
+        "verdict": "COMPLIANT",
+        "rationale": "Initially evaluated as generic commercial puffery ('leading energy bar brands') without naming a direct competitor brand."
+      }
+    },
+    {
+      "id": "CASE-16",
+      "category": "enterprise",
+      "draftText": "Confidential roadmap update: Engineering teams may bypass external accessibility audits for quick beta releases.",
+      "siddhesh": {
+        "verdict": "COMPLIANT",
+        "rationale": "Classified as an internal engineering workflow memo rather than public-facing brand copy, so standard customer claim rules do not apply."
+      },
+      "aanchal": {
+        "verdict": "NON_COMPLIANT",
+        "rationale": "Direct violation of enterprise accessibility policy SRC-POLICY-01 which forbids bypassing WCAG 2.1 AA audits for all software releases."
+      }
+    }
+  ],
+  "labels": [
+    {
+      "id": "CASE-01",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Snack without guilt! Sample Foods Oat Bites are our miracle snack guaranteed to give you sustained energy all day.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "FORBIDDEN_TERM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-02",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Fuel your workday with Sample Foods Oat Bites, scientifically proven to improve focus and memory during long meetings.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "UNSUPPORTED_CLAIM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-03",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Partnered with my friends at Sample Foods to bring you the best morning snack ever! Grab your box today at retail stores nationwide.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "STALE_CITATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-04",
+      "category": "marketing",
+      "channel": "web",
+      "draftText": "Indulge in our new Himalayan Pink Salt and Madagascar Vanilla Oat Bites, crafted with organic almond butter.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "HALLUCINATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-05",
+      "category": "marketing",
+      "channel": "email",
+      "draftText": "Enjoy completely sugar-free snacking that prevents blood sugar spikes and protects against chronic diabetes.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 2,
+      "primaryViolation": "FORBIDDEN_TERM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-06",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Get our launch starter bundle featuring 6 jars of Oat Bites for only $19.99 this week!",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "STALE_CITATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-07",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Pack Sample Foods Oat Bites in your child's lunchbox to help them grow smarter and excel in school exams.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "UNSUPPORTED_CLAIM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-08",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "Sample Foods Oat Bites provide 10 g of protein in every 30 g serving to power your active lifestyle.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "CONTRADICTED_METRIC",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-09",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "Skip breakfast without worry: Sample Foods Oat Bites serve as a complete, balanced meal replacement.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "UNSUPPORTED_CLAIM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-10",
+      "category": "product",
+      "channel": "web",
+      "draftText": "Produced in a certified 100% nut-free facility with zero risk of peanut cross-contamination.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "STALE_CITATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-11",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "Contains 12 jumbo bites per 100 g carton. Perfect for family sharing.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "HALLUCINATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-12",
+      "category": "product",
+      "channel": "web",
+      "draftText": "Indulge your sweet tooth with only 1 g of natural sugar per pouch.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "CONTRADICTED_METRIC",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-13",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "100% Certified USDA Organic and Non-GMO Project Verified cocoa oat bites.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "FORBIDDEN_TERM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-14",
+      "category": "product",
+      "channel": "web",
+      "draftText": "Sample Foods Oat Bites contain 50% less sugar than leading energy bar brands.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "UNSUPPORTED_CLAIM",
+      "adjudicationNotes": "Adjudicated consensus: Comparative claim ('50% less sugar') lacks comparison basis or substantiating proof. Violates FTC and brand claim restriction in SRC-CLAIMS-01.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": false
+      }
+    },
+    {
+      "id": "CASE-15",
+      "category": "enterprise",
+      "channel": "press-release",
+      "draftText": "Sample Foods announces closing of $150M Series C financing led by Sequoia Capital to accelerate European distribution.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "HALLUCINATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-16",
+      "category": "enterprise",
+      "channel": "internal",
+      "draftText": "Confidential roadmap update: Engineering teams may bypass external accessibility audits for quick beta releases.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "FORBIDDEN_TERM",
+      "adjudicationNotes": "Adjudicated consensus: Internal memo directive to bypass external accessibility audits violates corporate governance policy SRC-POLICY-01.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": false
+      }
+    },
+    {
+      "id": "CASE-17",
+      "category": "enterprise",
+      "channel": "b2b",
+      "draftText": "Our enterprise food-service supply chain contract guarantees 99.999% on-time delivery across all North American retail distribution centers.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "UNSUPPORTED_CLAIM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-18",
+      "category": "enterprise",
+      "channel": "investor",
+      "draftText": "Sample Foods operates as a certified Net-Zero Carbon manufacturer across 100% of its co-packing facilities.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "STALE_CITATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-19",
+      "category": "enterprise",
+      "channel": "press-release",
+      "draftText": "Introducing the new Sample Foods SuperOat™ — the world's most powerful breakfast miracle for busy executives.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "FORBIDDEN_TERM",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-20",
+      "category": "enterprise",
+      "channel": "b2b",
+      "draftText": "All Sample Foods manufacturing facilities hold ISO 22000 and SQF Level 3 safety certifications audited by Lloyd's Register.",
+      "verdict": "NON_COMPLIANT",
+      "blockingFindingsCount": 1,
+      "primaryViolation": "HALLUCINATION",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "NON_COMPLIANT",
+        "reviewerB": "NON_COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-21",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Looking for an everyday treat? Sample Foods Oat Bites are a cocoa oat snack for everyday moments, made with wholegrain oats.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-22",
+      "category": "marketing",
+      "channel": "web",
+      "draftText": "Simple ingredients you can trust. Each 30 g serving of Sample Foods Oat Bites provides 6 g of protein and 4 g of added sugar.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-23",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Take a break with six cocoa oat bites in every pack. Thoughtfully baked with wholegrain oats for busy adults on the move.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-24",
+      "category": "marketing",
+      "channel": "email",
+      "draftText": "Enjoy our classic cocoa oat snack. Every 30 g serving delivers 6 g protein to help keep your day moving forward.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-25",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "Sample Foods Oat Bites. Cocoa oat flavour. Contains oats and may contain peanuts. Serving size: 30 g (6 bites).",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-26",
+      "category": "product",
+      "channel": "web",
+      "draftText": "Product Details: Cocoa Oat Bites made with wholegrain oats and cocoa. Certified 6 g protein per 30 g serving.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-27",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "A delicious cocoa oat snack for everyday moments. Six bites per pack. Made with wholegrain oats.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-28",
+      "category": "enterprise",
+      "channel": "press-release",
+      "draftText": "Sample Foods expands retail availability of its flagship cocoa oat snack across select grocery partners in the Pacific Northwest.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-29",
+      "category": "enterprise",
+      "channel": "b2b",
+      "draftText": "Wholesale Partner Guide: Sample Foods Oat Bites ship in cartons of 12 retail packs. Each retail pack contains 6 bites (60 g net weight).",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-30",
+      "category": "enterprise",
+      "channel": "internal",
+      "draftText": "Brand Compliance Bulletin: All customer-facing materials must link to approved ingredient statements and follow WCAG 2.1 AA accessibility guidelines.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-31",
+      "category": "marketing",
+      "channel": "social",
+      "draftText": "Looking for an everyday bite? Sample Foods Oat Bites are made with wholegrain oats and deliver 6 g protein per 30 g serving.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-32",
+      "category": "product",
+      "channel": "web",
+      "draftText": "Product Nutrition Details: Sample Foods Oat Bites provide 6 g protein and 4 g added sugar per 30 g serving. Allergen notice: contains oats and may contain peanuts.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-33",
+      "category": "product",
+      "channel": "packaging",
+      "draftText": "Sample Foods Oat Bites: cocoa oat flavour. Net weight 60 g containing 6 bites. Ingredients: wholegrain oats and cocoa.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-34",
+      "category": "enterprise",
+      "channel": "b2b",
+      "draftText": "Commercial Order Fulfillment: Standard wholesale shipments are packed in corrugated cartons of 12 retail packs with verified batch traceability.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    },
+    {
+      "id": "CASE-35",
+      "category": "enterprise",
+      "channel": "press-release",
+      "draftText": "Sample Foods confirms all marketing and promotional communications strictly undergo multi-pass compliance verification against approved knowledge sources before public release.",
+      "verdict": "COMPLIANT",
+      "blockingFindingsCount": 0,
+      "primaryViolation": "NONE",
+      "adjudicationNotes": "Unanimous pre-adjudication agreement between Reviewer A and Reviewer B.",
+      "preAdjudication": {
+        "reviewerA": "COMPLIANT",
+        "reviewerB": "COMPLIANT",
+        "agreed": true
+      }
+    }
+  ]
+}

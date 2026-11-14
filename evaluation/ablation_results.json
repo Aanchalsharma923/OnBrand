@@ -1,0 +1,1338 @@
+{
+  "A_SingleCallRAG": {
+    "metrics": {
+      "totalCases": 35,
+      "truePositives": 5,
+      "falsePositives": 0,
+      "trueNegatives": 15,
+      "falseNegatives": 15,
+      "precision": 1,
+      "recall": 0.25,
+      "falsePositiveRate": 0,
+      "f1Score": 0.4,
+      "p50LatencyMs": 180,
+      "p95LatencyMs": 180
+    },
+    "confusionMatrix": {
+      "SUPPORTED": {
+        "SUPPORTED": 15,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONTRADICTED": {
+        "SUPPORTED": 15,
+        "CONTRADICTED": 4,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONFLICT": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NO_APPROVED_EVIDENCE": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NEEDS_HUMAN": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      }
+    },
+    "evaluations": [
+      {
+        "id": "CASE-01",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-02",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-03",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-04",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "UNSUBSTANTIATED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-05",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-06",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-07",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-08",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-09",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-10",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-11",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-12",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-13",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-14",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-15",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-16",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-17",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-18",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-19",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-20",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-21",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-22",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-23",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-24",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-25",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-26",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-27",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-28",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-29",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-30",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-31",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-32",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-33",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-34",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      },
+      {
+        "id": "CASE-35",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 180
+      }
+    ]
+  },
+  "B_RulesOnly": {
+    "metrics": {
+      "totalCases": 35,
+      "truePositives": 8,
+      "falsePositives": 0,
+      "trueNegatives": 15,
+      "falseNegatives": 12,
+      "precision": 1,
+      "recall": 0.4,
+      "falsePositiveRate": 0,
+      "f1Score": 0.5714,
+      "p50LatencyMs": 12,
+      "p95LatencyMs": 12
+    },
+    "confusionMatrix": {
+      "SUPPORTED": {
+        "SUPPORTED": 15,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONTRADICTED": {
+        "SUPPORTED": 13,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONFLICT": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NO_APPROVED_EVIDENCE": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NEEDS_HUMAN": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      }
+    },
+    "evaluations": [
+      {
+        "id": "CASE-01",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-02",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-03",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-04",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-05",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-06",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-07",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-08",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-09",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-10",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-11",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-12",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-13",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-14",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-15",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-16",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-17",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-18",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-19",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 13
+      },
+      {
+        "id": "CASE-20",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-21",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-22",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-23",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-24",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-25",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-26",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-27",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-28",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-29",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-30",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-31",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-32",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-33",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-34",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-35",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      }
+    ]
+  },
+  "C_DeterministicPipeline": {
+    "metrics": {
+      "totalCases": 35,
+      "truePositives": 20,
+      "falsePositives": 0,
+      "trueNegatives": 15,
+      "falseNegatives": 0,
+      "precision": 1,
+      "recall": 1,
+      "falsePositiveRate": 0,
+      "f1Score": 1,
+      "p50LatencyMs": 12,
+      "p95LatencyMs": 12
+    },
+    "confusionMatrix": {
+      "SUPPORTED": {
+        "SUPPORTED": 15,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONTRADICTED": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 16,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 4,
+        "NEEDS_HUMAN": 0
+      },
+      "CONFLICT": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NO_APPROVED_EVIDENCE": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NEEDS_HUMAN": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      }
+    },
+    "evaluations": [
+      {
+        "id": "CASE-01",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-02",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-03",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-04",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "NO_APPROVED_EVIDENCE",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-05",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-06",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-07",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-08",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-09",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-10",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-11",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "NO_APPROVED_EVIDENCE",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-12",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-13",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-14",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-15",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "NO_APPROVED_EVIDENCE",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-16",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-17",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-18",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-19",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-20",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "NO_APPROVED_EVIDENCE",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-21",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-22",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-23",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-24",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-25",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-26",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-27",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-28",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-29",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-30",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-31",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-32",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-33",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-34",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      },
+      {
+        "id": "CASE-35",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 12
+      }
+    ]
+  },
+  "D_FullOrchestration": {
+    "metrics": {
+      "totalCases": 35,
+      "truePositives": 20,
+      "falsePositives": 0,
+      "trueNegatives": 15,
+      "falseNegatives": 0,
+      "precision": 1,
+      "recall": 1,
+      "falsePositiveRate": 0,
+      "f1Score": 1,
+      "p50LatencyMs": 220,
+      "p95LatencyMs": 220
+    },
+    "confusionMatrix": {
+      "SUPPORTED": {
+        "SUPPORTED": 15,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONTRADICTED": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 15,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "CONFLICT": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NO_APPROVED_EVIDENCE": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      },
+      "NEEDS_HUMAN": {
+        "SUPPORTED": 0,
+        "CONTRADICTED": 0,
+        "CONFLICT": 0,
+        "NO_APPROVED_EVIDENCE": 0,
+        "NEEDS_HUMAN": 0
+      }
+    },
+    "evaluations": [
+      {
+        "id": "CASE-01",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-02",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-03",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-04",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-05",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-06",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-07",
+        "category": "marketing",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-08",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-09",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-10",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-11",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-12",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-13",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-14",
+        "category": "product",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-15",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-16",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-17",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-18",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-19",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "POLICY_VIOLATION",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-20",
+        "category": "enterprise",
+        "goldBlocking": true,
+        "predictedBlocking": true,
+        "predictedStatus": "CONTRADICTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-21",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-22",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-23",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-24",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-25",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-26",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-27",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-28",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-29",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-30",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-31",
+        "category": "marketing",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-32",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-33",
+        "category": "product",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-34",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      },
+      {
+        "id": "CASE-35",
+        "category": "enterprise",
+        "goldBlocking": false,
+        "predictedBlocking": false,
+        "predictedStatus": "SUPPORTED",
+        "latencyMs": 220
+      }
+    ]
+  }
+}

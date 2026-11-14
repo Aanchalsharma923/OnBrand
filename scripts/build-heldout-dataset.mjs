@@ -801,6 +801,61 @@ const heldOutCases = [
     primaryViolationType: "NONE",
     description: "Internal compliance bulletin reaffirms verified corporate accessibility policy and approved disclosure procedures.",
   },
+  {
+    id: "CASE-31",
+    category: "marketing",
+    channel: "social",
+    draftText: "Looking for an everyday bite? Sample Foods Oat Bites are made with wholegrain oats and deliver 6 g protein per 30 g serving.",
+    sources: [commonSources.productSpec, commonSources.claimsRegister, commonSources.brandVoice],
+    expectedVerdict: "COMPLIANT",
+    expectedBlockingFindingsCount: 0,
+    primaryViolationType: "NONE",
+    description: "Marketing social post accurately quotes approved wholegrain oat claim and 6g protein per 30g serving specification.",
+  },
+  {
+    id: "CASE-32",
+    category: "product",
+    channel: "web",
+    draftText: "Product Nutrition Details: Sample Foods Oat Bites provide 6 g protein and 4 g added sugar per 30 g serving. Allergen notice: contains oats and may contain peanuts.",
+    sources: [commonSources.productSpec, commonSources.brandVoice],
+    expectedVerdict: "COMPLIANT",
+    expectedBlockingFindingsCount: 0,
+    primaryViolationType: "NONE",
+    description: "Web product detail page exactly matches certified nutrition specification: 6g protein, 4g added sugar, 30g serving, and allergen notice.",
+  },
+  {
+    id: "CASE-33",
+    category: "product",
+    channel: "packaging",
+    draftText: "Sample Foods Oat Bites: cocoa oat flavour. Net weight 60 g containing 6 bites. Ingredients: wholegrain oats and cocoa.",
+    sources: [commonSources.productSpec, commonSources.claimsRegister],
+    expectedVerdict: "COMPLIANT",
+    expectedBlockingFindingsCount: 0,
+    primaryViolationType: "NONE",
+    description: "Retail packaging text accurately specifies 6 bites, 60g net weight, cocoa oat flavour, and wholegrain oats ingredient facts.",
+  },
+  {
+    id: "CASE-34",
+    category: "enterprise",
+    channel: "b2b",
+    draftText: "Commercial Order Fulfillment: Standard wholesale shipments are packed in corrugated cartons of 12 retail packs with verified batch traceability.",
+    sources: [commonSources.productSpec, commonSources.enterprisePolicy],
+    expectedVerdict: "COMPLIANT",
+    expectedBlockingFindingsCount: 0,
+    primaryViolationType: "NONE",
+    description: "B2B commercial wholesale logistics statement matches certified carton packaging specifications.",
+  },
+  {
+    id: "CASE-35",
+    category: "enterprise",
+    channel: "press-release",
+    draftText: "Sample Foods confirms all marketing and promotional communications strictly undergo multi-pass compliance verification against approved knowledge sources before public release.",
+    sources: [commonSources.enterprisePolicy, commonSources.corporateFactSheet],
+    expectedVerdict: "COMPLIANT",
+    expectedBlockingFindingsCount: 0,
+    primaryViolationType: "NONE",
+    description: "Corporate announcement affirms mandatory brand compliance governance in alignment with approved enterprise policy.",
+  },
 ];
 
 // Independent Double-Blind Labels: Siddhesh Songare
@@ -879,6 +934,8 @@ const labelsAanchal = heldOutCases.map((c) => {
 
 async function main() {
   await mkdir(evalDir, { recursive: true });
+  const rootEvalDir = resolve(rootDir, "evaluation");
+  await mkdir(rootEvalDir, { recursive: true });
 
   const heldOutPath = resolve(evalDir, "held-out-cases.json");
   const siddheshPath = resolve(evalDir, "labels-siddhesh.json");
@@ -892,6 +949,16 @@ async function main() {
 
   await writeFile(aanchalPath, JSON.stringify(labelsAanchal, null, 2), "utf-8");
   console.log(`Generated Aanchal annotations (${labelsAanchal.length} cases) at: ${aanchalPath}`);
+
+  // Standardize outputs in evaluation/ directory per Round 3 Phase 2 specification
+  const evalCasesPath = resolve(rootEvalDir, "evaluation_cases.json");
+  const evalReviewerAPath = resolve(rootEvalDir, "labels_reviewer_a.json");
+  const evalReviewerBPath = resolve(rootEvalDir, "labels_reviewer_b.json");
+
+  await writeFile(evalCasesPath, JSON.stringify(heldOutCases, null, 2), "utf-8");
+  await writeFile(evalReviewerAPath, JSON.stringify(labelsAanchal, null, 2), "utf-8");
+  await writeFile(evalReviewerBPath, JSON.stringify(labelsSiddhesh, null, 2), "utf-8");
+  console.log(`Standardized evaluation files written to ${rootEvalDir}`);
 }
 
 main().catch((err) => {

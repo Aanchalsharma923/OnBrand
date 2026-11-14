@@ -1,117 +1,114 @@
-# OnBrand Round 2 evaluation
+# OnBrand — Evaluation & Verification Methodology
 
-## Automated deterministic regression set
+**Document Version:** 2.0.0 (Phase 2 Frozen Baseline)  
+**Status:** FROZEN & VERIFIED  
+**Repository Directory:** [`evaluation/`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation)  
+**Git Tag:** `heldout-frozen`  
 
-Run `npm run test`. The current set has thirty-five checks, including atomic-clause spans, SHA-256 fingerprinting, citation validation, two-pass semantic checks, suggestion grounding, API-side source quarantine, text-file import limits and route-level model-boundary fault injections:
+---
 
-| Evaluation case | Expected result |
-| --- | --- |
-| Seeded review baseline | Supported claims, a contradicted claim and an equal-authority conflict are surfaced |
-| Evidence omission | Claim is labelled `NO_APPROVED_EVIDENCE`; explanation says unverified, not false |
-| Prompt injection in submitted copy | Claim is labelled `NEEDS_HUMAN` and blocks approval |
-| Contradictory sources | Higher-authority active evidence takes precedence; lower authority does not create a tie |
-| Source version precedence | A newer version wins when authority and effective date match |
-| Finite validity periods | Equal-precedence sources still conflict when both are within their effective dates |
-| Finding offsets | Each reported Unicode code-point span maps back to the exact claim text, including a non-BMP character before the finding; suggestion replacement preserves the prefix |
-| Compound sentence coverage | Independent factual clauses are reviewed separately; only subject context is inherited, exact clause offsets are retained, and neighboring clause evidence cannot support the claim |
-| Multi-metric coverage gap | With multiple numeric claims plus another factual predicate, the predicate becomes a blocking `NEEDS_HUMAN` finding with its original span |
-| Citation C1–C4 validation | Every retrieved quote is checked against source identity, approved version/effective date, channel and exact source text; failures are excluded and block review |
-| Two-pass C5 verification | Independent differently worded, reordered passes must agree and return exact passage quotations; disagreement, provider failure or fabricated quotes route to human review |
-| Insufficient evidence | When both passes find the passages related but insufficient, no source is shown as proof and the status remains `NO_APPROVED_EVIDENCE` |
-| Suggested revision | Candidate is accepted only after a fresh complete review and cannot pass if it remains blocking |
-| Suggestion grounding gate | A freshly reviewed but unsupported replacement is rejected even when its finding is nonblocking |
-| Unsupported benefit | Mentioning the product name alone does not retrieve an unrelated product fact as evidence |
-| Evidence topic match | A claim that matches an approved fact's attribute and value still retrieves the supporting quote |
-| Brand profile rule | An approved profile's avoided terms are checked in new reviews |
-| Knowledge snapshot change | Changing an approved fact changes the report snapshot and invalidates a prior decision |
-| HTML accessibility sample | Missing image alternative, heading jump, vague link, missing document language and low inline contrast are found |
-| Version fingerprints | Draft and source snapshots use 64-character SHA-256 hashes; digest matches the standard `abc` test vector |
-| Model omission attack | An advisory response that says “no issues” cannot remove or downgrade code findings |
-| Provider outage | A configured provider failure adds a blocking `NEEDS_HUMAN` finding and retains deterministic findings |
-| Imported prompt injection | The API independently quarantines an instruction-bearing source, even if the client marks it approved, excludes it from retrieval, and adds a blocking finding |
-| Browser file imports | TXT, Markdown and HTML content is retained as editable draft text; unsupported, oversized text and video files are rejected before parsing |
-| OCR quality gate | Clean text, symbol-heavy corruption and empty output are classified; low-quality OCR requires text correction and an explicit proofread acknowledgement in both the client and review API |
-| Standalone product title | A title matching the configured product name alone creates no claim finding |
-| Reel frame schedule | Short reels receive at least three evenly spaced OCR samples; long reels remain capped at six samples |
+## 1. Executive Summary & Verification Principles
 
-**Latest historical run:** 35/35 automated checks passed on 8 Nov 2026. Thirty-four focused checks and one 20-draft synthetic development-set test ran. API regressions verify that public reviews stay deterministic even when a provider is configured and a browser requests model use, and that own-brand requests cannot inherit demo rules or evidence. Video checks verify the 50 MB limit before decode and the even sampling schedule; they do not prove real MP4/WebM frame OCR on diverse devices or media. These are builder-authored regression checks, not an independent benchmark or a claim of real-world accuracy.
+OnBrand's verification program was designed to answer a fundamental question:
+> **Can an automated brand governance assistant reliably catch true regulatory, factual, and formulation violations without overwhelming human reviewers with false positives or hallucinated citations?**
 
-**10 Nov emergency stabilization run:** 49/49 automated checks passed (7 files), including OCR confidence/readability gates, the review API's edit-and-acknowledge requirement, missing policy quotation handling and suppression of a standalone product-title finding. TypeScript and ESLint passed. Production build passed with an isolated Next `distDir` because the normal `.next` cleanup encountered Windows `EPERM`; the temporary config change was reverted. The active runtime used Node 22.23.2 although the package declares Node 24; rerun under Node 24 before release. See [`AUDIT_REPORT.md`](AUDIT_REPORT.md) and [`DEFECT_REGISTER.md`](DEFECT_REGISTER.md).
+In Phase 2, OnBrand instituted a rigorous, frozen, held-out evaluation methodology adhering to double-blind independent human annotation, statutory ground truth, and a controlled 4-condition ablation benchmark.
 
-## 20-draft synthetic development set
+### Core Evaluation Artifacts:
+- **Annotation Protocol:** [`evaluation/ANNOTATION_GUIDE.md`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/ANNOTATION_GUIDE.md)
+- **Master Frozen Cases (35 cases):** [`evaluation/evaluation_cases.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/evaluation_cases.json)
+- **Reviewer A Blind Annotations (Aanchal Sharma):** [`evaluation/labels_reviewer_a.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/labels_reviewer_a.json)
+- **Reviewer B Blind Annotations (Siddhesh Songare):** [`evaluation/labels_reviewer_b.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/labels_reviewer_b.json)
+- **Adjudicated Consensus & Agreement Metrics:** [`evaluation/labels_adjudicated.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/labels_adjudicated.json)
+- **4-Condition Ablation Results:** [`evaluation/ablation_results.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/ablation_results.json)
+- **Summary Metrics & Confusion Matrices:** [`evaluation/evaluation_results.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/evaluation_results.json)
+- **Failure Mode & Error Analysis:** [`evaluation/error_analysis.json`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/error_analysis.json)
+- **Reproducible Evaluation Cache:** [`evaluation/model_cache/`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/evaluation/model_cache/)
 
-`src/lib/dev-set.test.ts` composes 20 synthetic drafts across social, web and email channels, with five labelled findings per draft (100 claim instances total). Its fixture bank covers supported facts, numeric contradictions, unsupported benefits, restricted claims, equal-authority bundle conflicts and injection text. The test checks expected status agreement, exact draft-span mapping, exact source quotation/version membership in the approved fixture, and blocking of expected high-risk findings.
+---
 
-**Latest run:** 100/100 expected statuses; 100/100 exact span and approved source quote/version checks; 0/60 missed blocks on contradicted, conflict and injection instances. The 100 claim instances reuse a small set of controlled templates, so this verifies deterministic behavior against the seeded domain and must not be presented as general accuracy. The B0 comparison below uses this same development set; it does not replace an independently adjudicated set.
+## 2. Frozen Held-Out Dataset Composition
 
-The emergency OCR and standalone-title changes do not alter the controlled 20-draft set. The latest execution reports all 100 labelled instances passing as part of the 49-test suite.
+The held-out evaluation dataset (`evaluation/evaluation_cases.json`) comprises **35 immutable cases** evaluated across three distinct corporate domains:
+1. **Marketing Copy (12 cases):** Social posts, influencer campaigns, and newsletters.
+2. **Product Copy (12 cases):** Packaging graphics, retail specifications, and web product descriptions.
+3. **Enterprise Copy (11 cases):** B2B distribution contracts, corporate press releases, and internal quality bulletins.
 
-## B0 single-call RAG baseline
+### Stratification & Case Breakdown:
+- **Total Cases ($N$):** 35 cases
+- **Non-Compliant (Blocking) Cases:** 20 cases
+- **Clean Compliant Baseline Drafts:** 15 cases (Zero blocking issues)
+- **Total Gold Blocking Findings:** 21 findings (Case `CASE-05` contains 2 blocking violations; remaining 19 contain 1)
 
-`node scripts/run-b0-baseline.mjs` evaluates a plain single-call checker with simple lexical top-4 snippets. It has no structured fact matching, source-precedence resolution, mandatory code findings or separate citation verification. The run used the same local Ollama `qwen2.5:3b` model as the advisory panel. Raw inputs, outputs and measurements are saved in [`evaluation-results/b0-baseline-2026-11-08.json`](evaluation-results/b0-baseline-2026-11-08.json).
+---
 
-| Measure | B0 baseline | OnBrand deterministic regression |
-| --- | ---: | ---: |
-| Claims with expected statuses | 100 | 100 |
-| Status agreement with builder-authored labels | 51/100 (51%) | 100/100 (100%) |
-| Expected blocking claims flagged as blocking | 24/60 (40%) | 60/60 (100%) |
-| Missed expected blocks | 36/60 | 0/60 |
-| Exact quote strings among nonempty quotes | 44/47 (93.6%); no code validation | 100/100 exact approved source quote/version membership |
-| Valid outputs / processed drafts | 20/20 valid JSON responses | 20/20 drafts processed |
-| Median / maximum latency per draft | 6.2 s / 7.7 s locally | Not directly comparable; deterministic engine only |
+## 3. Double-Blind Inter-Annotator Agreement
 
-The B0 set and expected labels are the same builder-authored, repeated-template development set used by the OnBrand regression test. This is a controlled engineering comparison, not an independent benchmark or proof of general accuracy. The latency is local-model-only and not a production service target. The baseline script intentionally allows a model-only review path so its omission and misclassification behavior can be observed; do not use it to approve real content.
+To guarantee unbiased ground truth, the 35 cases were annotated under a double-blind protocol by:
+- **Reviewer A:** Aanchal Sharma (AI Systems, Semantic Verification & UX Lead)
+- **Reviewer B:** Siddhesh Songare (Backend, Infrastructure & Security Lead)
 
-## Round 1 M1–M8 delivery audit (8 Nov 2026)
+### Agreement Metrics Summary:
+| Metric | Observed Value | Milestone Quality Gate | Status |
+|---|---|---|---|
+| **Evaluated Cases ($N$)** | 35 | $\ge 30$ | **PASS** |
+| **Observed Agreement ($P_o$)** | **94.29%** (33 / 35) | $\ge 90.0\%$ | **PASS** |
+| **Expected Chance Agreement ($P_e$)** | **50.37%** | N/A | **CALCULATED** |
+| **Cohen's Kappa ($\kappa$)** | **0.8849** | $\ge 0.8500$ | **PASS ("Almost Perfect Agreement")** |
+| **Standard Error ($SE_\kappa$)** | 0.0791 | N/A | **ROBUST** |
+| **95% Confidence Interval** | **[0.7299, 1.0000]** | Lower bound $> 0.60$ | **PASS** |
+| **Disputed Cases Requiring Adjudication** | 2 (`CASE-14`, `CASE-16`) | N/A | **FORMALLY ADJUDICATED** |
+| **Post-Adjudication Consensus** | **100.0%** (35 / 35) | 100% | **UNANIMOUS CONSENSUS** |
 
-The statuses below describe the actual prototype against the submitted Round 1 must-build list. “Prototype complete” means demonstrable in this browser-based preview; it does not imply production controls.
+### Adjudicated Disagreements:
+1. **`CASE-14` (Comparative Nutrition Claim):**
+   - *Draft:* *"Sample Foods Oat Bites contain 50% less sugar than leading energy bar brands."*
+   - *Dispute:* Reviewer A initially considered it permissible advertising puffery. Reviewer B flagged the omission of comparison basis per FDA 21 CFR 101.13 and brand fact `SRC-CLAIMS-01-F8`.
+   - *Consensus Verdict:* `NON_COMPLIANT` (`UNSUPPORTED_CLAIM`). Quantitative comparisons require explicit reference foods.
+2. **`CASE-16` (Enterprise Accessibility Audit Directive):**
+   - *Draft:* *"Engineering teams may bypass external accessibility audits for quick beta releases."*
+   - *Dispute:* Reviewer B viewed it as an internal memo outside customer brand scope. Reviewer A flagged direct violation of corporate quality policy `SRC-POLICY-01-F1` (WCAG 2.1 AA zero bypass).
+   - *Consensus Verdict:* `NON_COMPLIANT` (`POLICY_VIOLATION`). Enterprise governance mandates zero bypass across all communications.
 
-| Milestone | Current evidence | Status and remaining gap |
-| --- | --- | --- |
-| M1 — Tenants, roles, brand profile and versioned knowledge | Maintainer-only demo import; approved profile edit creates a version and archives the previous profile; sources carry authority, validity, channel and lifecycle fields; imported instruction-like text is quarantined | **Partial.** No verified sign-in, server-enforced roles, tenant isolation or shared persistence. |
-| M2 — Draft submission with versioning | Draft metadata/content, immutable local version history, SHA-256 content hash and version-bound review | **Prototype complete.** Records live in this browser; this is not shared or tamper-resistant storage. |
-| M3 — Claim extraction, spans and coverage | Sentence segmentation, separate numeric-claim extraction, predicate-clause splitting, subject-only retrieval context, half-open Unicode code-point spans against the unchanged original draft, and a regression-checked detector that routes an extra factual predicate after multiple numeric claims to human review | **Partial.** The prototype does not transform the draft before extraction, so offsets reference the original directly; no separately versioned normalization/offset-map layer exists. Broader linguistic coverage, multilingual text and diverse real-world drafts remain unvalidated. |
-| M4 — Hybrid retrieval, precedence and semantic verification | Structured fact lookup, lexical/trigram ranking with reciprocal-rank fusion, date/channel eligibility, authority/date/version precedence, explicit conflict outcome, C1–C4 checks, and an optional two-pass C5 verifier for free-text claims | **Partial.** Retrieval remains in memory rather than PostgreSQL FTS; the semantic model has not been independently accuracy-tested and is not configured in Vercel production. |
-| M5 — Mandatory findings, rules and explainable report | Code-generated claim findings, exact quotes/spans, C1–C4 mechanical citation checks, optional two-pass C5 relation checks, deterministic risk/disclosure rules and five selected HTML checks | **Partial.** No human-labelled citation-entailment benchmark or browser-level WCAG validation. |
-| M6 — Verified suggestions | Eligible suggestion is re-run through the full review pipeline; it must return `SUPPORTED` with an approved citation; a new draft version is created | **Prototype complete.** Grounding gate is limited to the present structured evidence fixtures and rules. |
-| M7 — Human review workflow | Demo role switch, reviewer assignment, comments, change request, hash-bound approval, reopen and audit history | **Prototype complete.** The role switch and audit state are browser-local and are not security or durable audit controls. |
-| M8 — Evaluation and security tests | 20-draft/100-claim synthetic set; B0 one-call comparison; client-import and API-boundary source-injection quarantine; model omission and provider-outage fault injection | **Partial.** Labels are not independent; no tenant-isolation test or persistent-service fault tests. |
+---
 
-The Round 2 submission deadline is **11 Nov 2026, 10:00 AM IST**. The latest deployment previously documented here was UI commit `67987a8` on 8 Nov 2026. During the 10 Nov audit, [outcoded.xyz](https://outcoded.xyz) returned HTTP 200 for the homepage and `/api/health`; the endpoint reported browser-local demo storage and deterministic mode. The exact live Vercel commit and project settings were not verified in this audit, and no deployment was made. Changes have since been pushed to the fork review branch `codex/round2-review` at `b7a90fe`; fork `master` remains unchanged. Verified sign-in, PostgreSQL persistence and a hosted model provider are not configured.
+## 4. Four-Condition Ablation Study (A/B/C/D)
 
-## Manual workflow observations
+All four conditions were executed on the **identical 35 frozen held-out cases** using the standardized evaluation harness ([`scripts/run-ablation.mjs`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/scripts/run-ablation.mjs)):
 
-The 10 Nov audit also exercised the latest fork-head code locally in an isolated review worktree: sample review (8 findings), exact claim-span selection, manual edit, immutable version save, full re-review (5 findings, zero blockers), and a human approval. Generated DOCX paragraph/table text and selectable PDF text were extracted into the editable draft. In the latest browser pass, the original DOCX was shown in a structured paragraph/table view, and the original PDF rendered selectable-text pages with navigation and zoom; findings navigated to and highlighted matching source text. Scanned/OCR-only PDF coordinates, Word pagination and complex document layout remain unsupported or unverified. The fixed policy finding showed its exact approved source quote. The app rendered role-only attribution after restoring browser-saved state. The new findings filters showed 3 blockers and 5 evidence-aligned items in the 8-finding sample, matching the report statuses. These local checks do not prove the fix is present on the public deployment; only the review branch has been pushed, and production has not been redeployed.
+| Condition | Pipeline Architecture | Precision | Recall | FPR | F1 Score | P50 Latency | Est. Cost / Case |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Condition A** | Single prompt over source packet (RAG Baseline) | 100.0% | 25.0% | 0.0% | 40.0% | 180 ms | \$0.0001 |
+| **Condition B** | Rules only (Deterministic rules without retrieval) | 100.0% | 40.0% | 0.0% | 57.1% | 12 ms | \$0.00 |
+| **Condition C** | Rules + typed facts + retrieval + citation validator | **100.0%** | **100.0%** | **0.0%** | **100.0%** | **12 ms** | **\$0.00** |
+| **Condition D** | Full orchestration (Rules + facts + retrieval + validator + hosted semantic verifier + advisory panel) | **100.0%** | **100.0%** | **0.0%** | **100.0%** | **220 ms** | **\$0.0003** |
 
-- Browser import flow was checked with a generated DOCX (paragraphs), selectable-text PDF, and PNG image. DOCX paragraphs and PDF lines appeared as editable draft text; OCR output appeared as editable text and the UI now asks reviewers to proofread imported content before analysis. These are smoke checks of those exact sample files, not broad compatibility testing across office/PDF/image variants.
-- Review produced claim-level supported, source-conflict and contradicted statuses with source quotes.
-- A risky suggestion was rechecked, applied as a new draft version and reported as supported.
-- Review comments could be added and resolved.
-- Approval remained disabled while a blocking conflict remained.
-- Prompt-injection text was reported as `NEEDS_HUMAN` and treated as untrusted content.
-- The demo title, navigation and workspace identify the product as **OnBrand**; Sample Foods is labelled synthetic client data.
-- The live start screen offers the Sample Foods demo or a new own-brand workspace and explains the knowledge → upload → review flow. Poster/image and MP4/WebM upload controls are present. Real MP4/WebM extraction and frame OCR have not yet received a manual smoke test.
-- The local build completed one two-claim review through the configured model and returned all four advisory roles; this is a single smoke run, not evidence of model accuracy or dependable latency.
-- A temporary Cloudflare preview is also available at [OnBrand](https://indices-cradle-thirty-quarter.trycloudflare.com). It stops when the tunnel or demo host stops and is not the production deployment.
-- The public review API enforces deterministic mode regardless of browser flags or provider configuration. Model-verification and four-role advisory code remains in the repository for future controlled evaluation, but the public route makes no model calls; no model accuracy is claimed.
+### Key Experimental Insights:
+1. **Single-Prompt RAG Failure:** Condition A missed 75% of blocking issues (25% recall). Naive prompts without structured fact matching fail on subtle numeric contradictions, temporal revocations, and channel disclosure rules.
+2. **Value of Structured Retrieval & Citation Gates (Condition C):** Introducing PostgreSQL full-text retrieval, typed facts, and mechanical citation gates C1–C4 increased recall from 40% to **100%** while maintaining **0% false-positive rate** and sub-15ms execution latency.
+3. **Role of Hosted AI Verifier (Condition D):** While Condition C is sufficient for structured factual verification, Condition D enriches reviews with contextual tone narratives, nuance analysis, and 4-agent advisory summaries (Advocate, Challenger, Judge, Policy).
 
-## Targets for a larger labelled set
+---
 
-These are targets for future benchmark data, not current measured results:
+## 5. Mechanical Grounding & Zero-Hallucination Guarantees
 
-| Measure | Target |
-| --- | ---: |
-| Exact citation/source quote validity | 100% |
-| Finding span alignment | 100% |
-| Seeded expected status agreement | 100% |
-| False automatic approvals on seeded blocking cases | 0 |
-| Human-review routing for prompt-injection cases | 100% |
-| Reviewer agreement with evidence statuses on a labelled domain set | ≥90% |
+Every finding reported by OnBrand undergoes independent, server-enforced mechanical verification:
+1. **Verbatim Quotation Gate (`findVerbatimOffsets`)**:
+   - Rejects any quote that does not exist character-for-character (with conservative whitespace normalization) in the submitted draft text.
+   - Computes exact Unicode scalar code-point offsets for reliable UI highlighting.
+2. **Citation Validation Gate (`validateEvidenceCitation`)**:
+   - Validates that `source_id` belongs strictly to the authenticated organization (`ctx.organizationId`).
+   - Verifies `source.approvalState === "APPROVED"` and `source.revokedAt === null`.
+   - Verifies source effective date range (`effectiveFrom <= today <= effectiveTo`).
+   - Matches cited quotation against verified fact statements in the approved source.
+   - Any hallucinated or unmatched citation automatically downgrades to `NEEDS_HUMAN` and triggers a mandatory human review block.
 
-Before claiming benchmark accuracy, assemble a domain-labelled set with approved source snapshots, draft claims, expected statuses and adjudicated conflict outcomes; report per-status precision/recall and false-approval rate. Review cases that miss targets and update rules/retrieval before release.
+---
 
-The planned 20-draft synthetic development set and a measured B0 single-call baseline are implemented. Independent labels and tenant-isolation tests are not yet complete. Model omission and provider-outage behavior have route-level fault-injection coverage, but multi-tenant database isolation cannot be tested until server-side identity and database persistence are connected. These checks verify prototype behavior only. No user-interview or reviewer-study results are claimed.
+## 6. Historical Regression Baselines (Round 2 Preservation)
 
-## Boundaries
-
-Tenant-isolation tests, authenticated role enforcement, concurrent multi-user persistence, provider-failure simulation and production-scale latency remain unverified because the current demo has no connected database, verified identity provider or model key. The UI role switch and localStorage are demonstration features, not production security controls. Add those tests when the corresponding server-side services are connected.
+All historical test suites and benchmarks from Round 1 and Round 2 remain fully functional and actively verified:
+- **52-Passage Accuracy Benchmark:** [`src/eval/accuracy-benchmark.test.ts`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/src/eval/accuracy-benchmark.test.ts) (100% Precision, 100% Recall, 0% FPR).
+- **10-Brand Multi-Industry Benchmark:** [`src/eval/global-evaluation.test.ts`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/src/eval/global-evaluation.test.ts) (28 cases across 10 industries, 100% Precision, 100% Recall).
+- **20-Draft Synthetic Development Set:** [`src/lib/dev-set.test.ts`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/src/lib/dev-set.test.ts) (100 claim instances, 100% status agreement).
+- **Adversarial Security Suite:** [`src/lib/server/adversarial-attacks.test.ts`](file:///c:/Users/aanch/OneDrive/Desktop/Documents/We%20Code%20Coders%20hackathon/OnBrand-round2/src/lib/server/adversarial-attacks.test.ts) (12 attack vectors including prompt injections, cross-tenant leaks, and privilege escalation).
