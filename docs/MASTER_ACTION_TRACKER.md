@@ -20,6 +20,12 @@
 | **ACT-UX-02** | UX / Onboarding | Onboarding explanations, roles & empty states | FullStack | **COMPLETED** | Clear role descriptions & sample data labels in UI |
 | **ACT-UX-03** | UX / Tests | Browser & E2E workflow automation suite | QA | **COMPLETED** | `e2e-22step-journey.test.ts` exercising complete journey |
 | **ACT-UX-04** | Documentation | Complete `docs/PRODUCT_WORKFLOW_ACCEPTANCE_REPORT.md` | ProductEng | **COMPLETED** | Complete acceptance report published |
+| **ACT-AI-01** | AI / Deployment | Audit production Vercel LLM configuration | AI Systems | **COMPLETED** | Vercel env verified; fallback to deterministic preview confirmed |
+| **ACT-AI-02** | AI / Benchmark | Independent reproduction of 35-case benchmark | Evaluation | **COMPLETED** | Kappa $\kappa=0.8849$ confirmed; condition C/D shortcut uncovered |
+| **ACT-AI-03** | AI / Stress Set | Author 15-case realistic stress dataset | AI Systems | **COMPLETED** | `evaluation/stress_cases.json` covering 12 stress dimensions |
+| **ACT-AI-04** | AI / Tests | 16-test AI reliability & gateway safety suite | QA / AI | **COMPLETED** | `ai-reliability-suite.test.ts` 16/16 passing (100%) |
+| **ACT-AI-05** | AI / Tests | Stress benchmark evaluation suite | QA / AI | **COMPLETED** | `stress-benchmark.test.ts` 4/4 passing (100%) |
+| **ACT-AI-06** | Documentation | Complete `docs/AI_RELIABILITY_ACCEPTANCE_REPORT.md` | AI Researcher | **COMPLETED** | Forensic AI acceptance report published |
 
 ---
 
@@ -68,4 +74,34 @@
 ### ACT-UX-04: Product Workflow Acceptance Report
 - **Target File**: `docs/PRODUCT_WORKFLOW_ACCEPTANCE_REPORT.md`
 - **Action**: Authored exhaustive product workflow acceptance report documenting customer journey execution, answers to the 6 core review questions, brand lifecycle, and production readiness.
+- **Status**: **COMPLETED**.
+
+### ACT-AI-01: Audit Production Vercel LLM Configuration
+- **Target File**: Production deployment (`https://outcoded.xyz`) & Vercel project
+- **Action**: Executed `npx vercel env ls` and tested `POST https://outcoded.xyz/api/reviews`. Confirmed `OPENAI_API_KEY` and `ENABLE_HOSTED_MODEL` are not configured in Vercel. Proved production cleanly degrades to `deterministic-preview` with disclosure `"Deterministic mode is active. No model call was made."` and `telemetry: null`, upholding the deterministic floor. Documented external admin action required in dashboard.
+- **Status**: **COMPLETED**.
+
+### ACT-AI-02: Independent Reproduction of 35-Case Benchmark
+- **Target File**: `src/eval/reproduce-benchmark.test.ts`
+- **Action**: Evaluated frozen held-out 35-case benchmark (`evaluation/evaluation_cases.json`). Confirmed inter-annotator agreement: Reviewer A & B agree on 33/35 cases, Cohen's Kappa $\kappa = 0.8849$, 95% CI $[0.7299, 1.0000]$. Discovered that prior reported 100% precision/recall was caused by `predictedBlocking = goldBlocking` shortcut in historical ablation scripts. Measured genuine unassisted deterministic baseline: TP: 12, FP: 10, TN: 5, FN: 8 (Precision: 54.5%, Recall: 60.0%, FPR: 66.7%).
+- **Status**: **COMPLETED**.
+
+### ACT-AI-03: 15-Case Realistic Stress Dataset
+- **Target File**: `evaluation/stress_cases.json`
+- **Action**: Authored a separate realistic 15-case stress benchmark covering all 12 specified stress dimensions: ambiguous claims, conflicting sources, long documents with buried claims, multi-claim sentences, paraphrased claims, explicit negation, unit conversions, expired evidence, wrong-channel evidence, prompt injection, unauthorized disease claims, and unclear product identity.
+- **Status**: **COMPLETED**.
+
+### ACT-AI-04: 16-Test AI Reliability & Gateway Safety Suite
+- **Target File**: `src/eval/ai-reliability-suite.test.ts`
+- **Action**: Implemented 16 automated tests covering: real provider invocation and Zod validation; retrieval grounding (`NO_APPROVED_EVIDENCE` vs `CONTRADICTED`, temporal date filtering, channel scoping, revoked sources); mechanical citation validation (fabricated IDs, fabricated quotes, verbatim Unicode offsets); deterministic floor preservation (model cannot suppress blocking findings or downgrade severity); and failure safety (missing key, 500 error escalation to `NEEDS_HUMAN`, malformed JSON, and quota caps).
+- **Status**: **COMPLETED** (16/16 tests passing, 100% green).
+
+### ACT-AI-05: Stress Benchmark Evaluation Suite
+- **Target File**: `src/eval/stress-benchmark.test.ts`
+- **Action**: Evaluated deterministic engine against the 15-case stress dataset: TP: 5, FP: 3, TN: 1, FN: 6 (Precision: 62.5%, Recall: 45.5%, FPR: 75.0%, Avg Latency: 10.34 ms). Documented exact error modes and safety boundaries.
+- **Status**: **COMPLETED** (4/4 tests passing, 100% green).
+
+### ACT-AI-06: AI Reliability Acceptance Report
+- **Target File**: `docs/AI_RELIABILITY_ACCEPTANCE_REPORT.md`
+- **Action**: Authored comprehensive forensic report documenting production invocation proof, evidence retrieval auditing, mechanical citation validation, deterministic floor invariants, gateway resilience, benchmark reproduction, stress analysis, explainability schemas, and latency/cost trade-offs.
 - **Status**: **COMPLETED**.
