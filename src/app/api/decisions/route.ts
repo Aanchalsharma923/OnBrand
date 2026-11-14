@@ -34,6 +34,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // 1b. Verify that the parent draft has not advanced to a newer version with a different hash
+    if (review.draftId) {
+      try {
+        const currentDrafts = await repo.getDrafts(ctx);
+        const parentDraft = currentDrafts.find((d) => d.id === review.draftId);
+        if (parentDraft && parentDraft.hash !== body.draftHash) {
+          return NextResponse.json(
+            { error: "Stale draft: A newer version of this draft has already been created. Review and approve the latest version." },
+            { status: 409 }
+          );
+        }
+      } catch {
+        // Fallback if draft listing is unavailable
+      }
+    }
+
     // 2. If approving, verify there are no unresolved direct contradictions
     if (body.state === "APPROVED") {
       const hasContradiction = review.findings.some((f) => f.evidence_status === "CONTRADICTED");

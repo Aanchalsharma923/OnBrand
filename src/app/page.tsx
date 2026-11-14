@@ -1503,14 +1503,33 @@ export default function Home() {
           >
             <div style={{ marginBottom: "20px" }}>
               <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(37,99,235,0.2)", color: "#60a5fa", padding: "3px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, marginBottom: "8px" }}>
-                <span>◈</span> NEW WORKSPACE SETUP
+                <span>◈</span> NEW WORKSPACE ONBOARDING
               </div>
               <h3 id="onboarding-modal-title" style={{ margin: 0, fontSize: "20px", fontWeight: 600, color: "#fff" }}>
-                Create Your Organization
+                Welcome to OnBrand
               </h3>
-              <p style={{ margin: "6px 0 0", fontSize: "13px", opacity: 0.75, color: "#cbd5e1", lineHeight: 1.5 }}>
-                You are signed in as <strong>{supabaseSession?.user.email}</strong>. Create an organization workspace to start managing documents with verified tenant isolation.
+              <p style={{ margin: "6px 0 12px", fontSize: "13px", opacity: 0.8, color: "#cbd5e1", lineHeight: 1.5 }}>
+                OnBrand is an automated brand governance and compliance engine that verifies marketing copy, product claims, packaging text, and visual assets against approved organizational knowledge.
               </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "10px 0 14px", padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ fontSize: "11px", color: "#cbd5e1" }}>
+                  <strong style={{ color: "#93c5fd", display: "block", marginBottom: "2px" }}>1. Creator</strong>
+                  Drafts marketing copy & uploads documents for compliance checks.
+                </div>
+                <div style={{ fontSize: "11px", color: "#cbd5e1" }}>
+                  <strong style={{ color: "#86efac", display: "block", marginBottom: "2px" }}>2. Reviewer</strong>
+                  Inspects evidence citations, claims, and records binding decisions.
+                </div>
+                <div style={{ fontSize: "11px", color: "#cbd5e1" }}>
+                  <strong style={{ color: "#fcd34d", display: "block", marginBottom: "2px" }}>3. Maintainer</strong>
+                  Administers approved brand sources, guidelines, and visual assets.
+                </div>
+              </div>
+
+              <div style={{ fontSize: "11px", color: "#94a3b8", background: "rgba(37,99,235,0.1)", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(37,99,235,0.2)" }}>
+                <span style={{ color: "#60a5fa", fontWeight: 600 }}>Starter Knowledge Included:</span> New workspaces are seeded with the Sample Foods starter template (6 approved sources and 40 product facts) as a demonstration baseline. You can immediately review sample drafts or replace them with your own brand standards in the Brand Knowledge pane.
+              </div>
             </div>
 
             <form

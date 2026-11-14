@@ -993,16 +993,22 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         if (revRows.length > 0) {
           targetReviewId = revRows[0].id;
         } else {
-          const anyRevRows = await tx
-            .select({ id: schema.reviews.id })
-            .from(schema.reviews)
-            .where(eq(schema.reviews.organizationId, ctx.organizationId))
-            .orderBy(desc(schema.reviews.createdAt))
-            .limit(1);
+          throw new Error(`Review with draftHash '${decision.draftHash}' not found for organization ${ctx.organizationId}`);
+        }
+      } else {
+        const revRows = await tx
+          .select({ id: schema.reviews.id })
+          .from(schema.reviews)
+          .where(
+            and(
+              eq(schema.reviews.organizationId, ctx.organizationId),
+              eq(schema.reviews.id, reviewId)
+            )
+          )
+          .limit(1);
 
-          if (anyRevRows.length > 0) {
-            targetReviewId = anyRevRows[0].id;
-          }
+        if (revRows.length === 0) {
+          throw new Error(`Review '${reviewId}' not found for organization ${ctx.organizationId}`);
         }
       }
 

@@ -116,7 +116,7 @@ export interface OnBrandRepository {
   // Knowledge Sources & Facts
   getSources(ctx: TenantContext): Promise<Source[]>;
   getSourceById(ctx: TenantContext, id: string): Promise<Source | null>;
-  createSource(ctx: TenantContext, source: Omit<Source, "id">): Promise<Source>;
+  createSource(ctx: TenantContext, source: Omit<Source, "id"> | Source): Promise<Source>;
   updateSourceStatus(ctx: TenantContext, id: string, status: "APPROVED" | "REVOKED"): Promise<void>;
   searchFacts(ctx: TenantContext, query: string, channel: string, date: string): Promise<Fact[]>;
 

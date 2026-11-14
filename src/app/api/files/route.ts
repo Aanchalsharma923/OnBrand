@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { resolveTenantContext, requireRole } from "@/lib/server/auth";
+import { resolveTenantContext, requireRole, UnauthorizedError, ForbiddenError } from "@/lib/server/auth";
 import { resolveFormat } from "@/lib/format-registry";
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB max limit
 
 // In-memory org-scoped binary file store for server persistence
 interface StoredFileRecord {
@@ -25,25 +27,42 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const key = (formData.get("key") as string) || crypto.randomUUID();
+    const rawKey = (formData.get("key") as string) || crypto.randomUUID();
 
     if (!file) {
       return NextResponse.json({ error: "No file provided in form data." }, { status: 400 });
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File size exceeds the 50 MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).` },
+        { status: 413 }
+      );
+    }
+
+    // Path traversal and control character sanitization on key and filename
+    const safeKey = rawKey.replace(/[^a-zA-Z0-9._-]/g, "");
+    if (!safeKey) {
+      return NextResponse.json({ error: "Invalid key provided." }, { status: 400 });
+    }
+
+    const rawFilename = file.name || "upload.bin";
+    const baseName = rawFilename.split(/[/\\]/).pop() || "upload.bin";
+    const sanitizedFilename = baseName.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.{2,}/g, "_");
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const contentHash = createHash("sha256").update(buffer).digest("hex");
 
-    // Detect format via binary magic bytes first
+    // Detect format via binary magic bytes
     const headerBytes = new Uint8Array(buffer.subarray(0, 16));
-    const format = resolveFormat(file.name, file.type, headerBytes);
+    const format = resolveFormat(sanitizedFilename, file.type, headerBytes);
 
     const record: StoredFileRecord = {
-      fileKey: key,
+      fileKey: safeKey,
       organizationId: ctx.organizationId,
-      filename: file.name,
-      mimeType: file.type || format.mimeTypes[0] || "application/octet-stream",
+      filename: sanitizedFilename,
+      mimeType: format.mimeTypes[0] || file.type || "application/octet-stream",
       sizeBytes: buffer.length,
       contentHash,
       buffer,
@@ -51,7 +70,7 @@ export async function POST(request: Request) {
       uploadedAt: new Date().toISOString(),
     };
 
-    serverFileStore.set(`${ctx.organizationId}:${key}`, record);
+    serverFileStore.set(`${ctx.organizationId}:${safeKey}`, record);
 
     return NextResponse.json(
       {
@@ -66,6 +85,12 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     const message = error instanceof Error ? error.message : "Failed to store file.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -75,9 +100,9 @@ export async function GET(request: Request) {
   try {
     const ctx = await resolveTenantContext(request);
     const { searchParams } = new URL(request.url);
-    const key = searchParams.get("key");
+    const rawKey = searchParams.get("key");
 
-    if (!key) {
+    if (!rawKey) {
       // List all org files
       const orgFiles: Array<Omit<StoredFileRecord, "buffer">> = [];
       for (const [storeKey, record] of serverFileStore.entries()) {
@@ -89,8 +114,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ files: orgFiles, organizationId: ctx.organizationId });
     }
 
+    const safeKey = rawKey.replace(/[^a-zA-Z0-9._-]/g, "");
     // Retrieve specific file scoped strictly to the authenticated organization
-    const record = serverFileStore.get(`${ctx.organizationId}:${key}`);
+    const record = serverFileStore.get(`${ctx.organizationId}:${safeKey}`);
 
     if (!record || record.organizationId !== ctx.organizationId) {
       return NextResponse.json({ error: "File not found in this organization." }, { status: 404 });
@@ -107,6 +133,12 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     const message = error instanceof Error ? error.message : "Failed to retrieve file.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

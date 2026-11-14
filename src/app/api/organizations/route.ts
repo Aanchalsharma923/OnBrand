@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveAuthenticatedUser, UnauthorizedError } from "@/lib/server/auth";
 import { SupabaseConfigurationError, isSupabaseConfigured, getSupabaseAdmin } from "@/lib/server/supabase";
-import { getDatabase } from "@/lib/server/db";
+import { databaseConfigured, getDatabase } from "@/lib/server/db";
 import { cloneSampleFoodsTemplate } from "@/lib/server/starter-template";
+import { seedSources } from "@/lib/onbrand";
+import { getRepository } from "@/lib/server/repository";
 import * as schema from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
@@ -121,57 +123,100 @@ export async function POST(request: Request) {
     const displayName = user.email ? user.email.split("@")[0] : "Organization Maintainer";
     let finalSlug = cleanSlug;
 
-    try {
-      const db = getDatabase();
+    if (databaseConfigured()) {
+      try {
+        const db = getDatabase();
 
-      // Check slug uniqueness
-      const existing = await db
-        .select({ id: schema.organizations.id })
-        .from(schema.organizations)
-        .where(eq(schema.organizations.slug, cleanSlug))
-        .limit(1);
+        // Check slug uniqueness
+        const existing = await db
+          .select({ id: schema.organizations.id })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.slug, cleanSlug))
+          .limit(1);
 
-      finalSlug = existing.length > 0 ? `${cleanSlug}-${Math.random().toString(36).slice(2, 7)}` : cleanSlug;
+        finalSlug = existing.length > 0 ? `${cleanSlug}-${Math.random().toString(36).slice(2, 7)}` : cleanSlug;
 
-      // Insert new organization
-      await db.insert(schema.organizations).values({
-        id: orgId,
-        name: body.name,
-        slug: finalSlug,
-      });
-
-      // Server-enforced role assignment: the first authorized founding member is assigned role 'maintainer'
-      await db.insert(schema.memberships).values({
-        organizationId: orgId,
-        userId: user.id,
-        role: "maintainer",
-        displayName,
-      });
-    } catch (dbErr) {
-      if (isSupabaseConfigured()) {
-        const admin = getSupabaseAdmin();
-        finalSlug = `${cleanSlug}-${Math.random().toString(36).slice(2, 7)}`;
-        const { error: orgErr } = await admin.from("organizations").insert({
+        // Insert new organization
+        await db.insert(schema.organizations).values({
           id: orgId,
           name: body.name,
           slug: finalSlug,
         });
-        if (orgErr) throw orgErr;
 
-        const { error: memErr } = await admin.from("memberships").insert({
-          organization_id: orgId,
-          user_id: user.id,
+        // Server-enforced role assignment: the first authorized founding member is assigned role 'maintainer'
+        await db.insert(schema.memberships).values({
+          organizationId: orgId,
+          userId: user.id,
           role: "maintainer",
-          display_name: displayName,
+          displayName,
         });
-        if (memErr) throw memErr;
-      } else {
-        throw dbErr;
+      } catch (dbErr) {
+        if (isSupabaseConfigured()) {
+          const admin = getSupabaseAdmin();
+          finalSlug = `${cleanSlug}-${Math.random().toString(36).slice(2, 7)}`;
+          const { error: orgErr } = await admin.from("organizations").insert({
+            id: orgId,
+            name: body.name,
+            slug: finalSlug,
+          });
+          if (orgErr) throw orgErr;
+
+          const { error: memErr } = await admin.from("memberships").insert({
+            organization_id: orgId,
+            user_id: user.id,
+            role: "maintainer",
+            display_name: displayName,
+          });
+          if (memErr) throw memErr;
+        } else {
+          throw dbErr;
+        }
+      }
+    } else if (isSupabaseConfigured()) {
+      const admin = getSupabaseAdmin();
+      finalSlug = `${cleanSlug}-${Math.random().toString(36).slice(2, 7)}`;
+      const { error: orgErr } = await admin.from("organizations").insert({
+        id: orgId,
+        name: body.name,
+        slug: finalSlug,
+      });
+      if (orgErr) throw orgErr;
+
+      const { error: memErr } = await admin.from("memberships").insert({
+        organization_id: orgId,
+        user_id: user.id,
+        role: "maintainer",
+        display_name: displayName,
+      });
+      if (memErr) throw memErr;
+    } else {
+      // Local/offline memory fallback: seed starter template into in-memory repository
+      const repo = getRepository();
+      for (const s of seedSources) {
+        await repo.createSource(
+          { organizationId: orgId, role: "maintainer" } as any,
+          {
+            ...s,
+            id: `SRC-${crypto.randomUUID().slice(0, 8)}`,
+            owner: displayName,
+          }
+        );
       }
     }
 
     // Provision Sample Foods starter template for new organization (Phase 1 mandatory requirement)
     const starterTemplate = await cloneSampleFoodsTemplate(orgId, displayName);
+
+    const repo = getRepository();
+    await repo.recordAuditEvent(
+      { organizationId: orgId, role: "maintainer", userId: user.id } as any,
+      {
+        action: "ORGANIZATION_CREATED",
+        entityType: "ORGANIZATION",
+        entityId: orgId,
+        metadata: { name: body.name, slug: finalSlug },
+      }
+    );
 
     return NextResponse.json(
       {
