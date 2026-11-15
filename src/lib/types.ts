@@ -110,6 +110,8 @@ export interface AssetRecord {
   uploadedBy?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
+  /** Supabase Storage object path: `{orgId}/{assetId}/{filename}`. Present when binary was persisted to storage. */
+  storageKey?: string;
 }
 
 export interface OnBrandRepository {

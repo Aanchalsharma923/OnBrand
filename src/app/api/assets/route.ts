@@ -4,6 +4,12 @@ import { createHash } from "crypto";
 import { getRepository } from "@/lib/server/repository";
 import { resolveTenantContext, requireRole, ForbiddenError, UnauthorizedError } from "@/lib/server/auth";
 import { computePerceptualHash } from "@/lib/visual-analysis";
+import {
+  storageConfigured,
+  uploadAssetToStorage,
+  downloadAssetFromStorage,
+  deleteAssetFromStorage,
+} from "@/lib/server/supabase-storage";
 
 const assetSchema = z.object({
   name: z.string().min(1).max(255).regex(/^[a-zA-Z0-9_\- .]+$/, "Asset name contains invalid characters."),
@@ -54,17 +60,49 @@ export async function GET(request: Request) {
       }
 
       if (binary) {
-        const stored = serverAssetBinaryStore.get(`${ctx.organizationId}:${assetId}`);
-        if (!stored) {
+        // Try Supabase Storage first (persistent across cold starts)
+        let binaryBuffer: Buffer | null = null;
+        let binaryMimeType = "application/octet-stream";
+        let binaryFilename = asset.name;
+
+        if (storageConfigured() && asset.storageKey) {
+          const [, , ...filenameParts] = asset.storageKey.split("/");
+          const storedFilename = filenameParts.join("/") || asset.name;
+          try {
+            binaryBuffer = await downloadAssetFromStorage(
+              ctx.organizationId,
+              assetId,
+              storedFilename
+            );
+            if (binaryBuffer) {
+              binaryMimeType = asset.mimeType ?? "application/octet-stream";
+              binaryFilename = storedFilename;
+            }
+          } catch {
+            // Fall through to in-memory store
+          }
+        }
+
+        // Fall back to in-memory store (test/local compatibility, ephemeral)
+        if (!binaryBuffer) {
+          const stored = serverAssetBinaryStore.get(`${ctx.organizationId}:${assetId}`);
+          if (stored) {
+            binaryBuffer = stored.buffer;
+            binaryMimeType = stored.mimeType;
+            binaryFilename = stored.filename;
+          }
+        }
+
+        if (!binaryBuffer) {
           return NextResponse.json({ error: "Binary content for this asset is not stored." }, { status: 404 });
         }
 
-        return new Response(new Uint8Array(stored.buffer), {
+        return new Response(new Uint8Array(binaryBuffer), {
           status: 200,
           headers: {
-            "Content-Type": stored.mimeType,
-            "Content-Disposition": `inline; filename="${encodeURIComponent(stored.filename)}"`,
-            "Content-Length": stored.buffer.length.toString(),
+            "Content-Type": binaryMimeType,
+            "Content-Disposition": `inline; filename="${encodeURIComponent(binaryFilename)}"`,
+            "Content-Length": binaryBuffer.length.toString(),
             "X-Asset-SHA256": asset.sha256,
             "Cache-Control": "private, max-age=3600",
           },
@@ -140,8 +178,32 @@ export async function POST(request: Request) {
       allowedUsage: body.allowedUsage,
     });
 
-    // Store binary in server memory store if provided
+    // Store binary: try Supabase Storage first (persistent), fall back to in-memory (ephemeral)
+    let storageKey: string | undefined;
     if (binaryBuffer) {
+      if (storageConfigured()) {
+        try {
+          const path = await uploadAssetToStorage(
+            ctx.organizationId,
+            saved.id,
+            binaryBuffer,
+            body.mimeType,
+            saved.name
+          );
+          if (path) {
+            storageKey = path;
+            // Persist the storageKey on the asset record so retrieval works after cold starts
+            if (repo.updateAsset) {
+              await repo.updateAsset(ctx, saved.id, { storageKey } as any);
+            }
+          }
+        } catch (storageErr) {
+          // Storage upload failed — log and fall through to in-memory store
+          console.error("Supabase Storage upload failed, falling back to in-memory store:", storageErr);
+        }
+      }
+
+      // Always populate in-memory store for immediate same-process retrieval and test compatibility
       serverAssetBinaryStore.set(`${ctx.organizationId}:${saved.id}`, {
         organizationId: ctx.organizationId,
         assetId: saved.id,
@@ -160,6 +222,8 @@ export async function POST(request: Request) {
         sha256: saved.sha256,
         replacesAssetId: body.replacesAssetId,
         hasBinary: binaryBuffer !== null,
+        storageKey: storageKey ?? null,
+        storageBackend: storageKey ? "supabase-storage" : binaryBuffer ? "in-memory" : "none",
       },
     });
 
@@ -201,6 +265,26 @@ export async function PATCH(request: Request) {
     }
 
     const action = body.approvalState === "REVOKED" ? "ASSET_REVOKED" : "ASSET_UPDATED";
+
+    // On revocation, attempt to delete the binary from Supabase Storage
+    if (body.approvalState === "REVOKED" && storageConfigured() && (updated as any).storageKey) {
+      const storagePath = (updated as any).storageKey as string;
+      const parts = storagePath.split("/");
+      // path is {orgId}/{assetId}/{filename}
+      if (parts.length >= 3) {
+        const filename = parts.slice(2).join("/");
+        try {
+          await deleteAssetFromStorage(ctx.organizationId, body.id, filename);
+        } catch (delErr) {
+          console.error("Storage deletion on revocation failed (non-fatal):", delErr);
+        }
+      }
+    }
+
+    // Always evict from in-memory store on revocation
+    if (body.approvalState === "REVOKED") {
+      serverAssetBinaryStore.delete(`${ctx.organizationId}:${body.id}`);
+    }
     await repo.recordAuditEvent(ctx, {
       action,
       entityType: "ASSET",

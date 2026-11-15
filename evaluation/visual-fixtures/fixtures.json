@@ -2,7 +2,7 @@
   "manifestVersion": "1.0.0",
   "generatedAt": "2026-11-14T16:00:00.000Z",
   "description": "Labelled multimodal visual intelligence, OCR, contrast, palette, and document accessibility fixture benchmark suite.",
-  "totalFixtures": 38,
+  "totalFixtures": 46,
   "subsystems": {
     "logo_matching": 14,
     "ocr_accuracy": 13,

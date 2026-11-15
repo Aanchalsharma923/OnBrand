@@ -33,6 +33,10 @@ describe("server-enforced role authorization (RBAC)", () => {
       role: "reviewer" as const,
       actor: { userId: "test-reviewer", displayName: "Workspace Reviewer" },
     };
+    // Persist the draft first — fail-closed approval integrity requires the draft to exist in getDrafts
+    if (repo.saveDraftVersion) {
+      await repo.saveDraftVersion(ctx, initialDraft);
+    }
     const rev = reviewDraft({ draft: initialDraft, sources: seedSources });
     rev.id = "REV-TEST-002";
     rev.draftHash = initialDraft.hash;

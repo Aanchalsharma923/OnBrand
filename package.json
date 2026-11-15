@@ -11,6 +11,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "db:migrate": "node scripts/migrate-database.mjs"
   },
   "dependencies": {

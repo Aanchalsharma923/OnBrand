@@ -69,6 +69,47 @@ describe("Prompt 3: Mandatory 22-Step End-to-End Customer Journey & Persistence 
       }
       return null;
     });
+
+    // Mock isSupabaseConfigured so the POST /api/organizations route takes the Supabase path
+    // rather than returning 503 (which would be correct in a real unconfigured environment).
+    vi.spyOn(supabaseModule, "isSupabaseConfigured").mockReturnValue(true);
+
+    // Mock getSupabaseAdmin to return a fake client that accepts INSERT operations
+    vi.spyOn(supabaseModule, "getSupabaseAdmin").mockImplementation(() => {
+      const mockInsert = vi.fn().mockResolvedValue({ data: null, error: null });
+      const mockSelect = vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      });
+      return {
+        from: vi.fn().mockReturnValue({
+          insert: mockInsert,
+          select: mockSelect,
+        }),
+      } as any;
+    });
+
+    // Mock cloneSampleFoodsTemplate to seed the in-memory repo directly (Supabase client
+    // mock cannot trigger in-memory repo; this gives Step 6 real sources to verify).
+    const starterModule = await import("./starter-template");
+    vi.spyOn(starterModule, "cloneSampleFoodsTemplate").mockImplementation(async (orgId: string) => {
+      const { seedSources } = await import("../onbrand");
+      const ctx = {
+        organizationId: orgId,
+        userId: customerUserId,
+        role: "maintainer" as const,
+        actor: { userId: customerUserId, displayName: "Starter Template" },
+      };
+      for (const src of seedSources) {
+        await repo.createSource(ctx, { ...src, id: `starter-${src.id}-${orgId.slice(0, 8)}` });
+      }
+      return { organizationId: orgId, sourcesCloned: seedSources.length, factsCloned: 0, templateVersion: "sample-foods-v1" };
+    });
   });
 
   // ---------------------------------------------------------------------------

@@ -34,19 +34,33 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1b. Verify that the parent draft has not advanced to a newer version with a different hash
+    // 1b. Verify that the parent draft has not advanced to a newer version with a different hash.
+    // SECURITY: This check must NEVER be silently swallowed. If the database is unavailable,
+    // the approval must be blocked — we cannot verify content integrity without the database.
     if (review.draftId) {
+      let currentDrafts;
       try {
-        const currentDrafts = await repo.getDrafts(ctx);
-        const parentDraft = currentDrafts.find((d) => d.id === review.draftId);
-        if (parentDraft && parentDraft.hash !== body.draftHash) {
-          return NextResponse.json(
-            { error: "Stale draft: A newer version of this draft has already been created. Review and approve the latest version." },
-            { status: 409 }
-          );
-        }
-      } catch {
-        // Fallback if draft listing is unavailable
+        currentDrafts = await repo.getDrafts(ctx);
+      } catch (draftLookupError) {
+        console.error("Draft integrity lookup failed during approval — blocking approval to preserve content integrity:", draftLookupError);
+        return NextResponse.json(
+          { error: "Cannot verify draft integrity: database lookup failed. Approval blocked to prevent stale content approval. Retry when the database is available." },
+          { status: 503 }
+        );
+      }
+      const parentDraft = currentDrafts.find((d) => d.id === review.draftId);
+      if (!parentDraft) {
+        // If the parent draft has been deleted, we cannot verify which content was reviewed
+        return NextResponse.json(
+          { error: "Parent draft not found: the content that was reviewed no longer exists. Approval blocked." },
+          { status: 409 }
+        );
+      }
+      if (parentDraft.hash !== body.draftHash) {
+        return NextResponse.json(
+          { error: "Stale draft: A newer version of this draft has already been created. Review and approve the latest version." },
+          { status: 409 }
+        );
       }
     }
 

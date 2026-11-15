@@ -227,6 +227,71 @@ export async function inspectDocxAccessibility(
     }
   }
 
+  // 3. Table header check: <w:tbl> without <w:tblHeader>
+  const tblRegex = /<w:tbl\b[^>]*>([\s\S]*?)<\/w:tbl>/gi;
+  let tblMatch: RegExpExecArray | null;
+  let tblIndex = 0;
+  while ((tblMatch = tblRegex.exec(xmlStr)) !== null) {
+    tblIndex++;
+    const tblXml = tblMatch[1];
+    const firstRowMatch = /<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/i.exec(tblXml);
+    if (firstRowMatch) {
+      const firstRowXml = firstRowMatch[1];
+      const hasHeader = /<w:tblHeader\b/i.test(firstRowXml);
+      if (!hasHeader) {
+        findings.push({
+          finding_id: `finding-docx-table-${tblIndex}-${Date.now()}`,
+          review_id: "",
+          draft_id: "",
+          draft_version_id: "",
+          draft_hash: "",
+          claim_id: `docx-table-${tblIndex}`,
+          claim_text: "DOCX_ACCESSIBILITY: Table lacks defined header row.",
+          start: 0,
+          end: 0,
+          category: "ACCESSIBILITY",
+          evidence_status: "CONFLICT",
+          severity: "HIGH",
+          blocking_for_review: true,
+          explanation: "DOCX_ACCESSIBILITY: Table lacks defined header row (<w:tblHeader>). Structured tables require header rows for accessible screen reader navigation.",
+          source_evidence: [],
+          created_at: now,
+        });
+      }
+    }
+  }
+
+  // 4. Ambiguous hyperlink check
+  const hlRegex = /<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gi;
+  let hlMatch: RegExpExecArray | null;
+  let hlIndex = 0;
+  while ((hlMatch = hlRegex.exec(xmlStr)) !== null) {
+    hlIndex++;
+    const hlXml = hlMatch[1];
+    const textMatches = Array.from(hlXml.matchAll(/<w:t\b[^>]*>([^<]*)<\/w:t>/gi));
+    const linkText = textMatches.map((m) => m[1]).join("").trim();
+    if (/^(click here|read more|more|link|here|learn more)$/i.test(linkText)) {
+      findings.push({
+        finding_id: `finding-docx-link-${hlIndex}-${Date.now()}`,
+        review_id: "",
+        draft_id: "",
+        draft_version_id: "",
+        draft_hash: "",
+        claim_id: `docx-link-${hlIndex}`,
+        claim_text: "DOCX_ACCESSIBILITY: Ambiguous hyperlink text.",
+        start: 0,
+        end: 0,
+        category: "ACCESSIBILITY",
+        evidence_status: "NEEDS_HUMAN",
+        severity: "REVIEW",
+        blocking_for_review: false,
+        explanation: `DOCX_ACCESSIBILITY: Ambiguous hyperlink text (“${linkText}”). Hyperlinks must convey destination purpose for accessibility.`,
+        source_evidence: [],
+        created_at: now,
+      });
+    }
+  }
+
   return findings;
 }
 

@@ -4,7 +4,6 @@ import { resolveAuthenticatedUser, UnauthorizedError } from "@/lib/server/auth";
 import { SupabaseConfigurationError, isSupabaseConfigured, getSupabaseAdmin } from "@/lib/server/supabase";
 import { databaseConfigured, getDatabase } from "@/lib/server/db";
 import { cloneSampleFoodsTemplate } from "@/lib/server/starter-template";
-import { seedSources } from "@/lib/onbrand";
 import { getRepository } from "@/lib/server/repository";
 import * as schema from "@/lib/schema";
 import { eq } from "drizzle-orm";
@@ -190,18 +189,16 @@ export async function POST(request: Request) {
       });
       if (memErr) throw memErr;
     } else {
-      // Local/offline memory fallback: seed starter template into in-memory repository
-      const repo = getRepository();
-      for (const s of seedSources) {
-        await repo.createSource(
-          { organizationId: orgId, role: "maintainer" } as any,
-          {
-            ...s,
-            id: `SRC-${crypto.randomUUID().slice(0, 8)}`,
-            owner: displayName,
-          }
-        );
-      }
+      // No database and no Supabase configured: cannot create a persistent organization.
+      // This must fail closed — creating an in-memory fake organization would mislead users
+      // into believing they have a real persistent account, which they do not.
+      return NextResponse.json(
+        {
+          error: "Service unavailable: No database connection is configured. Organization creation requires a persistent database (PostgreSQL via Drizzle or Supabase). Please configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and DATABASE_URL environment variables and redeploy.",
+          code: "DB_NOT_CONFIGURED",
+        },
+        { status: 503 }
+      );
     }
 
     // Provision Sample Foods starter template for new organization (Phase 1 mandatory requirement)

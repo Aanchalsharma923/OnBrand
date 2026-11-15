@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST } from "./route";
 import { getRepository } from "@/lib/server/repository";
 import { createDraft, reviewDraft, stableHash } from "@/lib/onbrand";
@@ -26,6 +26,10 @@ describe("POST /api/decisions — Approval & Version Integrity", () => {
 
   beforeEach(() => {
     delete process.env.STRICT_AUTH;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("1. Rejects unauthenticated requests with HTTP 401 when strict auth is enabled", async () => {
@@ -88,6 +92,8 @@ describe("POST /api/decisions — Approval & Version Integrity", () => {
       channel: "social",
       product: "Sample Foods Oat Bites",
     });
+    // Persist the draft so the fail-closed parent lookup can verify it
+    await repo.saveDraftVersion(reviewerCtx, draft);
     const sources = await repo.getSources(reviewerCtx);
     const review = reviewDraft({ draft, sources });
     expect(review.findings.some((f) => f.blocking_for_review)).toBe(true);
@@ -145,6 +151,8 @@ describe("POST /api/decisions — Approval & Version Integrity", () => {
       channel: "social",
       product: "Sample Foods Oat Bites",
     });
+    // Persist the draft so the fail-closed parent lookup can verify it
+    await repo.saveDraftVersion(reviewerCtx, cleanDraft);
     const sources = await repo.getSources(reviewerCtx);
     const review = reviewDraft({ draft: cleanDraft, sources });
     // Remove any blocking finding
@@ -169,5 +177,72 @@ describe("POST /api/decisions — Approval & Version Integrity", () => {
     expect(data.ok).toBe(true);
     expect(data.decision.state).toBe("APPROVED");
     expect(data.decision.draftHash).toBe(cleanDraft.hash);
+  });
+
+  it("7. Blocks approval with HTTP 503 when draft integrity DB lookup throws (fail-closed)", async () => {
+    const repo = getRepository();
+    // Create a draft with a draftId so the draftId branch is exercised
+    const draft = createDraft("Sample Foods Oat Bites are a good snack.", {
+      channel: "social",
+      product: "Sample Foods Oat Bites",
+    });
+    const sources = await repo.getSources(reviewerCtx);
+    const review = reviewDraft({ draft, sources });
+    // Attach a draftId to exercise the fail-closed path
+    (review as any).draftId = "draft-with-db-error";
+    review.findings = review.findings.filter((f) => !f.blocking_for_review);
+    await repo.saveReview(reviewerCtx, review);
+
+    // Simulate database failure in getDrafts
+    vi.spyOn(repo, "getDrafts").mockRejectedValueOnce(new Error("Simulated DB connection failure"));
+
+    const req = new Request("http://localhost:3000/api/decisions", {
+      method: "POST",
+      headers: orgAlphaReviewerHeaders,
+      body: JSON.stringify({
+        reviewId: review.id,
+        state: "APPROVED",
+        draftHash: draft.hash,
+      }),
+    });
+
+    const res = await POST(req);
+    // Must be 503 Service Unavailable, NOT 200. Approval must be blocked when integrity cannot be verified.
+    expect(res.status).toBe(503);
+    const data = await res.json();
+    expect(data.error).toMatch(/database|integrity|unavailable/i);
+  });
+
+  it("8. Blocks approval with HTTP 409 when parent draft has been deleted", async () => {
+    const repo = getRepository();
+    const draft = createDraft("Sample Foods Oat Bites are a wholesome snack.", {
+      channel: "email",
+      product: "Sample Foods Oat Bites",
+    });
+    const sources = await repo.getSources(reviewerCtx);
+    const review = reviewDraft({ draft, sources });
+    // Attach a draftId that doesn't exist in the repository to simulate deleted parent draft
+    (review as any).draftId = "deleted-draft-id-99999";
+    review.findings = review.findings.filter((f) => !f.blocking_for_review);
+    await repo.saveReview(reviewerCtx, review);
+
+    // getDrafts returns empty list (simulating parent draft was deleted)
+    vi.spyOn(repo, "getDrafts").mockResolvedValueOnce([]);
+
+    const req = new Request("http://localhost:3000/api/decisions", {
+      method: "POST",
+      headers: orgAlphaReviewerHeaders,
+      body: JSON.stringify({
+        reviewId: review.id,
+        state: "APPROVED",
+        draftHash: draft.hash,
+      }),
+    });
+
+    const res = await POST(req);
+    // Parent draft not found — cannot verify content integrity
+    expect(res.status).toBe(409);
+    const data = await res.json();
+    expect(data.error).toMatch(/not found|deleted|no longer exists/i);
   });
 });
