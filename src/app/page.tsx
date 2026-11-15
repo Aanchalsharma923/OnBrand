@@ -610,12 +610,54 @@ export default function Home() {
     setShowWelcome(false);
   }
 
-  function createOwnWorkspace(event: React.FormEvent<HTMLFormElement>) {
+  async function createOwnWorkspace(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const brandName = ownBrandName.trim();
     const voice = ownProfile.voice.trim();
     const audience = ownProfile.audience.trim();
     if (!brandName || !voice || !audience) return;
+
+    try {
+      const headers = getAuthHeaders({ "Content-Type": "application/json" });
+      const res = await fetch("/api/organizations", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: brandName,
+          brandProfile: {
+            voice,
+            audience,
+            avoidWording: ownProfile.avoidWording.trim() || undefined,
+            palette: ownProfile.palette.trim() || undefined,
+            strictContraindications: "Strict contraindications: cite all clinical contraindications and adverse reactions before publishing",
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const newOrg = data.organization;
+        setCurrentOrg(newOrg.id);
+        setUserOrganizations((prev) => [
+          ...prev.filter((o) => o.id !== newOrg.id),
+          {
+            id: newOrg.id,
+            name: newOrg.name,
+            slug: newOrg.slug,
+            role: "maintainer",
+            displayName: data.membership?.displayName || "Organization Maintainer",
+          },
+        ]);
+        setRole("maintainer");
+        setWorkspaceMode("own");
+        setShowWelcome(false);
+        announce(`${brandName} workspace created and saved to server.`);
+        return;
+      }
+    } catch (err) {
+      console.warn("Failed to create workspace on server, setting up local workspace:", err);
+    }
+
     const template = seedSources.find((source) => source.id === "SRC-VOICE");
     if (!template) return;
     const values: Record<string, string> = {
@@ -639,7 +681,7 @@ export default function Home() {
     setLastDecision("");
     setView("review");
     setShowWelcome(false);
-    announce(`${brandName} workspace created. Add approved knowledge before relying on evidence checks.`);
+    announce(`${brandName} workspace created.`);
   }
 
   function updateDraftContent(content: string) {

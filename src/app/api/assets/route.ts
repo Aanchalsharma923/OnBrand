@@ -32,15 +32,7 @@ const patchAssetSchema = z.object({
 });
 
 // Server-side binary asset store scoped strictly by organizationId
-interface StoredAssetBinary {
-  organizationId: string;
-  assetId: string;
-  buffer: Buffer;
-  mimeType: string;
-  filename: string;
-}
-
-const serverAssetBinaryStore = new Map<string, StoredAssetBinary>();
+import { serverAssetBinaryStore } from "@/lib/server/asset-binary-store";
 
 export async function GET(request: Request) {
   try {
@@ -60,6 +52,13 @@ export async function GET(request: Request) {
       }
 
       if (binary) {
+        if (asset.approvalState === "REVOKED") {
+          return NextResponse.json(
+            { error: "Asset has been revoked and cannot be retrieved." },
+            { status: 410 }
+          );
+        }
+
         // Try Supabase Storage first (persistent across cold starts)
         let binaryBuffer: Buffer | null = null;
         let binaryMimeType = "application/octet-stream";
@@ -78,13 +77,15 @@ export async function GET(request: Request) {
               binaryMimeType = asset.mimeType ?? "application/octet-stream";
               binaryFilename = storedFilename;
             }
-          } catch {
-            // Fall through to in-memory store
+          } catch (dlErr) {
+            if (process.env.NODE_ENV === "production") {
+              return NextResponse.json({ error: "Failed to download asset from storage." }, { status: 500 });
+            }
           }
         }
 
-        // Fall back to in-memory store (test/local compatibility, ephemeral)
-        if (!binaryBuffer) {
+        // Only fall back to in-memory store in non-production environments
+        if (!binaryBuffer && process.env.NODE_ENV !== "production") {
           const stored = serverAssetBinaryStore.get(`${ctx.organizationId}:${assetId}`);
           if (stored) {
             binaryBuffer = stored.buffer;
@@ -198,19 +199,25 @@ export async function POST(request: Request) {
             }
           }
         } catch (storageErr) {
-          // Storage upload failed — log and fall through to in-memory store
+          if (process.env.NODE_ENV === "production") {
+            throw new Error(`Production storage upload failed: ${storageErr instanceof Error ? storageErr.message : String(storageErr)}`);
+          }
           console.error("Supabase Storage upload failed, falling back to in-memory store:", storageErr);
         }
+      } else if (process.env.NODE_ENV === "production") {
+        throw new Error("Supabase Storage is unconfigured in production. Assets cannot be persistently stored.");
       }
 
-      // Always populate in-memory store for immediate same-process retrieval and test compatibility
-      serverAssetBinaryStore.set(`${ctx.organizationId}:${saved.id}`, {
-        organizationId: ctx.organizationId,
-        assetId: saved.id,
-        buffer: binaryBuffer,
-        mimeType: body.mimeType,
-        filename: saved.name,
-      });
+      // Populate in-memory store for immediate same-process retrieval (test/dev)
+      if (process.env.NODE_ENV !== "production" || storageKey) {
+        serverAssetBinaryStore.set(`${ctx.organizationId}:${saved.id}`, {
+          organizationId: ctx.organizationId,
+          assetId: saved.id,
+          buffer: binaryBuffer,
+          mimeType: body.mimeType,
+          filename: saved.name,
+        });
+      }
     }
 
     await repo.recordAuditEvent(ctx, {
@@ -281,9 +288,12 @@ export async function PATCH(request: Request) {
       }
     }
 
-    // Always evict from in-memory store on revocation
+    // Always evict from in-memory store and clear storage key on revocation
     if (body.approvalState === "REVOKED") {
       serverAssetBinaryStore.delete(`${ctx.organizationId}:${body.id}`);
+      if (repo.updateAsset) {
+        await repo.updateAsset(ctx, body.id, { storageKey: null } as any);
+      }
     }
     await repo.recordAuditEvent(ctx, {
       action,

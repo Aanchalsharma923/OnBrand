@@ -11,6 +11,13 @@ import { eq } from "drizzle-orm";
 const createOrgSchema = z.object({
   name: z.string().trim().min(2, "Organization name must be at least 2 characters").max(100),
   slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens").optional(),
+  brandProfile: z.object({
+    voice: z.string().trim().max(200).optional(),
+    audience: z.string().trim().max(200).optional(),
+    avoidWording: z.string().trim().max(400).optional(),
+    palette: z.string().trim().max(200).optional(),
+    strictContraindications: z.string().trim().max(500).optional(),
+  }).optional(),
 });
 
 /**
@@ -201,8 +208,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Provision Sample Foods starter template for new organization (Phase 1 mandatory requirement)
-    const starterTemplate = await cloneSampleFoodsTemplate(orgId, displayName);
+    // Provision starter template for new organization with custom brand profile if specified
+    const starterTemplate = await cloneSampleFoodsTemplate(
+      orgId,
+      displayName,
+      body.brandProfile ? { ...body.brandProfile, brandName: body.name } : undefined
+    );
 
     const repo = getRepository();
     await repo.recordAuditEvent(

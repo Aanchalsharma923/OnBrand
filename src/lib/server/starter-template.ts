@@ -21,13 +21,68 @@ export interface ProvisioningResult {
   templateVersion: string;
 }
 
+export interface BrandProfileInput {
+  voice?: string;
+  audience?: string;
+  avoidWording?: string;
+  palette?: string;
+  strictContraindications?: string;
+  brandName?: string;
+}
+
+function resolveSourceAndFacts(
+  templateSource: (typeof seedSources)[number],
+  brandProfile?: BrandProfileInput
+) {
+  let facts = templateSource.facts ?? [];
+  let title = templateSource.title;
+
+  if (templateSource.id === "SRC-VOICE" && brandProfile) {
+    const brandName = brandProfile.brandName || "Custom Brand";
+    title = `${brandName} Brand Voice & Governance Guide`;
+    facts = facts.map((fact) => {
+      let value = fact.value;
+      if (fact.attribute === "voice" && brandProfile.voice) value = brandProfile.voice;
+      else if (fact.attribute === "audience" && brandProfile.audience) value = brandProfile.audience;
+      else if (fact.attribute === "avoid wording" && brandProfile.avoidWording) value = brandProfile.avoidWording;
+      else if (fact.attribute === "visual palette" && brandProfile.palette) value = brandProfile.palette;
+      else if (fact.attribute === "claim restriction" && brandProfile.strictContraindications) value = brandProfile.strictContraindications;
+
+      return {
+        ...fact,
+        subject: brandName,
+        value,
+        statement: `${brandName}: ${fact.attribute} — ${value}.`,
+      };
+    });
+
+    if (brandProfile.strictContraindications && !facts.some((f) => f.attribute === "claim restriction")) {
+      facts = [
+        ...facts,
+        {
+          id: `${templateSource.id}-CR`,
+          sourceId: templateSource.id,
+          subject: brandName,
+          attribute: "claim restriction",
+          value: brandProfile.strictContraindications,
+          unit: undefined,
+          statement: `${brandName}: claim restriction — ${brandProfile.strictContraindications}.`,
+        },
+      ];
+    }
+  }
+
+  return { facts, title };
+}
+
 /**
  * Copies canonical Sample Foods template sources and facts into a newly created organization.
  * Idempotent: if sources already exist for the organization, skips duplicate insertion.
  */
 export async function cloneSampleFoodsTemplate(
   organizationId: string,
-  createdBy = "Sample Foods Starter Template"
+  createdBy = "Sample Foods Starter Template",
+  brandProfile?: BrandProfileInput
 ): Promise<ProvisioningResult> {
   if (!organizationId) {
     throw new Error("Organization ID is required to clone starter template.");
@@ -60,12 +115,16 @@ export async function cloneSampleFoodsTemplate(
       await db.transaction(async (tx) => {
         for (const templateSource of seedSources) {
           const newSourceId = crypto.randomUUID();
+          const { facts: templateFacts, title: sourceTitle } = resolveSourceAndFacts(
+            templateSource,
+            brandProfile
+          );
 
           await tx.insert(schema.sources).values({
             id: newSourceId,
             organizationId,
             sourceKey: templateSource.id,
-            title: templateSource.title,
+            title: sourceTitle,
             kind: templateSource.kind,
             authority: templateSource.authority,
             version: templateSource.version ?? 1,
@@ -78,7 +137,6 @@ export async function cloneSampleFoodsTemplate(
           });
           sourcesCloned++;
 
-          const templateFacts = templateSource.facts ?? [];
           if (templateFacts.length > 0) {
             await tx.insert(schema.facts).values(
               templateFacts.map((fact) => ({
@@ -145,11 +203,15 @@ export async function cloneSampleFoodsTemplate(
 
       for (const templateSource of seedSources) {
         const newSourceId = crypto.randomUUID();
+        const { facts: templateFacts, title: sourceTitle } = resolveSourceAndFacts(
+          templateSource,
+          brandProfile
+        );
         const { error: srcErr } = await admin.from("sources").insert({
           id: newSourceId,
           organization_id: organizationId,
           source_key: templateSource.id,
-          title: templateSource.title,
+          title: sourceTitle,
           kind: templateSource.kind,
           authority: templateSource.authority,
           version: templateSource.version ?? 1,
@@ -166,7 +228,6 @@ export async function cloneSampleFoodsTemplate(
         }
         sourcesCloned++;
 
-        const templateFacts = templateSource.facts ?? [];
         if (templateFacts.length > 0) {
           const factInserts = templateFacts.map((fact) => ({
             id: crypto.randomUUID(),

@@ -107,20 +107,17 @@ export async function resolveTenantContext(request: Request): Promise<TenantCont
       }
 
       // Check requested tenant: Demo accounts are strictly quarantined to their demo organization!
-      const requestedOrgId = request.headers.get("x-onbrand-tenant") || request.headers.get("x-demo-org");
-      if (
-        requestedOrgId &&
-        requestedOrgId !== "alpha" &&
-        requestedOrgId !== "org_alpha" &&
-        requestedOrgId !== "beta" &&
-        requestedOrgId !== "org_beta" &&
-        requestedOrgId !== DEMO_ORGS.ALPHA.id &&
-        requestedOrgId !== DEMO_ORGS.BETA.id &&
-        requestedOrgId !== verifiedDemo.organizationId
-      ) {
-        throw new ForbiddenError(
-          "Demo accounts are isolated to demonstration workspaces and cannot access customer organizations."
-        );
+      const requestedOrg = request.headers.get("x-onbrand-tenant") || request.headers.get("x-demo-org");
+      if (requestedOrg) {
+        const isBetaRequested = requestedOrg === "beta" || requestedOrg === "org_beta" || requestedOrg === DEMO_ORGS.BETA.id;
+        const isAlphaRequested = requestedOrg === "alpha" || requestedOrg === "org_alpha" || requestedOrg === DEMO_ORGS.ALPHA.id;
+        const targetOrgId = isBetaRequested ? DEMO_ORGS.BETA.id : isAlphaRequested ? DEMO_ORGS.ALPHA.id : requestedOrg;
+
+        if (targetOrgId !== verifiedDemo.organizationId) {
+          throw new ForbiddenError(
+            "Demo accounts are strictly isolated to their provisioned workspace and cannot access other organizations."
+          );
+        }
       }
 
       return {
