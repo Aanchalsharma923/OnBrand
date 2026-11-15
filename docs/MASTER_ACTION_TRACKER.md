@@ -32,6 +32,11 @@
 | **ACT-VIS-04** | Visual / Color & Contrast | CIE76 Delta-E photo exemption & ambiguous perimeter check | CV / A11y | **COMPLETED** | Photo exemption prevents false blocks; border check escalates to `NEEDS_HUMAN` |
 | **ACT-VIS-05** | Visual / Doc A11y | DOCX & PDF structural accessibility inspections | Doc / A11y | **COMPLETED** | True XML/tag inspection; untagged PDF `NEEDS_HUMAN` disclosure; no false WCAG claims |
 | **ACT-VIS-06** | Visual / Audit & Docs | 12-test audit suite, 38 fixtures & acceptance report | QA / CV | **COMPLETED** | `visual-intelligence-audit.test.ts` 12/12 passing; `VISUAL_INTELLIGENCE_ACCEPTANCE_REPORT.md` |
+| **ACT-AUD-01** | Live Audit / Workspace | DEF-WS-DROP-01: Connect form to server endpoint & session bootstrap | FullStack | **COMPLETED** | `POST /api/organizations` dispatched, persists brand voice/palette, switches org |
+| **ACT-AUD-02** | Live Audit / Upload | DEF-UPLOAD-UI-01: Multipart file upload & fact ingestion in UI | FullStack / Storage | **COMPLETED** | `POST /api/assets` handles `multipart/form-data`, extracts PDF/DOCX/PNG to sources |
+| **ACT-AUD-03** | Live Audit / Security | DEF-SEC-COOKIE-01: Demo cookie security flags (HttpOnly, Secure, Lax) | SecEng | **COMPLETED** | `onbrand-demo-token` cookie issued with `HttpOnly: true`, `Secure: true` on HTTPS |
+| **ACT-AUD-04** | Live Audit / UX | DEF-NAV-ARROW-01: Interactive finding navigator stepping & shortcuts | FullStack / QA | **COMPLETED** | `‹` and `›` step findings cyclicly (1→2→3→2), updates dossier & highlights |
+| **ACT-AUD-05** | Live Audit / Layout | DEF-RESP-MOB-01: Mobile layout & zero horizontal overflow at 375px/390px | FrontEnd / A11y | **COMPLETED** | 0px horizontal overflow verified in Chromium on iPhone SE/14 viewports |
 
 ---
 
@@ -141,3 +146,28 @@
 - **Target Files**: `src/lib/server/visual-intelligence-audit.test.ts`, `evaluation/visual-fixtures/fixtures.json`, `docs/VISUAL_INTELLIGENCE_ACCEPTANCE_REPORT.md`
 - **Action**: Created 38 ground-truth labelled fixtures covering all 4 visual and accessibility subsystems. Implemented comprehensive 12-test forensic audit suite verifying all Prompt 5 requirements (12/12 passing). Authored exhaustive 10-section acceptance report documenting algorithms, metrics, confusion matrices, failure modes, and production boundaries.
 - **Status**: **COMPLETED** (12/12 tests passing, 100% green).
+
+### ACT-AUD-01: Custom Workspace Creation & PostgreSQL Persistence (DEF-WS-DROP-01)
+- **Target Files**: `src/app/page.tsx`, `src/app/api/organizations/route.ts`
+- **Action**: Connected Welcome Modal workspace creation form to `POST /api/organizations`. Added session bootstrapping to ensure unauthenticated users receive a valid session token before org creation. Added error alerts and prevented premature modal dismissal. Updated state transitions to automatically switch active workspace and reload fresh brand profile server-side upon HTTP 200/201 response.
+- **Status**: **COMPLETED** (Verified by `production-workflow-repair.test.ts` Section 4 and `visual-workflow.spec.ts` Browser 1).
+
+### ACT-AUD-02: Multipart Knowledge Base Upload & Extraction (DEF-UPLOAD-UI-01)
+- **Target Files**: `src/app/api/assets/route.ts`, `src/app/page.tsx`
+- **Action**: Added native `multipart/form-data` handling to `POST /api/assets` supporting PDF, DOCX, and PNG binary uploads alongside JSON payloads. Integrated server-side SHA-256 hash generation, pHash image hashing, 50MB bounds checks, and storage upload. In `src/app/page.tsx`, wired file input to send binary `FormData` and chained asset registration with text extraction and `POST /api/sources` fact ingestion.
+- **Status**: **COMPLETED** (Verified by `asset-multipart-upload.test.ts` 3/3 passing and `visual-workflow.spec.ts` Browser 2).
+
+### ACT-AUD-03: Demo Cookie Security Flags (DEF-SEC-COOKIE-01)
+- **Target File**: `src/app/api/auth/demo/route.ts`
+- **Action**: Hardened `onbrand-demo-token` cookie configuration: set `httpOnly: true`, dynamically detect HTTPS (`x-forwarded-proto` or `NODE_ENV === "production"`) for `secure: true`, and maintained strict `sameSite: "lax"` protection.
+- **Status**: **COMPLETED** (Verified by `production-workflow-repair.test.ts` Section 3).
+
+### ACT-AUD-04: Finding Navigator Interactive Stepping & Shortcuts (DEF-NAV-ARROW-01)
+- **Target Files**: `src/app/page.tsx`, `src/components/workspace/ReviewToolbar.tsx`
+- **Action**: Fixed active finding resolution to properly handle `-1` initial index and normalize lookups across `id`, `finding_id`, and `rawFindingId`. Updated `runReview` to initialize selection to the first actionable finding (`actionableList[0]`) rather than informational findings. Added keyboard navigation (`ArrowLeft` / `ArrowRight`) to cycle active findings.
+- **Status**: **COMPLETED** (Verified by `production-workflow-repair.test.ts` Section 6, `test-local-ui.mjs` stepping 1→2→3→2, and `visual-workflow.spec.ts` Browser 3).
+
+### ACT-AUD-05: Mobile Responsive Layout & Zero Horizontal Overflow (DEF-RESP-MOB-01)
+- **Target File**: `src/app/globals.css`
+- **Action**: Added `@media (max-width: 680px)` breakpoint rules to wrap `.topbar` and `.topbar-right`, collapse the review workspace layout into a vertical stack, set `.right-intelligence-column` to `min-width: 0; width: 100%`, and enable horizontal scrolling on `.document-preview-container`.
+- **Status**: **COMPLETED** (Verified by Playwright Chromium against `http://localhost:3009`: 0px horizontal scroll and 0px overflow at both 375px and 390px viewports).

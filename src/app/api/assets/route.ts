@@ -131,52 +131,110 @@ export async function POST(request: Request) {
     const ctx = await resolveTenantContext(request);
     requireRole(ctx, ["maintainer"]);
 
-    const body = assetSchema.parse(await request.json());
-    let computedPHash = body.phash ?? body.pHash;
-
-    // If binary base64 content is provided, verify cryptographic SHA-256 and pHash server-side
+    const contentType = request.headers.get("content-type") || "";
+    let assetName: string;
+    let sha256: string;
+    let mimeType: string;
+    let byteSize: number;
+    let approvalState: "APPROVED" | "PENDING_REVIEW" | "REVOKED" = "APPROVED";
+    let allowedUsage: string | undefined;
+    let replacesAssetId: string | undefined;
     let binaryBuffer: Buffer | null = null;
-    if (body.content) {
-      binaryBuffer = Buffer.from(body.content, "base64");
-      const computedHash = createHash("sha256").update(binaryBuffer).digest("hex");
-      if (computedHash.toLowerCase() !== body.sha256.toLowerCase()) {
-        return NextResponse.json(
-          { error: "Cryptographic hash mismatch: provided sha256 does not match binary content." },
-          { status: 400 }
-        );
+    let computedPHash: string | undefined;
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      if (!file || typeof file === "string") {
+        return NextResponse.json({ error: "Missing file in multipart form data." }, { status: 400 });
       }
-      if (!computedPHash) {
-        computedPHash = computePerceptualHash(binaryBuffer);
+      const arrayBuf = await file.arrayBuffer();
+      binaryBuffer = Buffer.from(arrayBuf);
+      const rawName = ((formData.get("name") as string) || file.name || "uploaded-asset").trim();
+      assetName = rawName.replace(/[^a-zA-Z0-9_\- .]/g, "_");
+      byteSize = binaryBuffer.length;
+      if (byteSize > 52428800) {
+        return NextResponse.json({ error: "File exceeds 50 MB limit." }, { status: 400 });
+      }
+      sha256 = createHash("sha256").update(binaryBuffer).digest("hex");
+      const ext = assetName.split(".").pop()?.toLowerCase();
+      mimeType =
+        file.type ||
+        (ext === "pdf"
+          ? "application/pdf"
+          : ext === "docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : ext === "png"
+          ? "image/png"
+          : ext === "jpg" || ext === "jpeg"
+          ? "image/jpeg"
+          : ext === "webp"
+          ? "image/webp"
+          : "application/octet-stream");
+      approvalState = (formData.get("approvalState") as any) || "APPROVED";
+      allowedUsage = (formData.get("allowedUsage") as string) || undefined;
+      replacesAssetId = (formData.get("replacesAssetId") as string) || undefined;
+      if (mimeType.startsWith("image/")) {
+        try {
+          computedPHash = computePerceptualHash(binaryBuffer);
+        } catch {
+          // perceptual hash fallback
+        }
+      }
+    } else {
+      const body = assetSchema.parse(await request.json());
+      assetName = body.name.trim();
+      sha256 = body.sha256.toLowerCase();
+      mimeType = body.mimeType;
+      byteSize = body.byteSize;
+      approvalState = body.approvalState ?? "APPROVED";
+      allowedUsage = body.allowedUsage;
+      replacesAssetId = body.replacesAssetId;
+      computedPHash = body.phash ?? body.pHash;
+
+      // If binary base64 content is provided, verify cryptographic SHA-256 and pHash server-side
+      if (body.content) {
+        binaryBuffer = Buffer.from(body.content, "base64");
+        const computedHash = createHash("sha256").update(binaryBuffer).digest("hex");
+        if (computedHash.toLowerCase() !== sha256) {
+          return NextResponse.json(
+            { error: "Cryptographic hash mismatch: provided sha256 does not match binary content." },
+            { status: 400 }
+          );
+        }
+        if (!computedPHash) {
+          computedPHash = computePerceptualHash(binaryBuffer);
+        }
       }
     }
 
     const repo = getRepository();
 
     // If this asset replaces an existing asset, revoke the previous version and record audit
-    if (body.replacesAssetId && repo.updateAsset) {
-      const existing = await repo.updateAsset(ctx, body.replacesAssetId, {
+    if (replacesAssetId && repo.updateAsset) {
+      const existing = await repo.updateAsset(ctx, replacesAssetId, {
         approvalState: "REVOKED",
       });
       if (existing) {
         await repo.recordAuditEvent(ctx, {
           action: "ASSET_SUPERSEDED",
           entityType: "ASSET",
-          entityId: body.replacesAssetId,
-          metadata: { supersededBy: body.name, previousState: existing.approvalState },
+          entityId: replacesAssetId,
+          metadata: { supersededBy: assetName, previousState: existing.approvalState },
         });
       }
     }
 
     const saved = await repo.registerAsset(ctx, {
       organizationId: ctx.organizationId,
-      name: body.name.trim(),
-      sha256: body.sha256.toLowerCase(),
+      name: assetName,
+      sha256: sha256.toLowerCase(),
       phash: computedPHash ?? "",
       pHash: computedPHash ?? "",
-      mimeType: body.mimeType,
-      byteSize: body.byteSize,
-      approvalState: body.approvalState ?? "APPROVED",
-      allowedUsage: body.allowedUsage,
+      mimeType: mimeType,
+      byteSize: byteSize,
+      approvalState: approvalState,
+      allowedUsage: allowedUsage,
     });
 
     // Store binary: try Supabase Storage first (persistent), fall back to in-memory (ephemeral)
@@ -188,7 +246,7 @@ export async function POST(request: Request) {
             ctx.organizationId,
             saved.id,
             binaryBuffer,
-            body.mimeType,
+            mimeType,
             saved.name
           );
           if (path) {
@@ -214,20 +272,20 @@ export async function POST(request: Request) {
           organizationId: ctx.organizationId,
           assetId: saved.id,
           buffer: binaryBuffer,
-          mimeType: body.mimeType,
+          mimeType: mimeType,
           filename: saved.name,
         });
       }
     }
 
     await repo.recordAuditEvent(ctx, {
-      action: body.replacesAssetId ? "ASSET_REPLACED" : "ASSET_REGISTERED",
+      action: replacesAssetId ? "ASSET_REPLACED" : "ASSET_REGISTERED",
       entityType: "ASSET",
       entityId: saved.id,
       metadata: {
         name: saved.name,
         sha256: saved.sha256,
-        replacesAssetId: body.replacesAssetId,
+        replacesAssetId: replacesAssetId,
         hasBinary: binaryBuffer !== null,
         storageKey: storageKey ?? null,
         storageBackend: storageKey ? "supabase-storage" : binaryBuffer ? "in-memory" : "none",

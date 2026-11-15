@@ -2412,7 +2412,67 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-weight: 600;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 680px) {
+  html, body, .app-shell, .main-area, .layout-root {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  .topbar {
+    flex-wrap: wrap;
+    min-height: auto;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .topbar-right {
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: 100%;
+    justify-content: flex-end;
+  }
+  .tenant-selector {
+    max-width: 130px;
+    font-size: 8px;
+  }
+  .tenant-selector select {
+    max-width: 95px;
+    font-size: 9px;
+  }
+  .review-workspace-layout {
+    flex-direction: column;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  .centre-viewer-column {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .right-intelligence-column {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 8px 0 !important;
+  }
+  .compact-agent-panel,
+  .findings-workspace-panel,
+  .finding-detail-workspace {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .agent-pipeline-chips {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pipeline-chip {
+    flex-shrink: 1;
+  }
+  .document-preview-container,
+  .document-canvas,
+  .document-view {
+    max-width: 100%;
+    overflow-x: auto;
+  }
   .review-workspace-toolbar {
     flex-direction: column;
     align-items: stretch;

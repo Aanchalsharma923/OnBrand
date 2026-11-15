@@ -57,10 +57,16 @@ export async function POST(request: Request) {
       message: `Signed in as Demo ${verified.role.charAt(0).toUpperCase() + verified.role.slice(1)} (${isBeta ? "Nova Biopharma" : "Acme Foods"})`,
     });
 
-    // Set cookie for browser session persistence
+    // Set secure HttpOnly cookie for browser session persistence
+    const isHttps =
+      request.headers.get("x-forwarded-proto") === "https" ||
+      request.url.startsWith("https://") ||
+      process.env.NODE_ENV === "production";
+
     response.cookies.set("onbrand-demo-token", token, {
       path: "/",
-      httpOnly: false, // Accessible to client for Authorization header
+      httpOnly: true, // Prevent client-side script inspection / XSS token exfiltration
+      secure: isHttps, // Enforce Secure flag on HTTPS / production environments
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60, // 7 days
     });

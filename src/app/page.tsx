@@ -142,6 +142,8 @@ export default function Home() {
   const [profileForm, setProfileForm] = useState<BrandProfileDraft>({ voice: "", audience: "", avoidWording: "", palette: "" });
   const [structuralData, setStructuralData] = useState<StructuralDocumentData | undefined>(undefined);
   const [uploadedFile, setUploadedFile] = useState<File | Blob | null>(null);
+  const [workspaceCreateError, setWorkspaceCreateError] = useState<string | null>(null);
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
 
   // Verified authentication, organizations, and onboarding state
   const [supabaseSession, setSupabaseSession] = useState<{ user: { email?: string; id: string }; accessToken: string } | null>(null);
@@ -189,7 +191,7 @@ export default function Home() {
           databaseIntegration: data.databaseIntegration ?? "not-configured",
         });
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Check browser Supabase auth session
     const supabase = getBrowserSupabase();
@@ -282,7 +284,7 @@ export default function Home() {
     return headers;
   }, [currentOrg, role, supabaseSession]);
 
-  const signInAsDemo = useCallback(async (demoRole: Role, demoOrg = "alpha") => {
+  const signInAsDemo = useCallback(async (demoRole: Role, demoOrg = "alpha", keepWelcome = false) => {
     setIsAuthLoading(true);
     setAuthStatusMessage("");
     try {
@@ -302,8 +304,11 @@ export default function Home() {
       setRole(data.role as Role);
       setCurrentOrg(data.organization.id);
       setUserOrganizations([data.organization]);
-      setShowWelcome(false);
+      if (!keepWelcome) {
+        setShowWelcome(false);
+      }
       setShowAuthModal(false);
+      setWorkspaceCreateError(null);
       announce(`Signed in as ${data.user.displayName}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Authentication failed.";
@@ -358,7 +363,7 @@ export default function Home() {
                 method: "POST",
                 headers: getAuthHeaders({ "Content-Type": "application/json" }),
                 body: JSON.stringify(templateSource),
-              }).catch(() => {});
+              }).catch(() => { });
             }
           }
         }
@@ -536,7 +541,12 @@ export default function Home() {
     return findings.find((f) => f.finding_id === selectedEnriched.finding_id || f.finding_id === selectedEnriched.rawFindingId || f.finding_id === selectedEnriched.id) ?? null;
   }, [selectedEnriched, findings]);
 
-  const hasCurrentReview = Boolean(review && review.draftHash === draft.hash && review.sourceSnapshotHash === sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt)));
+  const currentSourceSnapshotHash = sourceSnapshotHash(sources.filter((source) => source.approvalState === "APPROVED" && !source.revokedAt));
+  const hasCurrentReview = Boolean(
+    review &&
+    review.draftHash === draft.hash &&
+    (review.sourceSnapshotHash === currentSourceSnapshotHash || (workspaceMode === "demo" && review.draftHash === draft.hash))
+  );
   const hasCurrentDecision = Boolean(hasCurrentReview && review?.decision && review.decision.draftHash === draft.hash && review.decision.sourceSnapshotHash === review.sourceSnapshotHash);
 
   const actionableRanges = useMemo(() => {
@@ -549,8 +559,8 @@ export default function Home() {
         classification: f.classification === "CONFIRMED_VIOLATION"
           ? "violation"
           : f.classification === "UNSUPPORTED_CLAIM"
-          ? "unsupported"
-          : "needshuman",
+            ? "unsupported"
+            : "needshuman",
       }))
     );
   }, [hasCurrentReview, actionableList, draft.content]);
@@ -615,10 +625,31 @@ export default function Home() {
     const brandName = ownBrandName.trim();
     const voice = ownProfile.voice.trim();
     const audience = ownProfile.audience.trim();
-    if (!brandName || !voice || !audience) return;
+    if (!brandName || !voice || !audience) {
+      setWorkspaceCreateError("Please provide brand name, brand voice, and target audience.");
+      return;
+    }
+
+    setIsCreatingWorkspace(true);
+    setWorkspaceCreateError(null);
 
     try {
-      const headers = getAuthHeaders({ "Content-Type": "application/json" });
+      // Enforce authentication: do NOT silently elevate unauthenticated visitors into demo maintainers.
+      const token = supabaseSession?.accessToken;
+      if (!token) {
+        const errorMsg =
+          "Authentication required: Creating an enterprise organization requires an authenticated account. Please sign in with your enterprise credentials or select an Evaluator Demo Persona above.";
+        setWorkspaceCreateError(errorMsg);
+        setIsCreatingWorkspace(false);
+        announce("Authentication required to create an enterprise workspace.");
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      };
+
       const res = await fetch("/api/organizations", {
         method: "POST",
         headers,
@@ -634,54 +665,53 @@ export default function Home() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const newOrg = data.organization;
-        setCurrentOrg(newOrg.id);
-        setUserOrganizations((prev) => [
-          ...prev.filter((o) => o.id !== newOrg.id),
-          {
-            id: newOrg.id,
-            name: newOrg.name,
-            slug: newOrg.slug,
-            role: "maintainer",
-            displayName: data.membership?.displayName || "Organization Maintainer",
-          },
-        ]);
-        setRole("maintainer");
-        setWorkspaceMode("own");
-        setShowWelcome(false);
-        announce(`${brandName} workspace created and saved to server.`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMessage = errorData.error || `Server failed to create workspace (HTTP ${res.status}).`;
+        setWorkspaceCreateError(errorMessage);
+        setIsCreatingWorkspace(false);
+        // Do NOT dismiss modal on failed request
+        announce(`Workspace creation failed: ${errorMessage}`);
         return;
       }
-    } catch (err) {
-      console.warn("Failed to create workspace on server, setting up local workspace:", err);
-    }
 
-    const template = seedSources.find((source) => source.id === "SRC-VOICE");
-    if (!template) return;
-    const values: Record<string, string> = {
-      voice,
-      audience,
-      "avoid wording": ownProfile.avoidWording.trim() || "Not provided",
-      "visual palette": ownProfile.palette.trim() || "Not provided",
-    };
-    const facts = template.facts.filter((fact, index, all) => Object.hasOwn(values, fact.attribute) && all.findIndex((item) => item.attribute === fact.attribute) === index).map((fact, index) => {
-      const value = values[fact.attribute];
-      return { ...fact, id: `SRC-VOICE-F${index + 1}`, subject: brandName, value, statement: `${brandName}: ${fact.attribute} — ${value}.` };
-    });
-    const profile: Source = { ...template, id: "SRC-VOICE", title: `${brandName} brand profile`, owner: "Workspace owner", facts };
-    const cleanDraft = createDraft("", { title: "Untitled content draft", product: brandName, audience });
-    setWorkspaceMode("own");
-    setDraft(cleanDraft);
-    setVersions([cleanDraft]);
-    setSources([profile]);
-    setReview(null);
-    setRole("maintainer");
-    setLastDecision("");
-    setView("review");
-    setShowWelcome(false);
-    announce(`${brandName} workspace created.`);
+      const data = await res.json();
+      const newOrg = data.organization;
+
+      // Update state strictly after server confirmation
+      setCurrentOrg(newOrg.id);
+      setUserOrganizations((prev) => [
+        ...prev.filter((o) => o.id !== newOrg.id),
+        {
+          id: newOrg.id,
+          name: newOrg.name,
+          slug: newOrg.slug,
+          role: "maintainer",
+          displayName: data.membership?.displayName || "Organization Maintainer",
+        },
+      ]);
+      setRole("maintainer");
+      setWorkspaceMode("own");
+
+      const cleanDraft = createDraft("", { title: `${brandName} Launch Brief`, product: brandName, audience });
+      setDraft(cleanDraft);
+      setVersions([cleanDraft]);
+      if (data.sources && Array.isArray(data.sources)) {
+        setSources(data.sources);
+      }
+      setReview(null);
+      setLastDecision("");
+      setView("review");
+      setWorkspaceCreateError(null);
+      setIsCreatingWorkspace(false);
+      setShowWelcome(false); // Only dismiss after server confirmation!
+      announce(`${brandName} workspace created and saved to server.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Network error creating workspace.";
+      setWorkspaceCreateError(msg);
+      setIsCreatingWorkspace(false);
+      announce(`Workspace creation error: ${msg}`);
+    }
   }
 
   function updateDraftContent(content: string) {
@@ -693,9 +723,20 @@ export default function Home() {
   }
 
   function selectFinding(target: Finding | EnrichedFinding | string) {
-    const rawId = typeof target === "string" ? target : "rawFindingId" in target ? target.rawFindingId : target.finding_id;
+    const rawId =
+      typeof target === "string"
+        ? target
+        : "rawFindingId" in target && target.rawFindingId
+          ? target.rawFindingId
+          : "finding_id" in target && target.finding_id
+            ? target.finding_id
+            : "id" in target
+              ? (target as EnrichedFinding).id
+              : "";
     setSelectedFinding(rawId);
-    const enriched = enrichedList.find((f) => f.rawFindingId === rawId || f.id === rawId);
+    const enriched = enrichedList.find(
+      (f) => f.rawFindingId === rawId || f.id === rawId || f.finding_id === rawId
+    );
     if (!enriched) return;
     const occIndex = activeOccurrenceMap[enriched.id] ?? 0;
     const occ = enriched.occurrences[occIndex] ?? enriched.occurrences[0];
@@ -856,7 +897,7 @@ export default function Home() {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(next),
-    }).catch(() => {});
+    }).catch(() => { });
     announce(`Saved immutable version v${next.version}.`);
     return next;
   }
@@ -924,7 +965,10 @@ export default function Home() {
       nextReview.decisionHistory = review?.decisionHistory ?? [];
       setReview(nextReview);
       setModelDisclosure(payload.modelDisclosure ?? "Review completed with disclosed fallback behavior.");
-      setSelectedFinding(nextReview.findings[0]?.finding_id ?? null);
+      const nextActionable = consolidateFindings(nextReview.findings, reviewDraftVersion.content, sources).filter(
+        (f) => f.classification !== "INFORMATIONAL" && !f.dismissed
+      );
+      setSelectedFinding(nextActionable[0]?.rawFindingId || nextActionable[0]?.id || nextReview.findings[0]?.finding_id || null);
       setLastDecision("");
       announce("Review complete — each finding is linked to its evidence status.");
     } catch (error) {
@@ -954,7 +998,10 @@ export default function Home() {
 
     const newReview = reviewDraft({ draft: updated, sources, includeDemoRules: workspaceMode === "demo" && currentOrg === "org_alpha" });
     setReview(newReview);
-    setSelectedFinding(newReview.findings[0]?.finding_id ?? null);
+    const newActionable = consolidateFindings(newReview.findings, updated.content, sources).filter(
+      (f) => f.classification !== "INFORMATIONAL" && !f.dismissed
+    );
+    setSelectedFinding(newActionable[0]?.rawFindingId || newActionable[0]?.id || newReview.findings[0]?.finding_id || null);
     // Persist rechecked review to database
     fetch("/api/reviews", {
       method: "POST",
@@ -971,23 +1018,52 @@ export default function Home() {
   }
 
   const currentFindingIndex = selectedEnriched
-    ? actionableList.findIndex((f) => f.finding_id === selectedEnriched.finding_id)
+    ? actionableList.findIndex(
+      (f) =>
+        f.id === selectedEnriched.id ||
+        f.rawFindingId === selectedEnriched.rawFindingId ||
+        f.finding_id === selectedEnriched.finding_id
+    )
     : -1;
 
-  function handleStepFinding(delta: number) {
-    if (actionableList.length === 0) return;
-    let nextIndex = 0;
-    if (currentFindingIndex >= 0) {
-      nextIndex = (currentFindingIndex + delta + actionableList.length) % actionableList.length;
-    } else if (delta < 0) {
-      nextIndex = actionableList.length - 1;
+  const handleStepFinding = useCallback(
+    (delta: number) => {
+      if (actionableList.length === 0) return;
+      let nextIndex = 0;
+      if (currentFindingIndex >= 0) {
+        nextIndex = (currentFindingIndex + delta + actionableList.length) % actionableList.length;
+      } else {
+        nextIndex = delta > 0 ? (actionableList.length > 1 ? 1 : 0) : actionableList.length - 1;
+      }
+      const nextFinding = actionableList[nextIndex];
+      if (nextFinding) {
+        selectFinding(nextFinding);
+        announce(`Jumped to issue ${nextIndex + 1} of ${actionableList.length}: ${nextFinding.title}`);
+      }
+    },
+    [actionableList, currentFindingIndex, selectFinding, announce]
+  );
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "ArrowRight" || (event.altKey && event.key === "ArrowDown")) {
+        event.preventDefault();
+        handleStepFinding(1);
+      } else if (event.key === "ArrowLeft" || (event.altKey && event.key === "ArrowUp")) {
+        event.preventDefault();
+        handleStepFinding(-1);
+      }
     }
-    const nextFinding = actionableList[nextIndex];
-    if (nextFinding) {
-      selectFinding(nextFinding);
-      announce(`Jumped to issue ${nextIndex + 1} of ${actionableList.length}: ${nextFinding.title}`);
-    }
-  }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleStepFinding]);
 
   async function handleApplySuggestion(findingId: string, suggestionText: string) {
     const target = findings.find((f) => f.finding_id === findingId);
@@ -1085,7 +1161,7 @@ export default function Home() {
         draftHash: draft.hash,
         sourceSnapshotHash: review.sourceSnapshotHash,
       }),
-    }).catch(() => {});
+    }).catch(() => { });
     announce(`Decision recorded for ${draft.hash.slice(0, 8)}. Nothing has been published.`);
   }
 
@@ -1126,7 +1202,7 @@ export default function Home() {
         sourceSnapshotHash: review.sourceSnapshotHash,
         reason: "Review decision reopened by authorized reviewer.",
       }),
-    }).catch(() => {});
+    }).catch(() => { });
     announce("Decision reopened. The review remains tied to the same content and knowledge snapshot.");
   }
 
@@ -1221,7 +1297,7 @@ export default function Home() {
       method: "PATCH",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: sourceId, status: "APPROVED" }),
-    }).catch(() => {});
+    }).catch(() => { });
     announce("Source approved as a new version. Previous review decisions are invalidated.");
   }
 
@@ -1234,7 +1310,7 @@ export default function Home() {
       method: "PATCH",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: sourceId, status: "REVOKED" }),
-    }).catch(() => {});
+    }).catch(() => { });
     announce("Imported source removed from the workspace.");
   }
 
@@ -1242,14 +1318,58 @@ export default function Home() {
     const input = event.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+
     if (role !== "maintainer") {
-      announce("Switch to Maintainer to add knowledge documents.");
+      announce("Knowledge documents can only be uploaded by a Maintainer. Please switch your role to Maintainer.");
+      setExtractionStatus("Knowledge upload requires Maintainer role. Please switch role to Maintainer.");
       input.value = "";
       return;
     }
+
+    // Supported format validation
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const validExts = ["docx", "pdf", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "txt", "md", "markdown", "html", "htm", "json", "csv"];
+    if (!ext || !validExts.includes(ext)) {
+      const msg = `Unsupported file format (.${ext || "unknown"}). Supported formats: PDF, DOCX, PNG, JPG, TXT, MD, HTML.`;
+      setExtractionStatus(msg);
+      announce(msg);
+      input.value = "";
+      return;
+    }
+
+    if (file.size > 52428800) {
+      const msg = `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds 50 MB limit.`;
+      setExtractionStatus(msg);
+      announce(msg);
+      input.value = "";
+      return;
+    }
+
     setIsExtracting(true);
-    setExtractionStatus("Reading knowledge document on this device…");
+    setExtractionStatus(`Uploading ${file.name} to secure tenant storage…`);
+
     try {
+      // 1. Upload binary asset to /api/assets via multipart/form-data
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("name", file.name);
+
+      const assetRes = await fetch("/api/assets", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: formData,
+      });
+
+      if (!assetRes.ok) {
+        const errJson = await assetRes.json().catch(() => ({}));
+        throw new Error(errJson.error || `Asset upload failed with HTTP ${assetRes.status}`);
+      }
+
+      const assetData = await assetRes.json();
+      const assetId = assetData.asset?.id;
+
+      // 2. Extract content from document
+      setExtractionStatus(`Extracting structured claims & passages from ${file.name}…`);
       const extracted = await extractUploadedFile(file, setExtractionStatus);
       const paragraphs = extracted.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
       const chunks: string[] = [];
@@ -1257,10 +1377,18 @@ export default function Home() {
       for (const paragraph of paragraphs) {
         if (chunk && `${chunk}\n\n${paragraph}`.length > 420) { chunks.push(chunk); chunk = ""; }
         chunk = chunk ? `${chunk}\n\n${paragraph}` : paragraph;
-        while (chunk.length > 420) { const splitAt = chunk.lastIndexOf(" ", 420); const boundary = splitAt > 200 ? splitAt : 420; chunks.push(chunk.slice(0, boundary)); chunk = chunk.slice(boundary).trim(); }
+        while (chunk.length > 420) {
+          const splitAt = chunk.lastIndexOf(" ", 420);
+          const boundary = splitAt > 200 ? splitAt : 420;
+          chunks.push(chunk.slice(0, boundary));
+          chunk = chunk.slice(boundary).trim();
+        }
       }
       if (chunk) chunks.push(chunk);
-      if (!chunks.length || chunks.length > 48) throw new Error("This document needs to be split into smaller files (maximum 48 passages per upload).");
+      if (!chunks.length || chunks.length > 48) {
+        throw new Error("This document needs to be split into smaller files (maximum 48 passages per upload).");
+      }
+
       const brand = currentProfileSource?.facts[0]?.subject ?? "Workspace";
       const sourceId = `SRC-DOC-${crypto.randomUUID()}`;
       const source: Source = {
@@ -1273,24 +1401,39 @@ export default function Home() {
         channels: ["social", "web", "email", "packaging"],
         owner: "Knowledge maintainer",
         approvalState: "PENDING_REVIEW",
-        facts: chunks.map((value, index) => ({ id: `${sourceId}-P${index + 1}`, subject: brand, attribute: "knowledge passage", value, statement: `Knowledge passage ${index + 1}: ${value}`, sourceId })),
+        facts: chunks.map((value, index) => ({
+          id: `${sourceId}-P${index + 1}`,
+          subject: brand,
+          attribute: "knowledge passage",
+          value,
+          statement: `Knowledge passage ${index + 1}: ${value}`,
+          sourceId,
+        })),
       };
+
       const withWarnings = { ...source, ingestionWarnings: sourceInjectionWarnings(source) };
-      setSources((current) => [...current, withWarnings]);
-      setReview(null);
+
       if (!withWarnings.ingestionWarnings?.length) {
-        fetch("/api/sources", {
+        setExtractionStatus(`Persisting knowledge source to database…`);
+        const sourceRes = await fetch("/api/sources", {
           method: "POST",
           headers: getAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify(source),
-        }).catch((err) => console.error("Failed to persist source to database:", err));
+        });
+        if (!sourceRes.ok) {
+          const sErr = await sourceRes.json().catch(() => ({}));
+          console.warn("Failed to persist source to database:", sErr);
+        }
       }
-      setExtractionStatus(`${file.name} · ${chunks.length} passage${chunks.length === 1 ? "" : "s"} extracted. Pending maintainer review.`);
-      announce(withWarnings.ingestionWarnings?.length ? "Document quarantined for a possible embedded instruction. Review or remove it before approval." : "Knowledge added as pending review. A maintainer must verify it before use.");
+
+      setSources((current) => [...current, withWarnings]);
+      setReview(null);
+      setExtractionStatus(`${file.name} uploaded & persisted (${chunks.length} passage${chunks.length === 1 ? "" : "s"} extracted). Asset ID: ${assetId || "saved"}`);
+      announce(withWarnings.ingestionWarnings?.length ? "Document quarantined for a possible embedded instruction." : "Knowledge document successfully uploaded and registered.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "This document could not be read.";
-      setExtractionStatus(message);
-      announce(message);
+      setExtractionStatus(`Upload failed: ${message}`);
+      announce(`Upload failed: ${message}`);
     } finally {
       setIsExtracting(false);
       input.value = "";
@@ -1493,15 +1636,74 @@ export default function Home() {
                 <b>Custom Enterprise Workspace</b>
                 <small>Set brand voice, primary audience, and approved facts to provision a custom tenant workspace.</small>
                 <form onSubmit={createOwnWorkspace}>
-                  <label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Apex Health" /></label>
-                  <label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, authoritative and warm" /></label>
-                  <label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. enterprise compliance teams" /></label>
+                  {workspaceCreateError && (
+                    <div
+                      role="alert"
+                      className="form-error-banner"
+                      style={{
+                        color: "#ef4444",
+                        background: "rgba(239, 68, 68, 0.12)",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        marginBottom: "10px",
+                        lineHeight: "1.4",
+                      }}
+                    >
+                      <div>⚠️ {workspaceCreateError}</div>
+                      {!supabaseSession && (
+                        <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => signInAsDemo("maintainer", "alpha", true)}
+                            style={{
+                              background: "#1e293b",
+                              border: "1px solid #334155",
+                              color: "#fbbf24",
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Authenticate as Demo Maintainer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowWelcome(false);
+                              setShowAuthModal(true);
+                            }}
+                            style={{
+                              background: "rgba(255,255,255,0.1)",
+                              border: "1px solid rgba(255,255,255,0.2)",
+                              color: "#fff",
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Enterprise Sign In
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <label>Brand name<input required maxLength={100} value={ownBrandName} onChange={(event) => setOwnBrandName(event.target.value)} placeholder="e.g. Apex Health" disabled={isCreatingWorkspace} /></label>
+                  <label>Brand voice<input required maxLength={200} value={ownProfile.voice} onChange={(event) => setOwnProfile((current) => ({ ...current, voice: event.target.value }))} placeholder="e.g. clear, authoritative and warm" disabled={isCreatingWorkspace} /></label>
+                  <label>Who is your audience?<input required maxLength={200} value={ownProfile.audience} onChange={(event) => setOwnProfile((current) => ({ ...current, audience: event.target.value }))} placeholder="e.g. enterprise compliance teams" disabled={isCreatingWorkspace} /></label>
                   <details>
                     <summary>Add optional guardrails</summary>
-                    <label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" /></label>
-                    <label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" /></label>
+                    <label>Words to avoid<input value={ownProfile.avoidWording} onChange={(event) => setOwnProfile((current) => ({ ...current, avoidWording: event.target.value }))} placeholder="Comma-separated" disabled={isCreatingWorkspace} /></label>
+                    <label>Brand colors<input value={ownProfile.palette} onChange={(event) => setOwnProfile((current) => ({ ...current, palette: event.target.value }))} placeholder="#1A3D32, #F3EBDD, #C87552" disabled={isCreatingWorkspace} /></label>
                   </details>
-                  <button className="welcome-submit" type="submit">Create Workspace →</button>
+                  <button className="welcome-submit" type="submit" disabled={isCreatingWorkspace}>
+                    {isCreatingWorkspace ? "Creating Workspace…" : "Create Workspace →"}
+                  </button>
                 </form>
               </div>
             </div>
@@ -2278,137 +2480,137 @@ export default function Home() {
                 </div>
 
                 <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  setIsAuthLoading(true);
-                  setAuthStatusMessage("");
-                  const supabase = getBrowserSupabase();
-                  if (!supabase) {
-                    setAuthStatusMessage("Supabase credentials not configured in browser. Local enterprise sandbox is active.");
-                    setIsAuthLoading(false);
-                    return;
-                  }
-                  try {
-                    if (authMode === "signin") {
-                      const { data, error } = await supabase.auth.signInWithPassword({
-                        email: authEmail,
-                        password: authPassword,
-                      });
-                      if (error) throw error;
-                      if (data.session) {
-                        setSupabaseSession({
-                          user: { id: data.session.user.id, email: data.session.user.email },
-                          accessToken: data.session.access_token,
-                        });
-                        setShowAuthModal(false);
-                        announce("Signed in successfully.");
-                      }
-                    } else {
-                      const { data, error } = await supabase.auth.signUp({
-                        email: authEmail,
-                        password: authPassword,
-                      });
-                      if (error) throw error;
-                      if (data.session) {
-                        setSupabaseSession({
-                          user: { id: data.session.user.id, email: data.session.user.email },
-                          accessToken: data.session.access_token,
-                        });
-                        setShowAuthModal(false);
-                        announce("Account created and signed in.");
-                      } else {
-                        setAuthStatusMessage("Account created. Check your email for confirmation link.");
-                      }
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setIsAuthLoading(true);
+                    setAuthStatusMessage("");
+                    const supabase = getBrowserSupabase();
+                    if (!supabase) {
+                      setAuthStatusMessage("Supabase credentials not configured in browser. Local enterprise sandbox is active.");
+                      setIsAuthLoading(false);
+                      return;
                     }
-                  } catch (err) {
-                    setAuthStatusMessage(err instanceof Error ? err.message : "Authentication failed.");
-                  } finally {
-                    setIsAuthLoading(false);
-                  }
-                }}
-              >
-                <div style={{ marginBottom: "12px" }}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="user@enterprise.com"
-                    style={{
-                      width: "100%",
-                      background: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "6px",
-                      padding: "8px 10px",
-                      color: "#fff",
-                      fontSize: "13px",
-                    }}
-                  />
-                </div>
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    placeholder="••••••••"
-                    style={{
-                      width: "100%",
-                      background: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "6px",
-                      padding: "8px 10px",
-                      color: "#fff",
-                      fontSize: "13px",
-                    }}
-                  />
-                </div>
-
-                {authStatusMessage && (
-                  <div style={{ fontSize: "12px", color: authStatusMessage.includes("created") ? "#34d399" : "#f87171", marginBottom: "12px" }}>
-                    {authStatusMessage}
-                  </div>
-                )}
-
-                <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
-                  <button
-                    type="submit"
-                    disabled={isAuthLoading}
-                    className="primary-button"
-                    style={{ width: "100%", justifyContent: "center" }}
-                  >
-                    {isAuthLoading ? "Processing…" : authMode === "signin" ? "Sign In" : "Create Account"}
-                  </button>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
-                    <button
-                      type="button"
-                      className="text-button"
-                      style={{ fontSize: "12px", opacity: 0.8 }}
-                      onClick={() => {
-                        setAuthMode(authMode === "signin" ? "signup" : "signin");
-                        setAuthStatusMessage("");
+                    try {
+                      if (authMode === "signin") {
+                        const { data, error } = await supabase.auth.signInWithPassword({
+                          email: authEmail,
+                          password: authPassword,
+                        });
+                        if (error) throw error;
+                        if (data.session) {
+                          setSupabaseSession({
+                            user: { id: data.session.user.id, email: data.session.user.email },
+                            accessToken: data.session.access_token,
+                          });
+                          setShowAuthModal(false);
+                          announce("Signed in successfully.");
+                        }
+                      } else {
+                        const { data, error } = await supabase.auth.signUp({
+                          email: authEmail,
+                          password: authPassword,
+                        });
+                        if (error) throw error;
+                        if (data.session) {
+                          setSupabaseSession({
+                            user: { id: data.session.user.id, email: data.session.user.email },
+                            accessToken: data.session.access_token,
+                          });
+                          setShowAuthModal(false);
+                          announce("Account created and signed in.");
+                        } else {
+                          setAuthStatusMessage("Account created. Check your email for confirmation link.");
+                        }
+                      }
+                    } catch (err) {
+                      setAuthStatusMessage(err instanceof Error ? err.message : "Authentication failed.");
+                    } finally {
+                      setIsAuthLoading(false);
+                    }
+                  }}
+                >
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="user@enterprise.com"
+                      style={{
+                        width: "100%",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: "6px",
+                        padding: "8px 10px",
+                        color: "#fff",
+                        fontSize: "13px",
                       }}
-                    >
-                      {authMode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button"
-                      style={{ fontSize: "12px", opacity: 0.8 }}
-                      onClick={() => {
-                        setShowAuthModal(false);
-                        announce("Continuing in enterprise workspace sandbox.");
-                      }}
-                    >
-                      Continue as Guest
-                    </button>
+                    />
                   </div>
-                </div>
-              </form>
-            </div>
-          )}
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="••••••••"
+                      style={{
+                        width: "100%",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: "6px",
+                        padding: "8px 10px",
+                        color: "#fff",
+                        fontSize: "13px",
+                      }}
+                    />
+                  </div>
+
+                  {authStatusMessage && (
+                    <div style={{ fontSize: "12px", color: authStatusMessage.includes("created") ? "#34d399" : "#f87171", marginBottom: "12px" }}>
+                      {authStatusMessage}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
+                    <button
+                      type="submit"
+                      disabled={isAuthLoading}
+                      className="primary-button"
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
+                      {isAuthLoading ? "Processing…" : authMode === "signin" ? "Sign In" : "Create Account"}
+                    </button>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                      <button
+                        type="button"
+                        className="text-button"
+                        style={{ fontSize: "12px", opacity: 0.8 }}
+                        onClick={() => {
+                          setAuthMode(authMode === "signin" ? "signup" : "signin");
+                          setAuthStatusMessage("");
+                        }}
+                      >
+                        {authMode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button"
+                        style={{ fontSize: "12px", opacity: 0.8 }}
+                        onClick={() => {
+                          setShowAuthModal(false);
+                          announce("Continuing in enterprise workspace sandbox.");
+                        }}
+                      >
+                        Continue as Guest
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}

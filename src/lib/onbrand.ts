@@ -126,8 +126,8 @@ export type Review = {
   findings: Finding[];
   assignedTo?: string;
   comments: Array<{ id: string; author: string; text: string; resolved: boolean; at: string; draftHash?: string; draftVersionId?: string }>;
-  decision?: { state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string; sourceSnapshotHash?: string };
-  decisionHistory?: Array<{ action: "DECISION_RECORDED" | "DECISION_REOPENED"; state?: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string; sourceSnapshotHash: string }>;
+  decision?: { state: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string; sourceSnapshotHash?: string; reason?: string };
+  decisionHistory?: Array<{ action: "DECISION_RECORDED" | "DECISION_REOPENED"; state?: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED"; by: string; at: string; draftHash: string; sourceSnapshotHash: string; reason?: string }>;
   agentNotes?: Array<{ agent: "Advocate" | "Challenger" | "Judge" | "Policy & Risk"; summary: string }>;
   engineMode?: "model-assisted" | "deterministic-preview";
 };

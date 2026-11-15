@@ -12,8 +12,12 @@ export function databaseConfigured() {
 }
 
 export function getDatabase() {
-  const url = process.env.DATABASE_URL;
+  let url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not configured.");
+  if (url.startsWith("DATABASE_URL=")) {
+    url = url.slice("DATABASE_URL=".length).trim();
+  }
+  url = url.replace(/^['"]|['"]$/g, "").trim();
   if (!client) {
     const isLocalhost = url.includes("localhost") || url.includes("127.0.0.1");
     client = postgres(url, {

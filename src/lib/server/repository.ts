@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { seedSources, type Draft, type Fact, type Finding, type Review, type Source } from "@/lib/onbrand";
 import * as schema from "@/lib/schema";
@@ -5,6 +6,15 @@ import { databaseConfigured, withOrganizationScope } from "./db";
 import type { TenantContext, AssetRecord, AuditEvent, ReviewDecision, OnBrandRepository } from "@/lib/types";
 
 export type { TenantContext, TenantRole, AssetRecord, AuditEvent, ReviewDecision, OnBrandRepository } from "@/lib/types";
+
+function toValidUuid(id: string): string {
+  if (!id) return "00000000-0000-4000-8000-000000000000";
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return id.toLowerCase();
+  }
+  const hash = crypto.createHash("sha256").update(id).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
 
 const ALPHA_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -315,12 +325,26 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
     fallbackAction: () => Promise<T>,
   ): Promise<T> {
     if (!databaseConfigured()) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(
+          "Production database unavailable: DATABASE_URL is not configured. OnBrand requires persistent PostgreSQL storage in production."
+        );
+      }
       return fallbackAction();
     }
     try {
       return await dbAction();
     } catch (err: unknown) {
       if (isDatabaseConnectionError(err)) {
+        if (process.env.NODE_ENV === "production") {
+          const sanitizedErr = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+          console.error(
+            `[FATAL] Production database connection error: ${sanitizedErr}. In-memory fallback is disabled in production to prevent data loss.`
+          );
+          throw new Error(
+            "Production database connection failure: Persistent database operation could not be completed. In-memory fallback is disabled in production."
+          );
+        }
         return fallbackAction();
       }
       throw err;
@@ -637,12 +661,13 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       ctx,
       () =>
         withOrganizationScope(ctx, async (tx) => {
+          const targetDraftId = toValidUuid(draftId);
           const draftsRows = await tx
             .select()
             .from(schema.drafts)
             .where(and(
               eq(schema.drafts.organizationId, ctx.organizationId),
-              eq(schema.drafts.id, draftId),
+              eq(schema.drafts.id, targetDraftId),
             ))
             .limit(1);
 
@@ -654,7 +679,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
             .from(schema.draftVersions)
             .where(and(
               eq(schema.draftVersions.organizationId, ctx.organizationId),
-              eq(schema.draftVersions.draftId, draftId),
+              eq(schema.draftVersions.draftId, targetDraftId),
               eq(schema.draftVersions.version, version),
             ))
             .limit(1);
@@ -663,7 +688,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           const v = versionRows[0];
 
           return {
-            id: d.id,
+            id: draftId,
             title: d.title,
             content: v.content,
             channel: d.channel,
@@ -685,10 +710,11 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       () =>
         withOrganizationScope(ctx, async (tx) => {
           const userId = ctx.actor?.userId ?? ctx.userId ?? "creator";
+          const targetDraftId = toValidUuid(draft.id);
           await tx
             .insert(schema.drafts)
             .values({
-              id: draft.id,
+              id: targetDraftId,
               organizationId: ctx.organizationId,
               title: draft.title,
               channel: draft.channel,
@@ -715,7 +741,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
             .insert(schema.draftVersions)
             .values({
               organizationId: ctx.organizationId,
-              draftId: draft.id,
+              draftId: targetDraftId,
               version: draft.version,
               content: draft.content,
               contentHash: draft.hash,
@@ -740,76 +766,91 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       ctx,
       () =>
         withOrganizationScope(ctx, async (tx) => {
-      const isReviewUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(review.id);
-      const targetReviewId = isReviewUuid ? review.id : crypto.randomUUID();
-      review.id = targetReviewId;
+          const targetReviewId = toValidUuid(review.id);
+          review.id = targetReviewId;
 
-      let targetDraftVersionId = review.draftVersionId;
-      const isVersionUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetDraftVersionId);
+          const targetDraftId = toValidUuid(review.draftId);
+          let targetDraftVersionId = toValidUuid(review.draftVersionId || `${review.draftId}-v1`);
 
-      if (!isVersionUuid) {
-        const dVersionRows = await tx
-          .select({ id: schema.draftVersions.id })
-          .from(schema.draftVersions)
-          .where(
-            and(
-              eq(schema.draftVersions.organizationId, ctx.organizationId),
-              eq(schema.draftVersions.draftId, review.draftId)
+          // Ensure parent draft exists in schema.drafts
+          await tx
+            .insert(schema.drafts)
+            .values({
+              id: targetDraftId,
+              organizationId: ctx.organizationId,
+              title: "Reviewed Draft",
+              channel: "web",
+              product: "General",
+              audience: "General",
+              publicationDate: new Date().toISOString().slice(0, 10),
+              currentVersion: 1,
+              createdBy: ctx.userId ?? "system",
+            })
+            .onConflictDoNothing();
+
+          const existingVersion = await tx
+            .select({ id: schema.draftVersions.id })
+            .from(schema.draftVersions)
+            .where(
+              and(
+                eq(schema.draftVersions.organizationId, ctx.organizationId),
+                eq(schema.draftVersions.draftId, targetDraftId),
+              )
             )
-          )
-          .limit(1);
+            .limit(1);
 
-        if (dVersionRows.length > 0) {
-          targetDraftVersionId = dVersionRows[0].id;
-        } else {
-          const newVersionId = crypto.randomUUID();
-          await tx.insert(schema.draftVersions).values({
-            id: newVersionId,
-            organizationId: ctx.organizationId,
-            draftId: review.draftId,
-            version: 1,
-            content: "",
-            contentHash: review.draftHash,
-            createdBy: ctx.userId ?? "system",
-          });
-          targetDraftVersionId = newVersionId;
-        }
-      }
+          if (existingVersion.length > 0) {
+            targetDraftVersionId = existingVersion[0].id;
+          } else {
+            await tx
+              .insert(schema.draftVersions)
+              .values({
+                id: targetDraftVersionId,
+                organizationId: ctx.organizationId,
+                draftId: targetDraftId,
+                version: 1,
+                content: "",
+                contentHash: review.draftHash,
+                createdBy: ctx.userId ?? "system",
+              })
+              .onConflictDoNothing();
+          }
 
-      await tx
-        .insert(schema.reviews)
-        .values({
-          id: targetReviewId,
-          organizationId: ctx.organizationId,
-          draftId: review.draftId,
-          draftVersionId: targetDraftVersionId,
-          draftHash: review.draftHash,
-          sourceSnapshotHash: review.sourceSnapshotHash,
-          status: review.findings.some((f: Finding) => f.blocking_for_review) ? "FLAGGED" : "CLEAN",
-          modelProvider: review.engineMode ?? null,
-          modelVersion: review.engineMode ?? null,
-        })
-        .onConflictDoNothing();
+          await tx
+            .insert(schema.reviews)
+            .values({
+              id: targetReviewId,
+              organizationId: ctx.organizationId,
+              draftId: targetDraftId,
+              draftVersionId: targetDraftVersionId,
+              draftHash: review.draftHash,
+              sourceSnapshotHash: review.sourceSnapshotHash,
+              status: review.findings.some((f: Finding) => f.blocking_for_review) ? "FLAGGED" : "CLEAN",
+              modelProvider: review.engineMode ?? null,
+              modelVersion: review.engineMode ?? null,
+            })
+            .onConflictDoNothing();
 
-      if (review.findings?.length) {
-        await tx.insert(schema.findings).values(
-          review.findings.map((f: Finding) => ({
-            organizationId: ctx.organizationId,
-            reviewId: targetReviewId,
-            claimText: f.claim_text,
-            startOffset: f.start,
-            endOffset: f.end,
-            category: f.category,
-            evidenceStatus: f.evidence_status,
-            severity: f.severity,
-            blockingForReview: f.blocking_for_review,
-            explanation: f.explanation,
-            evidence: f.source_evidence,
-            suggestion: f.suggestion ?? null,
-          })),
-        );
-      }
-    }),
+          if (review.findings?.length) {
+            await tx.insert(schema.findings).values(
+              review.findings.map((f: Finding) => ({
+                id: toValidUuid(f.finding_id || crypto.randomUUID()),
+                organizationId: ctx.organizationId,
+                reviewId: targetReviewId,
+                claimText: f.claim_text,
+                startOffset: f.start,
+                endOffset: f.end,
+                category: f.category,
+                evidenceStatus: f.evidence_status,
+                severity: f.severity,
+                blockingForReview: f.blocking_for_review,
+                explanation: f.explanation,
+                evidence: f.source_evidence,
+                suggestion: f.suggestion ?? null,
+              })),
+            ).onConflictDoNothing();
+          }
+        }),
       () => this.inMemoryFallback.saveReview(ctx, review),
     );
   }
@@ -819,14 +860,19 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       ctx,
       () =>
         withOrganizationScope(ctx, async (tx) => {
-      const reviewRows = await tx
-        .select()
-        .from(schema.reviews)
-        .where(and(
-          eq(schema.reviews.organizationId, ctx.organizationId),
-          eq(schema.reviews.draftVersionId, draftVersionIdOrDraftId),
-        ))
-        .limit(1);
+          const targetId = toValidUuid(draftVersionIdOrDraftId);
+          const reviewRows = await tx
+            .select()
+            .from(schema.reviews)
+            .where(and(
+              eq(schema.reviews.organizationId, ctx.organizationId),
+              or(
+                eq(schema.reviews.draftVersionId, targetId),
+                eq(schema.reviews.draftId, targetId),
+                eq(schema.reviews.draftHash, draftVersionIdOrDraftId),
+              ),
+            ))
+            .limit(1);
 
       if (!reviewRows.length) return null;
       const r = reviewRows[0];
@@ -856,6 +902,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         at: latestDecision.createdAt.toISOString(),
         draftHash: latestDecision.draftHash,
         sourceSnapshotHash: latestDecision.sourceSnapshotHash,
+        reason: latestDecision.reason ?? undefined,
       } : undefined;
 
       const decisionHistory = decisionRows.map((d: typeof schema.decisions.$inferSelect) => ({
@@ -865,6 +912,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
         at: d.createdAt.toISOString(),
         draftHash: d.draftHash,
         sourceSnapshotHash: d.sourceSnapshotHash,
+        reason: d.reason ?? undefined,
       }));
 
       return {
@@ -916,7 +964,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
                 eq(schema.reviews.organizationId, ctx.organizationId),
                 isReviewUuid
                   ? eq(schema.reviews.id, reviewId)
-                  : or(eq(schema.reviews.id, reviewId), eq(schema.reviews.draftHash, reviewId)),
+                  : eq(schema.reviews.draftHash, reviewId),
               ),
             )
             .limit(1);
@@ -948,6 +996,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
             at: latestDecision.createdAt.toISOString(),
             draftHash: latestDecision.draftHash,
             sourceSnapshotHash: latestDecision.sourceSnapshotHash,
+            reason: latestDecision.reason ?? undefined,
           } : undefined;
 
           const decisionHistory = decisionRows.map((d: typeof schema.decisions.$inferSelect) => ({
@@ -957,6 +1006,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
             at: d.createdAt.toISOString(),
             draftHash: d.draftHash,
             sourceSnapshotHash: d.sourceSnapshotHash,
+            reason: d.reason ?? undefined,
           }));
 
           return {

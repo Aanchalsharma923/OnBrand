@@ -17,6 +17,7 @@ async function dismissWelcomeModal(page: any) {
   } catch {
     // Modal not present or already dismissed
   }
+  await page.waitForLoadState("networkidle").catch(() => {});
 }
 
 test.describe("OnBrand Phase 4 — Staging Acceptance & Browser Verification Suite", () => {
@@ -54,7 +55,7 @@ test.describe("OnBrand Phase 4 — Staging Acceptance & Browser Verification Sui
   }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      try { window.localStorage.removeItem("onbrand-v1"); } catch {}
+      try { window.localStorage.removeItem("onbrand-v1"); } catch { }
     });
     await page.reload();
     await page.waitForLoadState("domcontentloaded");
@@ -64,8 +65,19 @@ test.describe("OnBrand Phase 4 — Staging Acceptance & Browser Verification Sui
       await brandInput.fill("Apex Health Solutions");
       await page.locator('input[placeholder="e.g. clear, authoritative and warm"]').fill("Authoritative, compliant, empathetic");
       await page.locator('input[placeholder="e.g. enterprise compliance teams"]').fill("Clinical researchers and compliance teams");
+      // Submits workspace creation. If unauthenticated, the application securely enforces
+      // the authentication gate (does NOT silently elevate to maintainer).
       await page.locator('button.welcome-submit:has-text("Create Workspace")').click();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(400);
+
+      // If authentication is required, explicitly authenticate as demo maintainer and resubmit
+      const authMaintainerBtn = page.locator('button:has-text("Authenticate as Demo Maintainer")');
+      if (await authMaintainerBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await authMaintainerBtn.click();
+        await page.waitForTimeout(500);
+        await page.locator('button.welcome-submit:has-text("Create Workspace")').click();
+        await page.waitForTimeout(500);
+      }
     } else {
       await dismissWelcomeModal(page);
     }
