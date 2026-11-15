@@ -285,10 +285,14 @@ function isDatabaseConnectionError(err: unknown): boolean {
   const code = (err as { code?: string }).code || "";
   return (
     code === "28P01" ||
+    code === "XX000" ||
     code === "ECONNREFUSED" ||
     code === "ENOTFOUND" ||
     code === "ETIMEDOUT" ||
     msg.includes("password authentication failed") ||
+    msg.includes("ECIRCUITBREAKER") ||
+    msg.includes("authentication failures") ||
+    msg.includes("temporarily blocked") ||
     msg.includes("ENOTFOUND") ||
     msg.includes("ECONNREFUSED") ||
     msg.includes("connect_timeout") ||
@@ -344,7 +348,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
               ));
 
             results.push({
-              id: row.id,
+              id: row.sourceKey || row.id,
               title: row.title,
               kind: row.kind as Source["kind"],
               authority: row.authority,
@@ -377,12 +381,16 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       ctx,
       () =>
         withOrganizationScope(ctx, async (tx) => {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+          const idCondition = isUuid
+            ? or(eq(schema.sources.id, id), eq(schema.sources.sourceKey, id))
+            : eq(schema.sources.sourceKey, id);
           const rows = await tx
             .select()
             .from(schema.sources)
             .where(and(
               eq(schema.sources.organizationId, ctx.organizationId),
-              eq(schema.sources.id, id),
+              idCondition,
             ))
             .limit(1);
 
@@ -398,7 +406,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
             ));
 
           return {
-            id: row.id,
+            id: row.sourceKey || row.id,
             title: row.title,
             kind: row.kind as Source["kind"],
             authority: row.authority,
@@ -416,7 +424,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
               value: f.value,
               unit: f.unit ?? undefined,
               statement: f.statement,
-              sourceId: row.id,
+              sourceId: row.sourceKey || row.id,
             })),
           };
         }),
@@ -440,8 +448,10 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       ctx,
       () =>
         withOrganizationScope(ctx, async (tx) => {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+          const sourceDbId = isUuid ? id : crypto.randomUUID();
           await tx.insert(schema.sources).values({
-            id,
+            id: sourceDbId,
             organizationId: ctx.organizationId,
             sourceKey: fullSource.id,
             title: fullSource.title,
@@ -459,9 +469,9 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           if (fullSource.facts.length > 0) {
             await tx.insert(schema.facts).values(
               fullSource.facts.map((f) => ({
-                id: f.id.length === 36 ? f.id : crypto.randomUUID(),
+                id: f.id.length === 36 && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(f.id) ? f.id : crypto.randomUUID(),
                 organizationId: ctx.organizationId,
-                sourceId: id,
+                sourceId: sourceDbId,
                 subject: f.subject,
                 attribute: f.attribute,
                 value: f.value,
@@ -482,6 +492,10 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
       ctx,
       () =>
         withOrganizationScope(ctx, async (tx) => {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+          const idCondition = isUuid
+            ? or(eq(schema.sources.id, id), eq(schema.sources.sourceKey, id))
+            : eq(schema.sources.sourceKey, id);
           await tx
             .update(schema.sources)
             .set({
@@ -490,7 +504,7 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
             })
             .where(and(
               eq(schema.sources.organizationId, ctx.organizationId),
-              eq(schema.sources.id, id),
+              idCondition,
             ));
         }),
       () => this.inMemoryFallback.updateSourceStatus(ctx, id, status),
