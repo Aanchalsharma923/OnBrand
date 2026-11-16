@@ -1239,6 +1239,34 @@ export class DrizzleOnBrandRepository implements OnBrandRepository {
           if (updates.approvalState) updateData.approvalState = updates.approvalState;
           if (updates.name) updateData.name = updates.name;
           if (updates.allowedUsage) updateData.allowedUsage = updates.allowedUsage;
+
+          if (Object.keys(updateData).length === 0) {
+            const existing = await tx
+              .select()
+              .from(schema.assets)
+              .where(
+                and(
+                  eq(schema.assets.id, assetId),
+                  eq(schema.assets.organizationId, ctx.organizationId)
+                )
+              );
+            if (existing.length === 0) return null;
+            const r = existing[0];
+            return {
+              id: r.id,
+              organizationId: r.organizationId,
+              name: r.name,
+              sha256: r.sha256,
+              phash: r.phash ?? undefined,
+              pHash: r.phash ?? undefined,
+              mimeType: r.mimeType,
+              byteSize: r.byteSize,
+              approvalState: r.approvalState as "APPROVED" | "PENDING_REVIEW" | "REVOKED",
+              allowedUsage: r.allowedUsage ?? undefined,
+              uploadedBy: r.uploadedBy,
+              createdAt: r.createdAt.toISOString(),
+            };
+          }
           const rows = await tx
             .update(schema.assets)
             .set(updateData)

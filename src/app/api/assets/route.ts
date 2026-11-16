@@ -64,9 +64,10 @@ export async function GET(request: Request) {
         let binaryMimeType = "application/octet-stream";
         let binaryFilename = asset.name;
 
-        if (storageConfigured() && asset.storageKey) {
-          const [, , ...filenameParts] = asset.storageKey.split("/");
-          const storedFilename = filenameParts.join("/") || asset.name;
+        if (storageConfigured()) {
+          const storedFilename = asset.storageKey
+            ? asset.storageKey.split("/").slice(2).join("/") || asset.name
+            : asset.name;
           try {
             binaryBuffer = await downloadAssetFromStorage(
               ctx.organizationId,
