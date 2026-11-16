@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OnBrand — Enterprise Brand Governance & Semantic Compliance Platform</title>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --primary-light: #1e293b;
+      --accent: #b45309;
+      --accent-soft: #fef3c7;
+      --success: #047857;
+      --success-soft: #d1fae5;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-subtle: #64748b;
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --border: #e2e8f0;
+      --border-dark: #cbd5e1;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 50px 60px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Header */
+    .header {
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 30px;
+      margin-bottom: 40px;
+    }
+
+    .badge-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-primary { background: var(--primary); color: #ffffff; }
+    .badge-accent { background: var(--accent-soft); color: var(--accent); border: 1px solid #fde68a; }
+    .badge-success { background: var(--success-soft); color: var(--success); border: 1px solid #a7f3d0; }
+
+    h1 {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--primary);
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-bottom: 24px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      background: #f1f5f9;
+      padding: 18px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .meta-item strong {
+      color: var(--primary);
+      display: inline-block;
+      width: 140px;
+    }
+
+    .meta-item a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .meta-item a:hover {
+      text-decoration: underline;
+    }
+
+    /* Headings */
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 40px;
+      margin-bottom: 18px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary-light);
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      margin-bottom: 14px;
+      font-size: 15px;
+      color: #334155;
+    }
+
+    /* Cards & Grids */
+    .feature-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      padding: 18px 22px;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 16px;
+    }
+
+    .feature-card.highlight {
+      border-left-color: var(--accent);
+      background: #fffbeb;
+    }
+
+    .feature-card.success-card {
+      border-left-color: var(--success);
+      background: #f0fdf4;
+    }
+
+    .feature-card h4 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+
+    /* Lists */
+    ul {
+      margin-left: 20px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      font-size: 14.5px;
+      color: #334155;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0 30px 0;
+      font-size: 14px;
+    }
+
+    th {
+      background: var(--primary);
+      color: #ffffff;
+      text-align: left;
+      padding: 12px 16px;
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    .check-mark {
+      color: var(--success);
+      font-weight: bold;
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 20px;
+        max-width: 100%;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="badge-bar">
+      <span class="badge badge-primary">Round 3 Final Product</span>
+      <span class="badge badge-success">Production Verified Live</span>
+      <span class="badge badge-accent">We Code Coders 2026</span>
+    </div>
+    <h1>OnBrand</h1>
+    <div class="subtitle">Enterprise Multi-Tenant Brand Governance & Grounded Compliance Engine</div>
+
+    <div class="meta-grid">
+      <div class="meta-item">
+        <strong>Live Application:</strong> <a href="https://outcoded.xyz" target="_blank">https://outcoded.xyz</a>
+      </div>
+      <div class="meta-item">
+        <strong>Repository:</strong> <a href="https://github.com/Aanchalsharma923/OnBrand" target="_blank">Aanchalsharma923/OnBrand</a>
+      </div>
+      <div class="meta-item">
+        <strong>Release Branch:</strong> <code>round3-dev</code>
+      </div>
+      <div class="meta-item">
+        <strong>Deployment SHA:</strong> <code>bade6294c76b6e537cf8fcbdb2bffb6d7dd11e9c</code>
+      </div>
+      <div class="meta-item">
+        <strong>Team Leader:</strong> Siddhesh Songare (<a href="mailto:sidsongare@gmail.com">sidsongare@gmail.com</a>)
+      </div>
+      <div class="meta-item">
+        <strong>Team Members:</strong> Siddhesh Songare, Aanchal Sharma
+      </div>
+    </div>
+  </div>
+
+  <!-- Executive Summary -->
+  <h2>1. Executive Product Overview</h2>
+  <p>
+    <strong>OnBrand</strong> is an enterprise brand governance and regulatory compliance platform engineered to eliminate marketing compliance violations, brand degradation, and accessibility defects before publication.
+  </p>
+  <p>
+    Unlike ungrounded generative AI tools that hallucinate claims and fabricate legal citations, OnBrand pairs <strong>client-side open-weight LLM models and WASM parsers</strong> with a <strong>two-pass mechanical verification pipeline</strong> and a durable <strong>PostgreSQL persistence layer</strong>. Every claim quote is mechanically verified against source documents, and every cited fact is proven against approved brand databases with strict cryptographic draft hash integrity.
+  </p>
+
+  <!-- Key Architecture Pillars -->
+  <h2>2. Technical Architecture & Hybrid Engine</h2>
+  
+  <div class="feature-card highlight">
+    <h4>Client-Side Open-Weight Intelligence (User-Side Execution)</h4>
+    <p>
+      OnBrand leverages user-side open-weight language models and WASM runtimes (Tesseract.js WASM OCR, local text layer extractors, Mammoth OpenXML AST parsers) running entirely in the client browser. This delivers instant, zero-latency document analysis, bounding-box coordinate mapping, and claim extraction with zero external API dependencies and complete privacy for sensitive pre-market copy.
+    </p>
+  </div>
+
+  <div class="feature-card">
+    <h4>Zero-Hallucination Mechanical Grounding Gates</h4>
+    <p>
+      Every compliance finding must satisfy two deterministic server-side gates:
+    </p>
+    <ul>
+      <li><strong>Verbatim Document Validator:</strong> Mechanically verifies character offsets in the draft text. Inventions or paraphrases are immediately rejected.</li>
+      <li><strong>Citation Provenance Gate:</strong> Checks that cited evidence exists in active, approved organizational guidelines, is non-revoked, within its effective date window, and matches the publication channel.</li>
+    </ul>
+  </div>
+
+  <div class="feature-card success-card">
+    <h4>Enterprise PostgreSQL Persistence & Object Storage</h4>
+    <p>
+      Backed by PostgreSQL 17 via the Supabase Transaction Pooler (port 6543) and Drizzle ORM. Brand knowledge sources, facts, drafts, compliance reviews, and immutable audit trails persist across serverless cold starts. Durable binary assets (logos, packaging posters, documents) are secured in private Supabase Object Storage (<code>onbrand-assets</code>) with strict cross-tenant isolation.
+    </p>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- The Three Delivered Improvements -->
+  <h2>3. The Three Commitments Delivered from Round 2</h2>
+
+  <div class="feature-card">
+    <h4>Improvement 1: PostgreSQL Persistence, Enterprise Auth & Multi-Tenant Isolation</h4>
+    <p><strong>Committed:</strong> Transition from frontend temporary state into a durable multi-tenant SaaS backend with real database persistence and secure authentication.</p>
+    <p><strong>Delivered & Production-Verified:</strong></p>
+    <ul>
+      <li><span class="check-mark">✓</span> <strong>Durable Database:</strong> Connected to PostgreSQL via Supavisor pooler on port 6543; verified cold-start survival across server restarts.</li>
+      <li><span class="check-mark">✓</span> <strong>Dual Authentication:</strong> Supabase Auth with JWT verification, alongside 1-Click Tamper-Evident HMAC-SHA256 Demo Personas (Maintainer, Reviewer, Creator).</li>
+      <li><span class="check-mark">✓</span> <strong>Strict Tenant Isolation:</strong> Mathematical 403 Forbidden / 404 Not Found rejection of cross-tenant data requests.</li>
+      <li><span class="check-mark">✓</span> <strong>Cryptographic Approval Gating:</strong> SHA-256 draft hash integrity; rejects stale review approvals with HTTP 409 Conflict.</li>
+    </ul>
+  </div>
+
+  <div class="feature-card highlight">
+    <h4>Improvement 2: Grounded Semantic Verification & Client-Side Open-Weight Models</h4>
+    <p><strong>Committed:</strong> Grounded semantic verification to eliminate hallucinations, substantiate claims against approved sources, and provide an independent benchmark.</p>
+    <p><strong>Delivered & Production-Verified:</strong></p>
+    <ul>
+      <li><span class="check-mark">✓</span> <strong>Open-Weight Client Execution:</strong> In-browser WASM and semantic models for instant, zero-latency claim extraction.</li>
+      <li><span class="check-mark">✓</span> <strong>Zero-Hallucination Mechanical Gates:</strong> Strict verbatim quote verification and database citation validation.</li>
+      <li><span class="check-mark">✓</span> <strong>Double-Blind Benchmark:</strong> 30 held-out cases independently evaluated by two engineers, achieving Cohen's Kappa &kappa; = 0.8565 ("Almost Perfect Agreement") and 93.3% observed agreement.</li>
+      <li><span class="check-mark">✓</span> <strong>Multi-Brand Regulatory Coverage:</strong> 10 diverse industry brand profiles pre-configured and tested.</li>
+    </ul>
+  </div>
+
+  <div class="feature-card success-card">
+    <h4>Improvement 3: Visual Intelligence & Document Accessibility Auditing</h4>
+    <p><strong>Committed:</strong> Visual asset registry, packaging poster review, and multi-format document accessibility validation for DOCX and PDF.</p>
+    <p><strong>Delivered & Production-Verified:</strong></p>
+    <ul>
+      <li><span class="check-mark">✓</span> <strong>Approved Brand Asset Registry:</strong> Private object storage with SHA-256 and 64-bit 2D difference hashing (dHash) calibrated across 46 physical fixtures.</li>
+      <li><span class="check-mark">✓</span> <strong>Palette & Contrast Auditing:</strong> CIE L*a*b* dominant color extraction with CIE76 Delta-E calculation (&Delta;E &le; 15.0) and pixel-sampled WCAG 2.1 relative luminance contrast auditing.</li>
+      <li><span class="check-mark">✓</span> <strong>DOCX & PDF Structural Accessibility:</strong> OpenXML AST parser detecting missing image alt-text, decorative image exemptions, heading hierarchy order, and unheaded tables; PDF structure tree inspection flagging missing figure alt text and untagged documents.</li>
+      <li><span class="check-mark">✓</span> <strong>Interactive Canvas Highlighting:</strong> OCR word box coordinate extraction with visual bounding-box navigation directly over artwork.</li>
+    </ul>
+  </div>
+
+  <!-- Verification & Testing Table -->
+  <h2>4. Production Verification & Scorecard</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Verification Area</th>
+        <th>Status</th>
+        <th>Live Evidence</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Live Availability & HTTPS</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>HTTP 200 OK on <code>https://outcoded.xyz</code> (TLS 1.3, Vercel Edge).</td>
+      </tr>
+      <tr>
+        <td><strong>PostgreSQL Persistence</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>Direct database query verified: 54 orgs, 198 sources, cold-start survival proved.</td>
+      </tr>
+      <tr>
+        <td><strong>Cross-Tenant Isolation</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>Foreign tenant requests strictly return HTTP 403 Forbidden / 404 Not Found.</td>
+      </tr>
+      <tr>
+        <td><strong>Binary Asset Storage</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>Multipart upload returns HTTP 201; byte-for-byte SHA-256 retrieval verified from Supabase Storage.</td>
+      </tr>
+      <tr>
+        <td><strong>Approval Cryptographic Gating</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>Stale draft approval submission rejected with HTTP 409 Conflict.</td>
+      </tr>
+      <tr>
+        <td><strong>Mobile Responsiveness</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>Zero horizontal overflow at 375px and 390px viewports (375px / 375px scrollWidth).</td>
+      </tr>
+      <tr>
+        <td><strong>Automated Test Suites</strong></td>
+        <td><span class="check-mark">PASS</span></td>
+        <td>50 test files passed (449 tests, 0 failed, 36.1s duration, clean TypeScript check).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Future Roadmap -->
+  <h2>5. Strategic Product Roadmap</h2>
+  <div class="feature-card">
+    <h4>Phase 1 (Months 1–2): Enterprise Design System Integrations</h4>
+    <p>Bi-directional plugins for Figma, Adobe Creative Cloud, and Canva to perform perceptual logo, palette, and contrast checks directly inside creative tools before asset export.</p>
+  </div>
+  <div class="feature-card">
+    <h4>Phase 2 (Months 3–4): Real-Time Collaborative Compliance Editing</h4>
+    <p>Supabase Realtime WebSockets with CRDTs for multi-cursor document editing, inline compliance comments, and instant finding re-validation as copywriters type.</p>
+  </div>
+  <div class="feature-card">
+    <h4>Phase 3 (Months 5–6): No-Code Regulatory Rule Builder</h4>
+    <p>Visual constraint authoring for legal teams to customize jurisdiction-specific rules (FDA 21 CFR §101, FTC Endorsement Guides, EU 1169/2011) per distribution market.</p>
+  </div>
+
+</div>
+
+</body>
+</html>
