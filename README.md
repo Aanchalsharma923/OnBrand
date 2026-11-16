@@ -170,6 +170,9 @@ npm run lint
 
 ## 7. Project Documentation Index
 
+- [`docs/OnBrand_Round3_Product_Document.pdf`](docs/OnBrand_Round3_Product_Document.pdf): **Official Round 3 Final Product Document** (13-page comprehensive executive report).
+- [`docs/ROUND3_HACKATHON_SUBMISSION_PACKAGE.md`](docs/ROUND3_HACKATHON_SUBMISSION_PACKAGE.md): **Round 3 Submission Package** and Google Form field reference.
+- [`docs/FINAL_HACKATHON_ACCEPTANCE_REPORT.md`](docs/FINAL_HACKATHON_ACCEPTANCE_REPORT.md): **Final Hackathon Acceptance Report** with production verification evidence.
 - [`docs/PRODUCT_OVERVIEW.md`](docs/PRODUCT_OVERVIEW.md): Problem definition, target customer personas, and core product workflows.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Deep-dive system topology, relational schema, RLS policies, and pipeline design.
 - [`docs/SECURITY.md`](docs/SECURITY.md): Threat modeling, RBAC permission matrix, session management, and secret sanitization.
